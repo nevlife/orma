@@ -1,0 +1,22 @@
+[workspace]
+resolver = "3"
+members = ["armo_common", "armo_daemon", "armo_ebpf"]
+# armo_ebpf builds only for the BPF target, through armo_daemon's build script.
+default-members = ["armo_common", "armo_daemon"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[workspace.dependencies]
+armo-common = { path = "armo_common", default-features = false }
+aya = { version = "0.14.0", default-features = false }
+aya-build = { version = "0.2.0", default-features = false }
+aya-ebpf = { version = "0.2.1", default-features = false }
+libc = { version = "0.2", default-features = false }
+
+[profile.release.package.armo-ebpf]
+debug = 2
+codegen-units = 1

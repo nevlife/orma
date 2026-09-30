@@ -1,0 +1,17 @@
+[package]
+name = "armo-ebpf"
+version.workspace = true
+edition.workspace = true
+# The kernel grants the probe_read helpers only to GPL-compatible programs.
+license = "MIT OR GPL-2.0"
+publish.workspace = true
+
+[dependencies]
+armo-common = { workspace = true }
+aya-ebpf = { workspace = true }
+
+[[bin]]
+name = "armo"
+path = "src/main.rs"
+test = false
+bench = false

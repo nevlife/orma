@@ -1,0 +1,2 @@
+# Formatting only: flake8 (setup.cfg) stays the linter. The width matches rustfmt.toml.
+line-length = 100

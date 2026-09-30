@@ -1,0 +1,81 @@
+# armo pre-commit. Enable: pipx install pre-commit && pre-commit install
+repos:
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.37.1
+    hooks:
+      - id: yamllint
+        args: [-c, .yamllint.yaml]
+
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.11.0.1
+    hooks:
+      - id: shellcheck
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.9
+    hooks:
+      - id: ruff-format
+        types: [python]
+
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.41.0
+    hooks:
+      - id: markdownlint
+        args: [-c, .markdownlint.yaml, --fix]
+
+  - repo: local
+    hooks:
+      - id: no-emoji
+        name: no emoji
+        entry: scripts/check_no_emoji.sh
+        language: script
+        types: [text]
+
+      - id: hangul-md-only
+        name: hangul only in .md files
+        entry: scripts/check_hangul_md_only.sh
+        language: script
+        types: [text]
+
+      # All three check the whole workspace; clippy also builds the eBPF crate through build.rs.
+      - id: rustfmt
+        name: rustfmt
+        entry: scripts/cargo.sh fmt --all --check
+        language: script
+        types: [rust]
+        pass_filenames: false
+
+      - id: clippy
+        name: clippy (armod, armo-common)
+        entry: scripts/cargo.sh clippy --release --all-targets --locked -- -D warnings
+        language: script
+        types_or: [rust, toml]
+        pass_filenames: false
+
+      - id: clippy-ebpf
+        name: clippy (armo-ebpf, pinned nightly)
+        entry: scripts/clippy_ebpf.sh
+        language: script
+        files: ^(armo_ebpf|armo_common)/
+        pass_filenames: false
+
+      # Only when the lock file changes: each run fetches the RustSec advisory database.
+      - id: cargo-audit
+        name: cargo audit (Cargo.lock against RustSec)
+        entry: scripts/cargo.sh audit --deny warnings
+        language: script
+        files: ^Cargo\.lock$
+        pass_filenames: false
+
+      - id: flake8
+        name: python defect classes (setup.cfg [flake8])
+        entry: python3 -m flake8
+        language: system
+        types: [python]
+
+      - id: docs-tracked
+        name: no untracked files under docs/
+        entry: scripts/check_docs_tracked.sh
+        language: script
+        pass_filenames: false
+        always_run: true
