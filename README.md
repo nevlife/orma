@@ -1,6 +1,6 @@
 # armo
 
-Tracing, monitoring and benchmarking for ROS 2 systems, including those that carry data over flux. Early work: `armod` loads eBPF probes on rclcpp's tracetools functions and flux's `flux_trace_*` functions and prints, per callback, how often it ran and how long it took. The counting happens in the kernel; the processes being watched are not changed or restarted.
+Tracing, monitoring and benchmarking for ROS 2 systems, including those that carry data over flux. Early work: `armod` loads eBPF probes on rclcpp's tracetools functions and flux's `flux_trace_*` functions and prints, per callback, how often it ran and how long it took. The counting happens in the kernel; the processes being watched are not changed or restarted. The name stands for Analysis, Recording, Measurement, Observation; it is unrelated to ARMO, the company behind Kubescape.
 
 | Directory | Contents |
 | --- | --- |
