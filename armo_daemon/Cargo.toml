@@ -16,6 +16,7 @@ path = "src/main.rs"
 armo-common = { workspace = true, features = ["user"] }
 aya = { workspace = true }
 libc = { workspace = true }
+object = { workspace = true }
 
 [build-dependencies]
 aya-build = { workspace = true }

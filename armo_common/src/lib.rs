@@ -7,13 +7,22 @@
 pub const BUCKETS: usize = 40;
 pub const NAME_LEN: usize = 128;
 
-/// One callback in one process. `callback` is the address rclcpp passes to `ros_trace_*`.
+pub const KIND_ROS: u32 = 0;
+pub const KIND_FLUX: u32 = 1;
+/// A `NAMES` key only: `callback` is a flux channel handle.
+pub const KIND_FLUX_CHANNEL: u32 = 2;
+
+/// One callback in one process. For `KIND_ROS`, `callback` is the address rclcpp passes to
+/// `ros_trace_*` and `entry` is 0. For `KIND_FLUX`, `callback` is the executor and `entry` its
+/// index there: unlike the channel handle, it survives a publisher restart.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct CallbackKey {
     pub tgid: u32,
-    pub pad: u32,
+    pub kind: u32,
     pub callback: u64,
+    pub entry: u32,
+    pub pad: u32,
 }
 
 #[repr(C)]
@@ -21,6 +30,22 @@ pub struct CallbackKey {
 pub struct CallbackStart {
     pub callback: u64,
     pub ns: u64,
+}
+
+/// Keyed by executor as well as thread: a callback can dispatch another executor inside it.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct FluxStartKey {
+    pub tid: u64,
+    pub executor: u64,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct FluxStart {
+    pub ns: u64,
+    pub entry: u32,
+    pub pad: u32,
 }
 
 /// Cumulative since the entry was created. Updated with atomic adds only, so concurrent callbacks
@@ -78,6 +103,8 @@ mod pod {
     use super::*;
     unsafe impl aya::Pod for CallbackKey {}
     unsafe impl aya::Pod for CallbackStart {}
+    unsafe impl aya::Pod for FluxStart {}
+    unsafe impl aya::Pod for FluxStartKey {}
     unsafe impl aya::Pod for CallbackStat {}
     unsafe impl aya::Pod for CallbackName {}
 }
