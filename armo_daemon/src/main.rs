@@ -15,18 +15,20 @@ use armod::{
     stats::{delta, quantile_upper_ns},
 };
 
-const USAGE: &str = "usage: armod [--lib PATH] [--flux-lib PATH] [--pid PID] [--interval SECONDS]";
+const USAGE: &str = "usage: armod [--lib PATH]... [--pid PID] [--interval SECONDS]";
+
+/// How often armod looks for newly loaded libraries across every process. Reading every
+/// /proc/<pid>/maps costs tens of ms on a busy host; one process's is read every window.
+const RESCAN_ALL: Duration = Duration::from_secs(5);
 
 struct Args {
-    lib: PathBuf,
-    flux_lib: Option<PathBuf>,
+    libs: Vec<PathBuf>,
     pid: Option<NonZeroU32>,
     interval: Duration,
 }
 
 fn parse() -> Result<Args> {
-    let mut lib = None;
-    let mut flux_lib = None;
+    let mut libs = Vec::new();
     let mut pid = None;
     let mut interval = Duration::from_secs(1);
     let mut it = env::args().skip(1);
@@ -36,34 +38,17 @@ fn parse() -> Result<Args> {
                 .ok_or_else(|| format!("{a} needs a value\n{USAGE}"))
         };
         match a.as_str() {
-            "--lib" => lib = Some(PathBuf::from(value()?)),
-            "--flux-lib" => flux_lib = Some(PathBuf::from(value()?)),
+            "--lib" => libs.push(PathBuf::from(value()?)),
             "--pid" => pid = Some(value()?.parse::<NonZeroU32>()?),
             "--interval" => interval = Duration::from_secs_f64(value()?.parse::<f64>()?),
             _ => return Err(format!("unknown argument {a}\n{USAGE}").into()),
         }
     }
-    let lib = match lib {
-        Some(l) => l,
-        None => find_lib("libtracetools.so")
-            .ok_or("libtracetools.so is not under AMENT_PREFIX_PATH (sudo drops it): pass --lib")?,
-    };
-    // Optional: a host without flux is still a ROS host to watch.
-    let flux_lib = flux_lib.or_else(|| find_lib("libflux_tracetools.so"));
     Ok(Args {
-        lib,
-        flux_lib,
+        libs,
         pid,
         interval,
     })
-}
-
-fn find_lib(name: &str) -> Option<PathBuf> {
-    env::var("AMENT_PREFIX_PATH")
-        .ok()?
-        .split(':')
-        .map(|p| Path::new(p).join("lib").join(name))
-        .find(|p| p.is_file())
 }
 
 fn alive(tgid: u32) -> bool {
@@ -152,16 +137,27 @@ fn print_window(
 
 fn run() -> Result<()> {
     let args = parse()?;
-    let mut probes = Probes::attach(&args.lib, args.flux_lib.as_deref(), args.pid)?;
-    eprintln!("armod: attached to {}", args.lib.display());
-    match &args.flux_lib {
-        Some(f) => eprintln!("armod: attached to {}", f.display()),
-        None => eprintln!("armod: libflux_tracetools.so not found, flux callbacks not timed"),
+    let mut probes = Probes::load(args.pid)?;
+    for lib in &args.libs {
+        if probes.attach_path(lib)? {
+            eprintln!("armod: attached to {}", lib.display());
+        }
     }
+    let scan = |probes: &mut Probes| {
+        for line in probes.attach_mapped() {
+            eprintln!("armod: {line}");
+        }
+    };
+    scan(&mut probes);
+    let mut scanned = Instant::now();
     let mut before = probes.read()?.stats;
     let mut last = Instant::now();
     loop {
         thread::sleep(args.interval);
+        if args.pid.is_some() || scanned.elapsed() >= RESCAN_ALL {
+            scan(&mut probes);
+            scanned = Instant::now();
+        }
         let snap = probes.read()?;
         let now = Instant::now();
         let secs = now.duration_since(last).as_secs_f64();

@@ -22,16 +22,18 @@ colcon build --symlink-install --packages-select armo_daemon
 
 ## Running
 
-The probes need `CAP_BPF` and `CAP_PERFMON`. `sudo` drops `AMENT_PREFIX_PATH`, so name the libraries:
+The probes need `CAP_BPF` and `CAP_PERFMON`:
 
 ```bash
-sudo install/armo_daemon/bin/armod --lib /opt/ros/jazzy/lib/libtracetools.so \
-  --flux-lib install/flux_core/lib/libflux_tracetools.so [--pid PID] [--interval 1]
+sudo install/armo_daemon/bin/armod [--pid PID] [--interval 1] [--lib PATH]...
 ```
 
-Without `--pid` the probes fire in every process that maps the library. Without `--flux-lib`, and with no `libflux_tracetools.so` under `AMENT_PREFIX_PATH`, only ROS callbacks are timed.
+armod finds the libraries itself: it reads `/proc/<pid>/maps` and attaches to each `libtracetools.so` and `libflux_tracetools.so` a watched process has loaded, so a process that loads a build-tree copy, another install's or a container's is traced through that copy. With `--pid` it looks every window, so a library loaded later is picked up; without, every process is looked at every 5 s. `--lib` attaches to a library before any process has loaded it. A library rebuilt while the process runs is reported and skipped: its path now names a file the process does not execute.
 
-Each row is one callback: `src` is `ros` or `flux`. A ROS callback is keyed by its address and named by its function. A flux callback is keyed by `executor:entry`, which stays the same when its publisher restarts, and named by the key of the channel it last delivered from. armod can attach after the channel was opened: the name then comes from the process's flux owner file in `/dev/shm`.
+Each row is one callback: `src` is `ros` or `flux`.
+
+- A ROS callback is keyed by its address. A subscription callback is named by its topic, read from the message rclcpp took just before it, so it is named even when armod attached after the node started. Timer and service callbacks have no name.
+- A flux callback is keyed by `executor:entry`, which stays the same when its publisher restarts, and named by the key of the channel it last delivered from. When armod attached after the channel was opened, the name comes from the process's flux owner file in `/dev/shm`.
 
 armod reads only a `libflux_tracetools.so` that exports `flux_trace_contract_2`. A library from another flux version carries other event arguments, and armod refuses it rather than misreading them.
 
@@ -43,7 +45,11 @@ armod reads only a `libflux_tracetools.so` that exports `flux_trace_contract_2`.
 armo_daemon/test/accuracy.py build/armo_daemon/cargo/release/armod
 ```
 
-It calls the tracetools functions, then runs flux callbacks on a channel opened before armod attaches, each a known number of times. It fails unless `armod` counted each one exactly once and named the flux channel by its key.
+It runs callers a known number of times under armod, which is given no library path, and fails unless armod counted each callback exactly once and named it:
+
+- the tracetools functions called directly;
+- flux callbacks on a channel opened before armod attached and one opened after, the second dispatched inside the first, in a process that maps a private copy of `libflux_tracetools.so`;
+- the `demo_nodes_cpp` listener, started before armod, named `/chatter`.
 
 ## License
 

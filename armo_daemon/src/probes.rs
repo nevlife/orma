@@ -3,7 +3,8 @@ use std::{
     error::Error,
     fs,
     num::NonZeroU32,
-    path::Path,
+    os::unix::fs::MetadataExt,
+    path::{Path, PathBuf},
 };
 
 use armo_common::{
@@ -29,7 +30,17 @@ enum Lib {
     Flux,
 }
 
-const PROBES: [(&str, &str, Lib); 6] = [
+impl Lib {
+    fn of(path: &Path) -> Option<Self> {
+        match path.file_name()?.to_str()? {
+            "libtracetools.so" => Some(Self::Ros),
+            "libflux_tracetools.so" => Some(Self::Flux),
+            _ => None,
+        }
+    }
+}
+
+const PROBES: [(&str, &str, Lib); 7] = [
     ("callback_start", "ros_trace_callback_start", Lib::Ros),
     ("callback_end", "ros_trace_callback_end", Lib::Ros),
     (
@@ -44,6 +55,7 @@ const PROBES: [(&str, &str, Lib); 6] = [
     ),
     ("flux_callback_end", "flux_trace_callback_end", Lib::Flux),
     ("flux_channel_init", "flux_trace_channel_init", Lib::Flux),
+    ("rmw_take", "ros_trace_rmw_take", Lib::Ros),
 ];
 
 pub struct Probes {
@@ -51,8 +63,12 @@ pub struct Probes {
     names: BpfHashMap<MapData, CallbackKey, CallbackName>,
     channels: BpfHashMap<MapData, CallbackKey, u64>,
     lost: Array<MapData, u64>,
+    scope: UProbeScope,
+    pid: Option<NonZeroU32>,
+    /// Library files tried, by (dev, inode): uprobes are per file, and a refused one stays refused.
+    tried: HashSet<(u64, u64)>,
     // Dropping this detaches the probes, so it lives as long as the maps are read.
-    _ebpf: Ebpf,
+    ebpf: Ebpf,
 }
 
 #[derive(Default)]
@@ -66,49 +82,125 @@ pub struct Snapshot {
 }
 
 impl Probes {
-    /// Attach to `tracetools`, the libtracetools.so every rclcpp process loads, and to
-    /// `flux_tracetools`, flux's libflux_tracetools.so, when given. `pid` limits the probes to
-    /// one process; without it they fire in every process that maps the library.
-    pub fn attach(
-        tracetools: &Path,
-        flux_tracetools: Option<&Path>,
-        pid: Option<NonZeroU32>,
-    ) -> Result<Self> {
-        if let Some(f) = flux_tracetools {
-            check_flux_contract(f)?;
-        }
+    /// Load the programs. Nothing fires until a library is attached. `pid` limits the probes to
+    /// one process; without it they fire in every process that maps an attached library.
+    pub fn load(pid: Option<NonZeroU32>) -> Result<Self> {
         let mut ebpf = Ebpf::load(include_bytes_aligned!(concat!(env!("OUT_DIR"), "/armo")))?;
-        let scope = match pid {
-            Some(p) => UProbeScope::OneProcess(p),
-            None => UProbeScope::AllProcesses,
-        };
-        for (program, symbol, lib) in PROBES {
-            let target = match lib {
-                Lib::Ros => tracetools,
-                Lib::Flux => match flux_tracetools {
-                    Some(f) => f,
-                    None => continue,
-                },
-            };
+        for (program, _, _) in PROBES {
             let p: &mut UProbe = ebpf
                 .program_mut(program)
                 .ok_or_else(|| format!("program {program} missing from the object"))?
                 .try_into()?;
             p.load()?;
-            p.attach(symbol, target, scope)
-                .map_err(|e| format!("attach {symbol} in {}: {e}", target.display()))?;
         }
         let stats = take(&mut ebpf, "STATS")?.try_into()?;
         let names = take(&mut ebpf, "NAMES")?.try_into()?;
         let channels = take(&mut ebpf, "FLUX_CHANNELS")?.try_into()?;
         let lost = take(&mut ebpf, "LOST")?.try_into()?;
+        let scope = match pid {
+            Some(p) => UProbeScope::OneProcess(p),
+            None => UProbeScope::AllProcesses,
+        };
         Ok(Self {
             stats,
             names,
             channels,
             lost,
-            _ebpf: ebpf,
+            scope,
+            pid,
+            tried: HashSet::new(),
+            ebpf,
         })
+    }
+
+    /// Attach to the library at `path`, named on the command line. Returns false if it was
+    /// already attached.
+    pub fn attach_path(&mut self, path: &Path) -> Result<bool> {
+        let lib = Lib::of(path).ok_or_else(|| {
+            format!(
+                "{}: not libtracetools.so or libflux_tracetools.so",
+                path.display()
+            )
+        })?;
+        let meta = fs::metadata(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        if !self.tried.insert((meta.dev(), meta.ino())) {
+            return Ok(false);
+        }
+        self.attach(lib, path)?;
+        Ok(true)
+    }
+
+    /// Attach to each tracetools library the watched processes have mapped and armod has not
+    /// tried yet. A process that loads its own copy (a build tree, another install, a
+    /// container) is traced through that copy. Returns one line per library attached or refused.
+    pub fn attach_mapped(&mut self) -> Vec<String> {
+        let pids: Vec<u32> = match self.pid {
+            Some(p) => vec![p.get()],
+            None => fs::read_dir("/proc")
+                .into_iter()
+                .flatten()
+                .filter_map(|e| e.ok()?.file_name().to_str()?.parse().ok())
+                .collect(),
+        };
+        let mut out = Vec::new();
+        for pid in pids {
+            let Ok(maps) = fs::read_to_string(format!("/proc/{pid}/maps")) else {
+                continue;
+            };
+            for line in maps.lines() {
+                let f: Vec<&str> = line.split_whitespace().collect();
+                let (Some(&mapped), Some(inode)) =
+                    (f.get(5), f.get(4).and_then(|i| i.parse().ok()))
+                else {
+                    continue;
+                };
+                let Some(lib) = Lib::of(Path::new(mapped)) else {
+                    continue;
+                };
+                // Rebuilt while the process runs: the path now names a file it does not execute.
+                if f.get(6) == Some(&"(deleted)") {
+                    if self.tried.insert((u64::MAX, inode)) {
+                        out.push(format!(
+                            "not attached to {mapped} (pid {pid}): replaced on disk since it was \
+                             loaded; restart the process to trace it"
+                        ));
+                    }
+                    continue;
+                }
+                // Through the process's root, so a container's copy resolves to its own file.
+                let path = PathBuf::from(format!("/proc/{pid}/root{mapped}"));
+                let Ok(meta) = fs::metadata(&path) else {
+                    continue;
+                };
+                if !self.tried.insert((meta.dev(), meta.ino())) {
+                    continue;
+                }
+                out.push(match self.attach(lib, &path) {
+                    Ok(()) => format!("attached to {mapped} (pid {pid})"),
+                    Err(e) => format!("not attached to {mapped} (pid {pid}): {e}"),
+                });
+            }
+        }
+        out
+    }
+
+    fn attach(&mut self, lib: Lib, path: &Path) -> Result<()> {
+        if lib == Lib::Flux {
+            check_flux_contract(path)?;
+        }
+        for (program, symbol, l) in PROBES {
+            if l != lib {
+                continue;
+            }
+            let p: &mut UProbe = self
+                .ebpf
+                .program_mut(program)
+                .ok_or_else(|| format!("program {program} missing from the object"))?
+                .try_into()?;
+            p.attach(symbol, path, self.scope)
+                .map_err(|e| format!("attach {symbol}: {e}"))?;
+        }
+        Ok(())
     }
 
     pub fn read(&self) -> Result<Snapshot> {

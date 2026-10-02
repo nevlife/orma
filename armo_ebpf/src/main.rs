@@ -16,7 +16,10 @@ use armo_common::{
 };
 use aya_ebpf::{
     bindings::BPF_NOEXIST,
-    helpers::{bpf_get_current_pid_tgid, bpf_ktime_get_ns, bpf_probe_read_user_str_bytes},
+    helpers::{
+        bpf_get_current_pid_tgid, bpf_ktime_get_ns, bpf_probe_read_user,
+        bpf_probe_read_user_str_bytes,
+    },
     macros::{map, uprobe},
     maps::{Array, HashMap, LruHashMap},
     programs::ProbeContext,
@@ -29,6 +32,12 @@ const MAX_THREADS: u32 = 8192;
 // does not hold a slot forever.
 #[map]
 static STARTS: LruHashMap<u64, CallbackStart> = LruHashMap::with_max_entries(MAX_THREADS, 0);
+
+// Per thread: the topic of the message rmw_take last handed over. rclcpp takes and then calls back
+// on the same thread, so the callback that starts next is that topic's. Unlike the registration
+// events this repeats every message, so it names callbacks armod attached too late to see created.
+#[map]
+static TAKEN: LruHashMap<u64, CallbackName> = LruHashMap::with_max_entries(MAX_THREADS, 0);
 
 // Apart from STARTS: one thread can run a flux executor and a ROS executor.
 #[map]
@@ -112,11 +121,17 @@ pub fn callback_start(ctx: ProbeContext) -> u32 {
     };
     // SAFETY: a helper call with no pointer arguments.
     let ns = unsafe { bpf_ktime_get_ns() };
-    let _ = STARTS.insert(
-        bpf_get_current_pid_tgid(),
-        CallbackStart { callback, ns },
-        0,
-    );
+    let tid = bpf_get_current_pid_tgid();
+    let _ = STARTS.insert(tid, CallbackStart { callback, ns }, 0);
+    if let Some(topic) = TAKEN.get_ptr(tid) {
+        // SAFETY: the entry is this thread's own; no other program run writes it.
+        let topic = unsafe { *topic };
+        let _ = TAKEN.remove(tid);
+        // An intra-process callback took nothing; the entry was some earlier take's.
+        if ctx.arg::<u8>(1) == Some(0) {
+            let _ = NAMES.insert(key(KIND_ROS, callback, 0), topic, BPF_NOEXIST as u64);
+        }
+    }
     0
 }
 
@@ -149,6 +164,33 @@ pub fn callback_register(ctx: ProbeContext) -> u32 {
         return 0;
     };
     record_name(key(KIND_ROS, callback, 0), symbol);
+    0
+}
+
+// ros_trace_rmw_take(const void * rmw_subscription_handle, const void * message,
+//                    int64_t source_timestamp, const bool taken)
+#[uprobe]
+pub fn rmw_take(ctx: ProbeContext) -> u32 {
+    let (Some(handle), Some(taken)) = (ctx.arg::<u64>(0), ctx.arg::<u8>(3)) else {
+        return 0;
+    };
+    if taken == 0 || handle == 0 {
+        return 0;
+    }
+    // rmw_subscription_t opens with implementation_identifier, data, topic_name (rmw/types.h).
+    let field = (handle + 16) as *const u64;
+    // SAFETY: the kernel checks the user address; a bad one returns an error, not a fault.
+    let Ok(topic) = (unsafe { bpf_probe_read_user(field) }) else {
+        return 0;
+    };
+    let mut name = CallbackName {
+        bytes: [0; NAME_LEN],
+    };
+    // SAFETY: as above.
+    if unsafe { bpf_probe_read_user_str_bytes(topic as *const u8, &mut name.bytes) }.is_err() {
+        return 0;
+    }
+    let _ = TAKEN.insert(bpf_get_current_pid_tgid(), name, 0);
     0
 }
 
