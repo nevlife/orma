@@ -45,7 +45,7 @@ static void early(void) {
   busy(EARLY_BUSY_US);
   CHECK(flux2_channel_publish(late_pub, (const uint8_t *)"x", 1) == FLUX2_PUBLISHED_OK);
   size_t n = 0;
-  CHECK(flux2_executor_spin_once(late_ex, 1000000000, &n) == FLUX2_OK && n == 1);
+  CHECK(flux2_executor_dispatch(late_ex, &n) == FLUX2_OK && n == 1);
 }
 
 static bool attach(void *ctx) { return ((source_ctx *)ctx)->sub != NULL; }
@@ -80,8 +80,8 @@ int main(void) {
   size_t len = 0;
   snprintf(early_key, sizeof early_key, "/armo_test/f2_early_%d", (int)getpid());
   snprintf(late_key, sizeof late_key, "/armo_test/f2_late_%d", (int)getpid());
-  CHECK(flux2_signpost_name(early_key, FP, NULL, early_name, sizeof early_name, &len) == FLUX2_OK);
-  CHECK(flux2_signpost_name(late_key, FP, NULL, late_name, sizeof late_name, &len) == FLUX2_OK);
+  CHECK(flux2_signpost_name(early_key, FP, early_name, sizeof early_name, &len) == FLUX2_OK);
+  CHECK(flux2_signpost_name(late_key, FP, late_name, sizeof late_name, &len) == FLUX2_OK);
 
   flux2_channel *early_pub, *early_sub, *late_sub;
   open_pair(early_name, &early_pub, &early_sub);
@@ -101,7 +101,7 @@ int main(void) {
   for (int i = 0; i < N; i++) {
     CHECK(flux2_channel_publish(early_pub, (const uint8_t *)"x", 1) == FLUX2_PUBLISHED_OK);
     size_t n = 0;
-    CHECK(flux2_executor_spin_once(early_ex, 1000000000, &n) == FLUX2_OK && n == 1);
+    CHECK(flux2_executor_dispatch(early_ex, &n) == FLUX2_OK && n == 1);
   }
   printf("done\n");
   fflush(stdout);

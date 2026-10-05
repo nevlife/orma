@@ -69,12 +69,12 @@ mod tests {
     #[test]
     fn a_segment_names_its_signpost() {
         assert_eq!(
-            signpost("/flux2.v1.s0.cam.left.00000000000000ab.e12"),
-            "/flux2.v1.s0.cam.left.00000000000000ab"
+            signpost("/flux2.v1.cam.left.00000000000000ab.e12"),
+            "/flux2.v1.cam.left.00000000000000ab"
         );
         assert_eq!(
-            signpost("/flux2.v1.s0.raw.00ab.e"),
-            "/flux2.v1.s0.raw.00ab.e"
+            signpost("/flux2.v1.raw.00ab.e"),
+            "/flux2.v1.raw.00ab.e"
         );
         assert_eq!(signpost(""), "");
     }
