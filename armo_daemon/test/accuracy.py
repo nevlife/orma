@@ -6,8 +6,9 @@ passwordless sudo or from a root shell, in a shell that has sourced the workspac
 caller imports flux, the ROS case runs demo_nodes_cpp). The probes are limited to the caller's
 pid, so other ROS processes on the host are not touched.
 
-armod is given no library: it has to find the ones each caller maps. The flux caller maps a
-private copy of libflux_tracetools.so, the way a build tree or a second install would.
+armod is given no library: it has to find the ones each caller maps. The flux and flux2 callers
+map a private copy of libflux_tracetools.so and libflux2_ffi.so, the way a build tree or a second
+install would. The flux2 caller is C, built here against the installed flux2_ffi.
 
     armo_daemon/test/accuracy.py [path/to/armod] [path/to/libtracetools.so]
 """
@@ -30,6 +31,7 @@ SUDO = [] if os.geteuid() == 0 else ["sudo", "-n"]
 EXPECT = {0xA0: (1000, 200), 0xB0: (300, 2000)}
 # The early callback's time includes the late one dispatched inside it.
 FLUX_EXPECT = {"early": (300, 1000), "late": (300, 200)}
+FLUX2_EXPECT = FLUX_EXPECT
 
 
 def find_flux_lib():
@@ -38,6 +40,17 @@ def find_flux_lib():
         if prefix and lib.is_file():
             return lib
     sys.exit("libflux_tracetools.so is not under AMENT_PREFIX_PATH: source the workspace")
+
+
+def find_flux2_prefix():
+    for var in ("CMAKE_PREFIX_PATH", "AMENT_PREFIX_PATH"):
+        for prefix in os.environ.get(var, "").split(":"):
+            p = Path(prefix)
+            if prefix and (p / "lib/libflux2_ffi.so").is_file() and (p / "include/flux2.h").is_file():
+                return p
+    sys.exit(
+        "flux2_ffi is not under CMAKE_PREFIX_PATH: build it with colcon and source the workspace"
+    )
 
 
 def start_armod(pid):
@@ -100,6 +113,38 @@ def check(failed, label, count, mean, want_n, want_us):
         failed.append(f"{label} mean")
 
 
+def check_named(failed, src, keys, expect, counts, means, names):
+    by_name = {names.get(k): k for k in counts if k[0] == src}
+    want = dict(zip(expect, keys.split()))
+    if len(counts) != len(want) or set(by_name) != set(want.values()):
+        failed.append(f"want {src} callbacks named {sorted(want.values())}, got {names}")
+        return
+    for which, (n, us) in expect.items():
+        k = by_name[want[which]]
+        check(failed, f"{src} {which} {want[which]}", counts[k], means[k], n, us)
+
+
+def flux2_case(failed):
+    """The early channel is named by its announced key, the late one by its signpost."""
+    prefix = find_flux2_prefix()
+    with tempfile.TemporaryDirectory() as tmp:
+        copy = Path(tmp) / "libflux2_ffi.so"
+        shutil.copy(prefix / "lib/libflux2_ffi.so", copy)
+        exe = Path(tmp) / "flux2_caller"
+        subprocess.run(
+            ["cc", "-O2", "-I", prefix / "include", HERE / "flux2_caller.c"]
+            + ["-L", tmp, "-lflux2_ffi", "-o", exe],
+            check=True,
+        )
+        env = dict(os.environ, LD_LIBRARY_PATH=f"{tmp}:{os.environ.get('LD_LIBRARY_PATH', '')}")
+        keys, maps, err, counts, means, names = watch([str(exe)], env)
+    if str(copy) not in maps:
+        failed.append("the flux2 caller did not map the private copy; the case tests nothing")
+    if f"attached to {copy}" not in err:
+        failed.append(f"armod did not find the private libflux2_ffi.so: {err}")
+    check_named(failed, "flux2", keys, FLUX2_EXPECT, counts, means, names)
+
+
 def ros_nodes(failed):
     """A listener that was running before armod attached is named by its topic."""
     env = dict(os.environ, ROS_DOMAIN_ID="87")
@@ -144,15 +189,9 @@ def main():
         failed.append("the flux caller did not map the private copy; the case tests nothing")
     if f"attached to {copy}" not in err:
         failed.append(f"armod did not find the private copy: {err}")
-    by_name = {names.get(k): k for k in counts if k[0] == "flux"}
-    want = dict(zip(FLUX_EXPECT, keys.split()))
-    if len(counts) != len(want) or set(by_name) != set(want.values()):
-        failed.append(f"want flux callbacks named {sorted(want.values())}, got {names}")
-    else:
-        for which, (n, us) in FLUX_EXPECT.items():
-            k = by_name[want[which]]
-            check(failed, f"flux {which} {want[which]}", counts[k], means[k], n, us)
+    check_named(failed, "flux", keys, FLUX_EXPECT, counts, means, names)
 
+    flux2_case(failed)
     ros_nodes(failed)
 
     if failed:

@@ -1,4 +1,5 @@
-//! Callback timing from rclcpp's tracetools functions and flux's `flux_trace_*`. Kernel side
+//! Callback timing from rclcpp's tracetools functions, flux's `flux_trace_*` and flux2's
+//! `flux2_trace_*`. Kernel side
 //! only counts: armod reads the maps and does every division and merge.
 #![no_std]
 #![no_main]
@@ -11,8 +12,8 @@ use core::intrinsics::{AtomicOrdering, atomic_xadd};
 
 use armo_common::{
     BUCKETS, CallbackKey, CallbackName, CallbackStart, CallbackStat, FluxStart, FluxStartKey,
-    KIND_FLUX, KIND_FLUX_CHANNEL, KIND_ROS, LOST_NAME_FULL, LOST_SLOTS, LOST_STAT_FULL, NAME_LEN,
-    bucket,
+    KIND_FLUX, KIND_FLUX_CHANNEL, KIND_FLUX2, KIND_ROS, LOST_NAME_FULL, LOST_SLOTS, LOST_STAT_FULL,
+    NAME_LEN, bucket,
 };
 use aya_ebpf::{
     bindings::BPF_NOEXIST,
@@ -197,6 +198,16 @@ pub fn rmw_take(ctx: ProbeContext) -> u32 {
 // flux_trace_callback_start(const void * executor, uint32_t entry)
 #[uprobe]
 pub fn flux_callback_start(ctx: ProbeContext) -> u32 {
+    executor_start(&ctx)
+}
+
+// flux2_trace_callback_start(const void * executor, uint32_t entry)
+#[uprobe]
+pub fn flux2_callback_start(ctx: ProbeContext) -> u32 {
+    executor_start(&ctx)
+}
+
+fn executor_start(ctx: &ProbeContext) -> u32 {
     let (Some(executor), Some(entry)) = (ctx.arg::<u64>(0), ctx.arg::<u32>(1)) else {
         return 0;
     };
@@ -224,24 +235,59 @@ pub fn flux_callback_end(ctx: ProbeContext) -> u32 {
     ) else {
         return 0;
     };
-    let sk = FluxStartKey {
-        tid: bpf_get_current_pid_tgid(),
-        executor,
-    };
-    let Some(start) = FLUX_STARTS.get_ptr(sk) else {
+    let Some(start) = executor_started(executor, entry) else {
         return 0;
     };
-    // SAFETY: the entry is this thread's own; no other program run writes it.
-    let start = unsafe { *start };
-    let _ = FLUX_STARTS.remove(sk);
     // A pass that delivered nothing is a probe of the source, not a callback.
-    if start.entry != entry || delivered <= 0 {
+    if delivered <= 0 {
         return 0;
     }
     let k = key(KIND_FLUX, executor, entry);
     record(k, now.saturating_sub(start.ns));
     if FLUX_CHANNELS.insert(k, channel, 0).is_err() {
         lost(LOST_NAME_FULL);
+    }
+    0
+}
+
+/// The start recorded on this thread for `executor`, if it was for `entry`. Removed either way.
+fn executor_started(executor: u64, entry: u32) -> Option<FluxStart> {
+    let sk = FluxStartKey {
+        tid: bpf_get_current_pid_tgid(),
+        executor,
+    };
+    // SAFETY: the entry is this thread's own; no other program run writes it.
+    let start = unsafe { *FLUX_STARTS.get_ptr(sk)? };
+    let _ = FLUX_STARTS.remove(sk);
+    (start.entry == entry).then_some(start)
+}
+
+// flux2_trace_callback_end(const void * executor, uint32_t entry, int delivered,
+//                          const void * channel, const char * segment)
+#[uprobe]
+pub fn flux2_callback_end(ctx: ProbeContext) -> u32 {
+    // SAFETY: a helper call with no pointer arguments.
+    let now = unsafe { bpf_ktime_get_ns() };
+    let (Some(executor), Some(entry), Some(delivered), Some(segment)) = (
+        ctx.arg::<u64>(0),
+        ctx.arg::<u32>(1),
+        ctx.arg::<i32>(2),
+        ctx.arg::<*const u8>(4),
+    ) else {
+        return 0;
+    };
+    let Some(start) = executor_started(executor, entry) else {
+        return 0;
+    };
+    // A pass that delivered nothing is a probe of the source, not a callback.
+    if delivered <= 0 {
+        return 0;
+    }
+    let k = key(KIND_FLUX2, executor, entry);
+    record(k, now.saturating_sub(start.ns));
+    // An entry delivers from one channel for its life, so the name is read once.
+    if NAMES.get_ptr(k).is_none() {
+        record_name(k, segment);
     }
     0
 }

@@ -23,11 +23,14 @@ pub type Result<T> = std::result::Result<T, Box<dyn Error + Send + Sync>>;
 /// The event names and arguments the flux programs read. libflux_tracetools.so exports a symbol
 /// of this name for exactly that set (flux/trace.h).
 pub const FLUX_CONTRACT: &str = "flux_trace_contract_2";
+/// The same for flux2, whose events live in libflux2_ffi.so (flux2_core/src/trace.rs).
+pub const FLUX2_CONTRACT: &str = "flux2_trace_contract_1";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Lib {
     Ros,
     Flux,
+    Flux2,
 }
 
 impl Lib {
@@ -35,12 +38,23 @@ impl Lib {
         match path.file_name()?.to_str()? {
             "libtracetools.so" => Some(Self::Ros),
             "libflux_tracetools.so" => Some(Self::Flux),
+            "libflux2_ffi.so" => Some(Self::Flux2),
             _ => None,
+        }
+    }
+
+    /// A library of another version attaches by name all the same and hands the programs
+    /// arguments they misread, so one without this symbol is refused.
+    fn contract(self) -> Option<&'static str> {
+        match self {
+            Self::Ros => None,
+            Self::Flux => Some(FLUX_CONTRACT),
+            Self::Flux2 => Some(FLUX2_CONTRACT),
         }
     }
 }
 
-const PROBES: [(&str, &str, Lib); 7] = [
+const PROBES: [(&str, &str, Lib); 9] = [
     ("callback_start", "ros_trace_callback_start", Lib::Ros),
     ("callback_end", "ros_trace_callback_end", Lib::Ros),
     (
@@ -56,6 +70,12 @@ const PROBES: [(&str, &str, Lib); 7] = [
     ("flux_callback_end", "flux_trace_callback_end", Lib::Flux),
     ("flux_channel_init", "flux_trace_channel_init", Lib::Flux),
     ("rmw_take", "ros_trace_rmw_take", Lib::Ros),
+    (
+        "flux2_callback_start",
+        "flux2_trace_callback_start",
+        Lib::Flux2,
+    ),
+    ("flux2_callback_end", "flux2_trace_callback_end", Lib::Flux2),
 ];
 
 pub struct Probes {
@@ -118,7 +138,7 @@ impl Probes {
     pub fn attach_path(&mut self, path: &Path) -> Result<bool> {
         let lib = Lib::of(path).ok_or_else(|| {
             format!(
-                "{}: not libtracetools.so or libflux_tracetools.so",
+                "{}: not libtracetools.so, libflux_tracetools.so or libflux2_ffi.so",
                 path.display()
             )
         })?;
@@ -185,8 +205,8 @@ impl Probes {
     }
 
     fn attach(&mut self, lib: Lib, path: &Path) -> Result<()> {
-        if lib == Lib::Flux {
-            check_flux_contract(path)?;
+        if let Some(contract) = lib.contract() {
+            check_contract(path, contract)?;
         }
         for (program, symbol, l) in PROBES {
             if l != lib {
@@ -258,16 +278,14 @@ impl Probes {
     }
 }
 
-/// A flux library of another version attaches by name all the same and hands the programs
-/// arguments they misread, so it is refused up front.
-fn check_flux_contract(lib: &Path) -> Result<()> {
+fn check_contract(lib: &Path, contract: &str) -> Result<()> {
     let bytes = fs::read(lib).map_err(|e| format!("read {}: {e}", lib.display()))?;
     let elf = object::File::parse(&*bytes).map_err(|e| format!("parse {}: {e}", lib.display()))?;
-    if elf.dynamic_symbols().any(|s| s.name() == Ok(FLUX_CONTRACT)) {
+    if elf.dynamic_symbols().any(|s| s.name() == Ok(contract)) {
         return Ok(());
     }
     Err(format!(
-        "{} does not export {FLUX_CONTRACT}: its flux trace events are not the ones armod reads",
+        "{} does not export {contract}: its trace events are not the ones armod reads",
         lib.display()
     )
     .into())

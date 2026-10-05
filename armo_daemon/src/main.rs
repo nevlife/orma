@@ -8,8 +8,9 @@ use std::{
     time::{Duration, Instant},
 };
 
-use armo_common::{CallbackKey, CallbackStat, KIND_FLUX, KIND_FLUX_CHANNEL, NAME_LEN};
+use armo_common::{CallbackKey, CallbackStat, KIND_FLUX, KIND_FLUX_CHANNEL, KIND_FLUX2, NAME_LEN};
 use armod::{
+    flux2,
     owner::{Owner, topic},
     probes::{Probes, Result},
     stats::{delta, quantile_upper_ns},
@@ -80,6 +81,13 @@ fn print_window(
         }
     }
     let name = |k: &CallbackKey| -> String {
+        // A heap channel has no segment, and so no topic.
+        if k.kind == KIND_FLUX2 {
+            return names
+                .get(k)
+                .filter(|s| !s.is_empty())
+                .map_or_else(String::new, |s| flux2::topic(s, k.tgid));
+        }
         if k.kind != KIND_FLUX {
             return names.get(k).cloned().unwrap_or_default();
         }
@@ -108,7 +116,7 @@ fn print_window(
             .map_or_else(String::new, |s| topic(s, owner))
     };
     let id = |k: &CallbackKey| {
-        if k.kind == KIND_FLUX {
+        if k.kind == KIND_FLUX || k.kind == KIND_FLUX2 {
             format!("{:#x}:{}", k.callback, k.entry)
         } else {
             format!("{:#x}", k.callback)
@@ -123,7 +131,11 @@ fn print_window(
         println!(
             "{:>8} {:>4} {:>18} {:>8} {:>9.1} {:>10.1} {:>10.1} {:>10.1}  {}",
             k.tgid,
-            if k.kind == KIND_FLUX { "flux" } else { "ros" },
+            match k.kind {
+                KIND_FLUX => "flux",
+                KIND_FLUX2 => "flux2",
+                _ => "ros",
+            },
             id(k),
             d.count,
             d.count as f64 / secs,

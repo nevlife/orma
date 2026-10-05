@@ -11,6 +11,8 @@ pub const KIND_ROS: u32 = 0;
 pub const KIND_FLUX: u32 = 1;
 /// A `NAMES` key only: `callback` is a flux channel handle.
 pub const KIND_FLUX_CHANNEL: u32 = 2;
+/// Keyed like `KIND_FLUX`; its `NAMES` entry is the segment the callback first delivered from.
+pub const KIND_FLUX2: u32 = 3;
 
 /// One callback in one process. For `KIND_ROS`, `callback` is the address rclcpp passes to
 /// `ros_trace_*` and `entry` is 0. For `KIND_FLUX`, `callback` is the executor and `entry` its

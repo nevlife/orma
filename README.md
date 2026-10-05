@@ -1,6 +1,6 @@
 # armo
 
-Tracing, monitoring and benchmarking for ROS 2 systems, including those that carry data over flux. Early work: `armod` loads eBPF probes on rclcpp's tracetools functions and flux's `flux_trace_*` functions and prints, per callback, how often it ran and how long it took. The counting happens in the kernel; the processes being watched are not changed or restarted. The name stands for Analysis, Recording, Measurement, Observation; it is unrelated to ARMO, the company behind Kubescape.
+Tracing, monitoring and benchmarking for ROS 2 systems, including those that carry data over flux. Early work: `armod` loads eBPF probes on rclcpp's tracetools functions, flux's `flux_trace_*` functions and flux2's `flux2_trace_*` functions and prints, per callback, how often it ran and how long it took. The counting happens in the kernel; the processes being watched are not changed or restarted. The name stands for Analysis, Recording, Measurement, Observation; it is unrelated to ARMO, the company behind Kubescape.
 
 | Directory | Contents |
 | --- | --- |
@@ -28,14 +28,16 @@ The probes need `CAP_BPF` and `CAP_PERFMON`:
 sudo install/armo_daemon/bin/armod [--pid PID] [--interval 1] [--lib PATH]...
 ```
 
-armod finds the libraries itself: it reads `/proc/<pid>/maps` and attaches to each `libtracetools.so` and `libflux_tracetools.so` a watched process has loaded, so a process that loads a build-tree copy, another install's or a container's is traced through that copy. With `--pid` it looks every window, so a library loaded later is picked up; without, every process is looked at every 5 s. `--lib` attaches to a library before any process has loaded it. A library rebuilt while the process runs is reported and skipped: its path now names a file the process does not execute.
+armod finds the libraries itself: it reads `/proc/<pid>/maps` and attaches to each `libtracetools.so`, `libflux_tracetools.so` and `libflux2_ffi.so` a watched process has loaded, so a process that loads a build-tree copy, another install's or a container's is traced through that copy. With `--pid` it looks every window, so a library loaded later is picked up; without, every process is looked at every 5 s. `--lib` attaches to a library before any process has loaded it. A library rebuilt while the process runs is reported and skipped: its path now names a file the process does not execute.
 
-Each row is one callback: `src` is `ros` or `flux`.
+Each row is one callback: `src` is `ros`, `flux` or `flux2`.
 
 - A ROS callback is keyed by its address. A subscription callback is named by its topic, read from the message rclcpp took just before it, so it is named even when armod attached after the node started. Timer and service callbacks have no name.
 - A flux callback is keyed by `executor:entry`, which stays the same when its publisher restarts, and named by the key of the channel it last delivered from. When armod attached after the channel was opened, the name comes from the process's flux owner file in `/dev/shm`.
 
-armod reads only a `libflux_tracetools.so` that exports `flux_trace_contract_2`. A library from another flux version carries other event arguments, and armod refuses it rather than misreading them.
+- A flux2 callback is keyed like a flux one and named by the channel it delivered from. Its probe passes the segment name, so it is named even when armod attached late, with no owner file. The name is the key an endpoint announced into the channel's signpost, or the signpost name when none did.
+
+armod reads only a `libflux_tracetools.so` that exports `flux_trace_contract_2` and a `libflux2_ffi.so` that exports `flux2_trace_contract_1`. A library from another flux version carries other event arguments, and armod refuses it rather than misreading them.
 
 ## Checks
 
@@ -49,6 +51,7 @@ It runs callers a known number of times under armod, which is given no library p
 
 - the tracetools functions called directly;
 - flux callbacks on a channel opened before armod attached and one opened after, the second dispatched inside the first, in a process that maps a private copy of `libflux_tracetools.so`;
+- flux2 callbacks the same way, from a C caller built against the installed `flux2_ffi` that maps a private copy of `libflux2_ffi.so`; one channel is announced and named by its key, the other by its signpost;
 - the `demo_nodes_cpp` listener, started before armod, named `/chatter`.
 
 ## License
