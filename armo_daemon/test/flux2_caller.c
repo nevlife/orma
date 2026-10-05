@@ -48,7 +48,7 @@ static void early(void) {
   CHECK(flux2_executor_dispatch(late_ex, &n) == FLUX2_OK && n == 1);
 }
 
-static bool attach(void *ctx) { return ((source_ctx *)ctx)->sub != NULL; }
+static int32_t attach(void *ctx) { return ((source_ctx *)ctx)->sub != NULL; }
 
 static int32_t deliver_one(void *ctx) {
   source_ctx *s = ctx;
