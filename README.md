@@ -35,7 +35,7 @@ Each row is one callback: `src` is `ros`, `flux` or `flux2`.
 - A ROS callback is keyed by its address. A subscription callback is named by its topic, read from the message rclcpp took just before it, so it is named even when armod attached after the node started. Timer and service callbacks have no name.
 - A flux callback is keyed by `executor:entry`, which stays the same when its publisher restarts, and named by the key of the channel it last delivered from. When armod attached after the channel was opened, the name comes from the process's flux owner file in `/dev/shm`.
 
-- A flux2 callback is keyed like a flux one and named by the channel it delivered from. Its probe passes the segment name, so it is named even when armod attached late, with no owner file. The name is the key an endpoint announced into the channel's signpost, or the signpost name when none did.
+- A flux2 callback is keyed like a flux one and named by the channel it delivered from. Its probe passes the segment name, so it is named even when armod attached late, with no owner file. The name is the key an endpoint announced into the channel's signpost, or the signpost name when none did. The key is read only from a signpost of flux2 layout v4. The probe reads the segment name into 128 bytes and a flux2 key may be 185, so a cut name is completed from the one signpost in `/dev/shm` it begins.
 
 armod reads only a `libflux_tracetools.so` that exports `flux_trace_contract_2` and a `libflux2_ffi.so` that exports `flux2_trace_contract_1`. A library from another flux version carries other event arguments, and armod refuses it rather than misreading them.
 
@@ -53,6 +53,8 @@ It runs callers a known number of times under armod, which is given no library p
 - flux callbacks on a channel opened before armod attached and one opened after, the second dispatched inside the first, in a process that maps a private copy of `libflux_tracetools.so`;
 - flux2 callbacks the same way, from a C caller built against the installed `flux2_ffi` that maps a private copy of `libflux2_ffi.so`; one channel is announced and named by its key, the other by its signpost;
 - the `demo_nodes_cpp` listener, started before armod, named `/chatter`.
+
+The flux case runs when `libflux_tracetools.so` is under `AMENT_PREFIX_PATH` and the flux2 case when `flux2_ffi` is under `CMAKE_PREFIX_PATH`; a workspace may hold only one of them, and the run lists the case it skipped. The ROS library and `demo_nodes_cpp` are taken from `/opt/ros/$ROS_DISTRO`.
 
 ## License
 

@@ -25,8 +25,9 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ARMOD = sys.argv[1] if len(sys.argv) > 1 else str(HERE.parents[1] / "target/release/armod")
-LIB = sys.argv[2] if len(sys.argv) > 2 else "/opt/ros/jazzy/lib/libtracetools.so"
-DEMO = Path("/opt/ros/jazzy/lib/demo_nodes_cpp")
+DISTRO = Path("/opt/ros") / os.environ.get("ROS_DISTRO", "jazzy")
+LIB = sys.argv[2] if len(sys.argv) > 2 else str(DISTRO / "lib/libtracetools.so")
+DEMO = DISTRO / "lib/demo_nodes_cpp"
 SUDO = [] if os.geteuid() == 0 else ["sudo", "-n"]
 EXPECT = {0xA0: (1000, 200), 0xB0: (300, 2000)}
 # The early callback's time includes the late one dispatched inside it.
@@ -39,18 +40,20 @@ def find_flux_lib():
         lib = Path(prefix) / "lib/libflux_tracetools.so"
         if prefix and lib.is_file():
             return lib
-    sys.exit("libflux_tracetools.so is not under AMENT_PREFIX_PATH: source the workspace")
+    return None
 
 
 def find_flux2_prefix():
     for var in ("CMAKE_PREFIX_PATH", "AMENT_PREFIX_PATH"):
         for prefix in os.environ.get(var, "").split(":"):
             p = Path(prefix)
-            if prefix and (p / "lib/libflux2_ffi.so").is_file() and (p / "include/flux2.h").is_file():
+            if (
+                prefix
+                and (p / "lib/libflux2_ffi.so").is_file()
+                and (p / "include/flux2.h").is_file()
+            ):
                 return p
-    sys.exit(
-        "flux2_ffi is not under CMAKE_PREFIX_PATH: build it with colcon and source the workspace"
-    )
+    return None
 
 
 def start_armod(pid):
@@ -124,9 +127,23 @@ def check_named(failed, src, keys, expect, counts, means, names):
         check(failed, f"{src} {which} {want[which]}", counts[k], means[k], n, us)
 
 
-def flux2_case(failed):
+def flux_case(failed, lib):
+    with tempfile.TemporaryDirectory() as tmp:
+        copy = Path(tmp) / "libflux_tracetools.so"
+        shutil.copy(lib, copy)
+        env = dict(os.environ, LD_LIBRARY_PATH=f"{tmp}:{os.environ.get('LD_LIBRARY_PATH', '')}")
+        keys, maps, err, counts, means, names = watch(
+            [sys.executable, str(HERE / "flux_caller.py")], env
+        )
+    if str(copy) not in maps:
+        failed.append("the flux caller did not map the private copy; the case tests nothing")
+    if f"attached to {copy}" not in err:
+        failed.append(f"armod did not find the private copy: {err}")
+    check_named(failed, "flux", keys, FLUX_EXPECT, counts, means, names)
+
+
+def flux2_case(failed, prefix):
     """The early channel is named by its announced key, the late one by its signpost."""
-    prefix = find_flux2_prefix()
     with tempfile.TemporaryDirectory() as tmp:
         copy = Path(tmp) / "libflux2_ffi.so"
         shutil.copy(prefix / "lib/libflux2_ffi.so", copy)
@@ -178,22 +195,21 @@ def main():
     if extra:
         failed.append(f"unexpected callbacks {sorted(extra)}")
 
-    with tempfile.TemporaryDirectory() as tmp:
-        copy = Path(tmp) / "libflux_tracetools.so"
-        shutil.copy(find_flux_lib(), copy)
-        env = dict(os.environ, LD_LIBRARY_PATH=f"{tmp}:{os.environ.get('LD_LIBRARY_PATH', '')}")
-        keys, maps, err, counts, means, names = watch(
-            [sys.executable, str(HERE / "flux_caller.py")], env
-        )
-    if str(copy) not in maps:
-        failed.append("the flux caller did not map the private copy; the case tests nothing")
-    if f"attached to {copy}" not in err:
-        failed.append(f"armod did not find the private copy: {err}")
-    check_named(failed, "flux", keys, FLUX_EXPECT, counts, means, names)
-
-    flux2_case(failed)
+    # Each flux generation is checked when it is installed: a workspace may hold only one.
+    skipped = []
+    flux_lib, flux2_prefix = find_flux_lib(), find_flux2_prefix()
+    if flux_lib:
+        flux_case(failed, flux_lib)
+    else:
+        skipped.append("flux (libflux_tracetools.so not under AMENT_PREFIX_PATH)")
+    if flux2_prefix:
+        flux2_case(failed, flux2_prefix)
+    else:
+        skipped.append("flux2 (flux2_ffi not under CMAKE_PREFIX_PATH)")
     ros_nodes(failed)
 
+    if skipped:
+        print("skipped:", "; ".join(skipped))
     if failed:
         print("FAILED:", ", ".join(failed))
         return 1
