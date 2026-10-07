@@ -10,14 +10,14 @@ use std::{
     path::Path,
 };
 
-// flux2 layout v4 (flux2_core/src/layout.rs): a `SignpostPage` opens with a `Signpost`, whose
+// flux2 layout v5 (flux2_core/src/layout.rs): a `SignpostPage` opens with a `Signpost`, whose
 // `init_state`, `magic` and `version` are u32 at bytes 0, 4 and 8, and holds its `KeyRecord` at
 // byte 64: `state: u32`, `len: u32` and up to 192 key bytes. The page's own version decides, so a
 // signpost of another layout is named by its signpost rather than misread.
 const NAME_PREFIX: &str = "/flux2.v";
 const INIT_READY: u32 = 2;
 const SIGNPOST_MAGIC: u32 = 0x464C_5350;
-const LAYOUT_VERSION: u32 = 4;
+const LAYOUT_VERSION: u32 = 5;
 const KEY_RECORD: usize = 64;
 const KEY_BYTES: usize = 192;
 const KEY_READY: u32 = 2;
@@ -95,10 +95,10 @@ mod tests {
     #[test]
     fn a_segment_names_its_signpost() {
         assert_eq!(
-            signpost("/flux2.v4..cam.left.00000000000000ab.e12"),
-            "/flux2.v4..cam.left.00000000000000ab"
+            signpost("/flux2.v5..cam.left.00000000000000ab.e12"),
+            "/flux2.v5..cam.left.00000000000000ab"
         );
-        assert_eq!(signpost("/flux2.v4..raw.00ab.e"), "/flux2.v4..raw.00ab.e");
+        assert_eq!(signpost("/flux2.v5..raw.00ab.e"), "/flux2.v5..raw.00ab.e");
         assert_eq!(signpost(""), "");
     }
 
@@ -125,11 +125,11 @@ mod tests {
     fn a_cut_segment_name_is_completed_from_its_one_signpost() {
         let dir = std::env::temp_dir().join(format!("armo_complete_{}", std::process::id()));
         fs::create_dir_all(&dir).unwrap();
-        let sp = format!("flux2.v4..{}.00000000000000ab", "k".repeat(150));
+        let sp = format!("flux2.v5..{}.00000000000000ab", "k".repeat(150));
         for n in [
             sp.clone(),
             format!("{sp}.e1"),
-            format!("flux2.v4..k.{}", "0".repeat(16)),
+            format!("flux2.v5..k.{}", "0".repeat(16)),
         ] {
             fs::write(dir.join(n), b"").unwrap();
         }
@@ -137,14 +137,14 @@ mod tests {
         let cut = &format!("/{sp}.e1")[..NAME_LEN - 1];
         assert_eq!(complete(dir, cut), Some(format!("/{sp}")));
         // Two signposts start with this one: no guess.
-        assert_eq!(complete(dir, "/flux2.v4..k"), None);
+        assert_eq!(complete(dir, "/flux2.v5..k"), None);
         fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
     fn a_segment_of_this_layout_is_named_by_its_key() {
         let sp = format!(
-            "/flux2.v4..armo_unit_{}.00000000000000ab",
+            "/flux2.v5..armo_unit_{}.00000000000000ab",
             std::process::id()
         );
         let path = format!("/dev/shm{sp}");
