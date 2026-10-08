@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>armo_lttng</name>
+  <version>0.0.0</version>
+  <description>
+    LTTng-UST provider for flux2's trace functions, loaded with LD_PRELOAD: flux2_trace_* calls
+    become events of provider flux2.
+  </description>
+  <maintainer email="nevlife000720@gmail.com">nevlife</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>pkg-config</buildtool_depend>
+
+  <depend>liblttng-ust-dev</depend>
+
+  <test_depend>ament_cmake_test</test_depend>
+  <test_depend>flux2_ffi</test_depend>
+  <test_depend>lttng-tools</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
