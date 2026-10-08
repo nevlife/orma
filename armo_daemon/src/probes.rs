@@ -38,7 +38,8 @@ impl Lib {
         match path.file_name()?.to_str()? {
             "libtracetools.so" => Some(Self::Ros),
             "libflux_tracetools.so" => Some(Self::Flux),
-            "libflux2_ffi.so" => Some(Self::Flux2),
+            // A process maps the file its soname names, libflux2_ffi.so.<abi>.
+            n if n.strip_prefix("libflux2_ffi.so").is_some_and(abi) => Some(Self::Flux2),
             _ => None,
         }
     }
@@ -52,6 +53,12 @@ impl Lib {
             Self::Flux2 => Some(FLUX2_CONTRACT),
         }
     }
+}
+
+fn abi(suffix: &str) -> bool {
+    suffix
+        .strip_prefix('.')
+        .is_none_or(|v| !v.is_empty() && v.bytes().all(|b| b.is_ascii_digit()))
 }
 
 const PROBES: [(&str, &str, Lib); 9] = [

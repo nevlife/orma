@@ -63,14 +63,14 @@ static const flux2_channel *channel(void *ctx) { return ((source_ctx *)ctx)->sub
 
 static void open_pair(const char *name, flux2_channel **pub, flux2_channel **sub) {
   flux2_memory_policy mem = {false, false};
-  CHECK(flux2_channel_create(name, 64, 4, FP, mem, pub) == FLUX2_OK);
-  CHECK(flux2_channel_open(name, FP, mem, sub) == FLUX2_OK);
+  CHECK(flux2_channel_create(name, 64, 4, 1, FP, mem, NULL, pub) == FLUX2_OK);
+  CHECK(flux2_channel_open(name, FP, mem, NULL, sub) == FLUX2_OK);
 }
 
 static flux2_executor *executor(source_ctx *s) {
   flux2_executor *ex = NULL;
   CHECK(flux2_executor_new(&ex) == FLUX2_OK);
-  flux2_source src = {s, attach, deliver_one, channel, NULL};
+  flux2_source src = {s, attach, deliver_one, channel, NULL, NULL};
   CHECK(flux2_executor_add(ex, src, 0) == FLUX2_OK);
   return ex;
 }

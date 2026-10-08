@@ -145,8 +145,11 @@ def flux_case(failed, lib):
 def flux2_case(failed, prefix):
     """The early channel is named by its announced key, the late one by its signpost."""
     with tempfile.TemporaryDirectory() as tmp:
-        copy = Path(tmp) / "libflux2_ffi.so"
-        shutil.copy(prefix / "lib/libflux2_ffi.so", copy)
+        # Under its soname, the name the caller's DT_NEEDED asks the loader for.
+        real = (prefix / "lib/libflux2_ffi.so").resolve()
+        copy = Path(tmp) / real.name
+        shutil.copy(real, copy)
+        (Path(tmp) / "libflux2_ffi.so").symlink_to(copy.name)
         exe = Path(tmp) / "flux2_caller"
         subprocess.run(
             ["cc", "-O2", "-I", prefix / "include", HERE / "flux2_caller.c"]
@@ -158,7 +161,7 @@ def flux2_case(failed, prefix):
     if str(copy) not in maps:
         failed.append("the flux2 caller did not map the private copy; the case tests nothing")
     if f"attached to {copy}" not in err:
-        failed.append(f"armod did not find the private libflux2_ffi.so: {err}")
+        failed.append(f"armod did not find the private {copy.name}: {err}")
     check_named(failed, "flux2", keys, FLUX2_EXPECT, counts, means, names)
 
 

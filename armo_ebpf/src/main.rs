@@ -11,9 +11,9 @@
 use core::intrinsics::{AtomicOrdering, atomic_xadd};
 
 use armo_common::{
-    BUCKETS, CallbackKey, CallbackName, CallbackStart, CallbackStat, FluxStart, FluxStartKey,
-    KIND_FLUX, KIND_FLUX_CHANNEL, KIND_FLUX2, KIND_ROS, LOST_NAME_FULL, LOST_SLOTS, LOST_STAT_FULL,
-    NAME_LEN, bucket,
+    CallbackKey, CallbackName, CallbackStart, CallbackStat, FluxStart, FluxStartKey, KIND_FLUX,
+    KIND_FLUX_CHANNEL, KIND_FLUX2, KIND_ROS, LOST_NAME_FULL, LOST_SLOTS, LOST_STAT_FULL, NAME_LEN,
+    bucket,
 };
 use aya_ebpf::{
     bindings::BPF_NOEXIST,
@@ -58,6 +58,13 @@ static NAMES: HashMap<CallbackKey, CallbackName> = HashMap::with_max_entries(MAX
 #[map]
 static LOST: Array<u64> = Array::with_max_entries(LOST_SLOTS, 0);
 
+// Never written: the zero values new STATS and NAMES entries start from. Built on the stack, a
+// stat and a name together pass the verifier's 512-byte limit for a program and its calls.
+#[map]
+static ZERO_STAT: Array<CallbackStat> = Array::with_max_entries(1, 0);
+#[map]
+static ZERO_NAME: Array<CallbackName> = Array::with_max_entries(1, 0);
+
 fn add(counter: *mut u64, v: u64) {
     // SAFETY: `counter` points into a map value the kernel keeps alive for this program run.
     unsafe { atomic_xadd::<u64, u64, { AtomicOrdering::Relaxed }>(counter, v) };
@@ -81,10 +88,8 @@ fn key(kind: u32, callback: u64, entry: u32) -> CallbackKey {
 
 fn record(k: CallbackKey, ns: u64) {
     if STATS.get_ptr_mut(k).is_none() {
-        let zero = CallbackStat {
-            count: 0,
-            sum_ns: 0,
-            hist: [0; BUCKETS],
+        let Some(zero) = ZERO_STAT.get(0) else {
+            return;
         };
         // Another CPU may create it first; BPF_NOEXIST keeps whichever came first.
         let _ = STATS.insert(k, zero, BPF_NOEXIST as u64);
@@ -101,16 +106,22 @@ fn record(k: CallbackKey, ns: u64) {
     }
 }
 
+/// Reads the string straight into a zeroed map value: the stack has no room for it.
 fn record_name(k: CallbackKey, s: *const u8) {
-    let mut name = CallbackName {
-        bytes: [0; NAME_LEN],
+    let Some(zero) = ZERO_NAME.get(0) else {
+        return;
     };
-    // SAFETY: the kernel checks the user address; a bad one returns an error, not a fault.
-    if unsafe { bpf_probe_read_user_str_bytes(s, &mut name.bytes) }.is_err() {
+    if NAMES.insert(k, zero, 0).is_err() {
+        lost(LOST_NAME_FULL);
         return;
     }
-    if NAMES.insert(k, name, 0).is_err() {
-        lost(LOST_NAME_FULL);
+    let Some(name) = NAMES.get_ptr_mut(k) else {
+        return;
+    };
+    // SAFETY: `name` points to a live map value; the kernel checks the user address, and a bad
+    // one returns an error, not a fault.
+    if unsafe { bpf_probe_read_user_str_bytes(s, &mut (*name).bytes) }.is_err() {
+        let _ = NAMES.remove(k);
     }
 }
 
