@@ -38,7 +38,7 @@ colcon build --symlink-install --packages-select armo_daemon armo_lttng
 
 ## Running
 
-The probes need `CAP_BPF` and `CAP_PERFMON`; turning on the eBPF run-time statistics also needs `CAP_SYS_ADMIN`, which armod gives up once they are on. armod serves `armo-collectd` on a unix socket that only root and the members of one group can open:
+The probes need `CAP_BPF` and `CAP_PERFMON`; the eBPF run-time statistics also need `CAP_SYS_ADMIN`, and so does attaching a uprobe on some kernels (Ubuntu 7.0 refused it without). armod serves `armo-collectd` on a unix socket that only root and the members of one group can open:
 
 ```bash
 sudo install/armo_daemon/bin/armod [--socket /run/armo/armod.sock] [--group armo]

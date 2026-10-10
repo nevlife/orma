@@ -461,9 +461,6 @@ impl Kernel {
                 e.io_error
             )
         });
-        // The last use of CAP_SYS_ADMIN: statistics are read through the fds kept above. Before
-        // the attacher and reaper threads start, so they never hold it.
-        sys::drop_cap(sys::CAP_SYS_ADMIN)?;
         let reaper = Reaper::start();
         let (jobs, rx) = mpsc::channel();
         let (tx, done) = mpsc::channel();

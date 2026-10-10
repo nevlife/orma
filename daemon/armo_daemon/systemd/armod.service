@@ -5,8 +5,8 @@ Description=armod, armo's eBPF probe daemon
 ExecStart=/usr/local/sbin/armod
 User=armo
 Group=armo
-# Each capability and why: design 5.1. armod gives up CAP_SYS_ADMIN once it holds the
-# BPF_ENABLE_STATS fd.
+# Each capability and why: design 5.1. CAP_SYS_ADMIN stays: this kernel's uprobe
+# perf_event_open refused armod without it (Ubuntu 7.0, 2026-10-11).
 AmbientCapabilities=CAP_BPF CAP_PERFMON CAP_SYS_ADMIN CAP_SYS_PTRACE CAP_DAC_READ_SEARCH
 CapabilityBoundingSet=CAP_BPF CAP_PERFMON CAP_SYS_ADMIN CAP_SYS_PTRACE CAP_DAC_READ_SEARCH
 NoNewPrivileges=true

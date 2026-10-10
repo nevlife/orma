@@ -56,7 +56,7 @@ sudo systemctl enable --now armod
 | 권한 | 쓰는 곳 |
 | --- | --- |
 | `CAP_BPF`, `CAP_PERFMON` | eBPF 프로그램을 올리고 uprobe와 트레이스포인트에 붙인다 |
-| `CAP_SYS_ADMIN` | eBPF 실행 시간 통계(`BPF_ENABLE_STATS`). 통계를 켠 직후 armod가 스스로 버린다 |
+| `CAP_SYS_ADMIN` | eBPF 실행 시간 통계(`BPF_ENABLE_STATS`). Ubuntu 7.0 커널은 이것 없이 uprobe의 `perf_event_open`도 거부했다(`EACCES`) |
 | `CAP_SYS_PTRACE` | 다른 사용자 프로세스의 `/proc/<pid>/maps`, `/proc/<pid>/root`. 없으면 아무 프로브도 붙지 않는다 |
 | `CAP_DAC_READ_SEARCH` | tracefs(`/sys/kernel/tracing`)의 이벤트 `format`, `id`. 없으면 sched 프로브가 꺼진다 |
 
