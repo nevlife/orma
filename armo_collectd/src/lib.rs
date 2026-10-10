@@ -3,6 +3,7 @@
 pub mod analyze;
 pub mod guard;
 pub mod model;
+pub mod names;
 pub mod record;
 pub mod server;
 pub mod sources;

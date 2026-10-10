@@ -160,6 +160,9 @@ class ArmoWidget(QWidget):
                 " ".join(f"{p}:{m['method_by_pid'].get(str(p), 'auto')}" for p in selection["pids"])
                 or "none"
             )
+        target += "".join(
+            f" {k} {selection[k]}" for k in ("node", "topic", "exclude") if k in selection
+        )
         extras = "".join(f", {k}" for k in ("bandwidth", "sched", "malloc") if m[k])
         running = "running" if m["running"] else "idle"
         self.monitor_label.setText(
@@ -167,6 +170,7 @@ class ArmoWidget(QWidget):
         )
         self.recordings.show_state(s)
         self.selection.show_state(s)
+        self.monitor.selection = selection
 
     def show_window(self, w):
         self.window_msg = w

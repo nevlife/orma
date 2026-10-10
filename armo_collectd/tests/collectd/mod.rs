@@ -54,6 +54,7 @@ pub struct Seen {
     pub expected_hz: BTreeMap<String, f64>,
     /// What each window lists as its processes.
     pub processes: Vec<Process>,
+    pub nodes: Vec<Node>,
 }
 
 /// An `Ingest` that only counts, the stand-in for WP3b's model.
@@ -75,6 +76,7 @@ impl Ingest for Counting {
         seen.windows += 1;
         Window {
             processes: seen.processes.clone(),
+            nodes: seen.nodes.clone(),
             ..empty_window(t_mono_ns, t_real_ns, window_ns)
         }
     }
@@ -84,6 +86,7 @@ impl Model for Counting {
     fn set_sched(&mut self, pids: Sel) {
         self.0.lock().unwrap().sched = pids != Sel::None;
     }
+    fn set_hot(&mut self, _: Sel) {}
     fn set_lttng_span(&mut self, _: u64) {}
     fn set_expected_hz(&mut self, by_id: BTreeMap<String, f64>) {
         self.0.lock().unwrap().expected_hz = by_id;
@@ -261,7 +264,9 @@ impl Client {
 
     /// Reads until `done` holds for a message, keeping state, lines and windows on the way.
     pub fn until(&mut self, mut done: impl FnMut(&ServerMessage) -> bool) -> ServerMessage {
+        let start = Instant::now();
         loop {
+            assert!(start.elapsed() < WAIT, "timed out waiting for a message");
             let m = self.recv();
             if done(&m) {
                 return m;

@@ -1106,6 +1106,32 @@ fn lttng_counts_are_over_the_chunk_span() {
 }
 
 #[test]
+fn a_process_outside_the_hot_set_has_no_rates() {
+    let mut h = H::offline();
+    h.m.set_hot(Sel::pids([100]));
+    h.node(100, 0xa0, "talker", "/");
+    h.publisher(100, 0xb0, 0xa0, 0xb1, "/chatter");
+    h.node(200, 0xc0, "listener", "/");
+    h.subscription(200, 0xd0, 0xc0, "/chatter");
+    h.publish(100, 100, T0 + MS, 0xb0, 0xb1, 1000, wall(T0 + MS));
+    h.cb(100, 100, T0 + 2 * MS, T0 + 3 * MS, 0xa1);
+    h.cb(200, 200, T0 + 2 * MS, T0 + 3 * MS, 0xc1);
+    let w = h.window(T0 + W);
+    assert_eq!(cb(&w, 100, 0xa1).hz, Some(1.0));
+    assert_eq!(cb(&w, 200, 0xc1).hz, None);
+    assert_eq!(cb(&w, 200, 0xc1).duration, None);
+    let method = |pid| w.processes.iter().find(|p| p.pid == pid).unwrap().method;
+    assert_eq!(method(100), Some(Method::Preload));
+    assert_eq!(method(200), None);
+    let node = |pid| w.nodes.iter().find(|n| n.pid == pid).unwrap();
+    assert!(node(100).cb_hz.is_some());
+    assert_eq!((node(200).cpu_pct, node(200).cb_hz), (None, None));
+    assert_eq!(topic(&w, CHATTER).pub_hz, Some(1.0));
+    let s = sub(&w, CHATTER, 200);
+    assert_eq!((s.recv_hz, s.lost), (None, None));
+}
+
+#[test]
 fn a_topic_scales_only_its_lttng_part() {
     let mut h = H::offline();
     h.method = Method::Lttng;

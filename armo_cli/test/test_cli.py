@@ -60,15 +60,15 @@ def check_session(requests, names, pid, client="armo"):
 
 
 def test_frame_matches_golden():
-    hello = {"id": 1, "op": "hello", "proto": [1, 3], "client": "rqt_armo", "pid": 5555}
+    hello = {"id": 1, "op": "hello", "proto": [1, 5], "client": "rqt_armo", "pid": 5555}
     assert armo_client.encode(hello) == (GOLDEN / "frames" / "hello.bin").read_bytes()
 
 
-@pytest.mark.parametrize("option", ["--node", "--topic", "--exclude"])
-def test_regex_targets_are_refused(fake, option, capsys):
-    assert main(["record", "--no-follow", option, "/x"]) == 1
-    assert "not implemented" in capsys.readouterr().err
-    assert all(r["op"] != "record_start" for r in fake.requests())
+@pytest.mark.parametrize("option", ["node", "topic", "exclude"])
+def test_name_targets_are_sent(fake, option):
+    assert main(["record", "--no-follow", f"--{option}", "/x"]) == 0
+    start = next(r for r in fake.requests() if r["op"] == "record_start")
+    assert start["targets"] == {"all": False, "pids": [], option: "/x"}
 
 
 @pytest.mark.parametrize("argv,names", COMMANDS, ids=lambda x: "_".join(x)[:40])
@@ -83,14 +83,15 @@ def test_request_matches_golden(fake, argv, names, capsys):
 @pytest.mark.parametrize(
     "argv,expected",
     [
-        ([], [golden("select_all"), golden("subscribe")]),
+        ([], [golden("subscribe"), golden("select_all")]),
         (
             ["--pid", "4021", "--method", "preload", "--pid", "4022", "--method", "uprobe"],
-            [golden("select_pids"), golden("subscribe")],
+            [golden("subscribe"), golden("select_pids")],
         ),
         (
             ["--window", "0.5", "--pid", "4021", "--method", "preload"],
             [
+                golden("subscribe"),
                 {"op": "configure", "window_s": 0.5},
                 {
                     "op": "select",
@@ -98,7 +99,6 @@ def test_request_matches_golden(fake, argv, names, capsys):
                     "pids": [4021],
                     "method_by_pid": {"4021": "preload"},
                 },
-                golden("subscribe"),
             ],
         ),
     ],

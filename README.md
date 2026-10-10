@@ -2,6 +2,8 @@
 
 Tracing, monitoring and benchmarking for ROS 2 systems, including those that carry data over flux. `armod` loads eBPF probes on ROS 2's tracetools functions, the rcl and rclcpp functions that have none, flux2's `flux2_trace_*` functions and the scheduler, and serves the records and per-window aggregates to `armo-collectd` over a socket. The processes being watched are not changed or restarted. The name stands for Analysis, Recording, Measurement, Observation; it is unrelated to ARMO, the company behind Kubescape.
 
+How to install, run and troubleshoot armo, in Korean: [`docs/install.md`](docs/install.md), [`docs/usage.md`](docs/usage.md), [`docs/troubleshooting.md`](docs/troubleshooting.md).
+
 | Directory | Contents |
 | --- | --- |
 | `armo_common` | Map keys and values shared by the eBPF programs and `armod`; the event records every collection method writes and the LD_PRELOAD shared memory layout (`no_std`) |
@@ -38,6 +40,8 @@ The probes need `CAP_BPF` and `CAP_PERFMON`; the eBPF run-time statistics also n
 ```bash
 sudo install/armo_daemon/bin/armod [--socket /run/armo/armod.sock] [--group armo]
 ```
+
+To run armod as a system service, as the user `armo` with only the capabilities it needs (`CAP_BPF`, `CAP_PERFMON`, `CAP_SYS_ADMIN`, plus `CAP_SYS_PTRACE` for other users' `/proc/<pid>/maps` and `CAP_DAC_READ_SEARCH` for tracefs), run `armo_daemon/systemd/install.sh` from a shell that sourced the workspace, then `sudo systemctl enable --now armod`. The script copies armod to `/usr/local/sbin`, so run it again and restart the service after a rebuild. It adds you to the group `armo`, which applies from your next login.
 
 `armo-collectd` asks it for probe sets per process (`discovery` on every process; `hot`, `rclcpp_symbols`, `bandwidth` and `sched` on the selected ones), for the records of some processes and for a window of aggregates. When the connection closes, armod takes away what that connection asked for. Without the group armod does not start.
 

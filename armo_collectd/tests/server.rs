@@ -82,6 +82,7 @@ fn select_and_configure_reach_every_client() {
         selection: Selection {
             all: false,
             pids: vec![4021, 4022],
+            ..Default::default()
         },
         method_by_pid: methods,
     };

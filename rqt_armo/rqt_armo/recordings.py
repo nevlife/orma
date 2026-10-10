@@ -94,10 +94,6 @@ class RecordForm(QWidget):
         form.addRow("Node regex (--node)", self.node)
         form.addRow("Topic regex (--topic)", self.topic)
         form.addRow("Exclude regex (--exclude)", self.exclude)
-        # armo-collectd refuses them until it applies them.
-        for e in (self.node, self.topic, self.exclude):
-            e.setEnabled(False)
-            e.setPlaceholderText("not implemented yet")
         self.kind = choice(("events", "windows"))
         form.addRow("Kind (--kind)", self.kind)
         self.dir = QLineEdit()

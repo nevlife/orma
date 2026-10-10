@@ -21,6 +21,7 @@ use armo_proto::records::{self, RecordError};
 use super::{Config, Exit, Model};
 use crate::guard::{self, Cleanup, Guard};
 use crate::model::procfs;
+use crate::names::{Known, Names};
 use crate::record::replay::Replay;
 use crate::record::{self, Active, Context, show};
 use crate::sources::armod::{self, Plan, Sel};
@@ -70,6 +71,8 @@ pub struct Core {
 
     window_s: f64,
     selection: Selection,
+    /// The selection's name targets, and the pids it named itself.
+    names: Option<(Names, Vec<u32>)>,
     method_by_pid: BTreeMap<String, Method>,
     bandwidth: bool,
     sched: bool,
@@ -187,7 +190,9 @@ impl Core {
             selection: Selection {
                 all: true,
                 pids: Vec::new(),
+                ..Default::default()
             },
+            names: None,
             method_by_pid: BTreeMap::new(),
             bandwidth: false,
             sched: true,
@@ -428,7 +433,7 @@ impl Core {
                 plan.stream.add(uprobe);
             }
             let t = r.targets();
-            let targets = if t.all || t.pids.is_empty() {
+            let targets = if record::every_process(t) {
                 Sel::All
             } else {
                 Sel::pids(t.pids.iter().copied())
@@ -471,9 +476,31 @@ impl Core {
             _ => Sel::None,
         };
         self.ingest.set_sched(sched);
+        let hot = self.hot(&plan.hot);
+        self.ingest.set_hot(hot);
         self.send_plan(plan);
         self.lttng_refresh();
         self.update_guard();
+    }
+
+    /// The processes whose hot events reach the model: armod's `uprobe` ones while it is there,
+    /// and the shared memory files that are armed or that the LTTng source takes.
+    fn hot(&self, uprobe: &Sel) -> Sel {
+        let mut hot = match self.armod {
+            ArmodLink::Connected => uprobe.clone(),
+            _ => Sel::None,
+        };
+        hot.add(Sel::pids(
+            self.shm
+                .files
+                .values()
+                .filter(|f| match f.preload() {
+                    true => f.armed,
+                    false => self.lttng_takes(f.pid),
+                })
+                .map(|f| f.pid),
+        ));
+        hot
     }
 
     fn send_plan(&mut self, plan: Plan) {
@@ -777,6 +804,7 @@ impl Core {
         self.lttng_window(&mut w);
         self.lttng_rotate();
         if let Some(a) = &self.armod_window {
+            w.agent.armod = a.usage.clone();
             w.agent.bpf = a.bpf.clone();
             w.agent.maps = a.maps.clone();
             w.agent
@@ -804,6 +832,66 @@ impl Core {
         };
         self.last_window = Some(*w);
         if !self.active.is_empty() {
+            self.broadcast_state();
+        }
+        self.follow_names();
+    }
+
+    fn known(&self) -> Known {
+        self.last_window.as_ref().map(Known::of).unwrap_or_default()
+    }
+
+    /// The method monitoring takes `pid` by when the selection lists it without one: as
+    /// `record_start`'s `auto` settles.
+    fn monitor_method(&self, pid: u32) -> Option<Method> {
+        if self.shm.has_pid(pid) {
+            Some(Method::Preload)
+        } else if self.lt.on() && self.lt.apps.contains(&pid) {
+            Some(Method::Lttng)
+        } else if self.armod == ArmodLink::Connected {
+            Some(Method::Uprobe)
+        } else {
+            None
+        }
+    }
+
+    fn settle_selection(&mut self) {
+        for pid in self.selection.pids.clone() {
+            if let Some(m) = self.monitor_method(pid) {
+                self.method_by_pid.entry(pid.to_string()).or_insert(m);
+            }
+        }
+    }
+
+    /// Matches the name targets of the selection and of the recordings against the last window:
+    /// a node or topic that appears takes its processes in.
+    fn follow_names(&mut self) {
+        let known = self.known();
+        let mut changed = false;
+        if let Some((names, listed)) = &self.names {
+            let mut pids = names.pids(&known);
+            pids.extend(listed);
+            let pids: Vec<u32> = pids.into_iter().collect();
+            if pids != self.selection.pids {
+                self.selection.pids = pids;
+                self.settle_selection();
+                changed = true;
+            }
+        }
+        let Core {
+            active, shm, lt, ..
+        } = self;
+        let armod = self.armod == ArmodLink::Connected;
+        let apps = &lt.apps;
+        let registered = |pid: u32| apps.contains(&pid);
+        let lttng = lt.on().then_some(&registered as &dyn Fn(u32) -> bool);
+        for r in active.iter_mut() {
+            if let Some(names) = r.names.clone() {
+                changed |= r.add_pids(&names.pids(&known), armod, &|p| shm.has_pid(p), lttng);
+            }
+        }
+        if changed {
+            self.refresh();
             self.broadcast_state();
         }
     }
@@ -927,7 +1015,54 @@ impl Core {
         }
     }
 
-    fn record_start(&mut self, client: u64, id: u64, options: RecordOptions) -> ServerMessage {
+    fn select(&mut self, id: u64, select: Select) -> ServerMessage {
+        if let Some(k) = select
+            .method_by_pid
+            .keys()
+            .find(|k| k.parse::<u32>().is_err())
+        {
+            return bad(id, format!("method_by_pid key {k:?} is not a pid"));
+        }
+        if !self.lt.on() && select.method_by_pid.values().any(|m| *m == Method::Lttng) {
+            return bad(
+                id,
+                "method lttng needs lttng, lttng-sessiond, babeltrace and setpriv on PATH",
+            );
+        }
+        let s = &select.selection;
+        let names = match Names::new(s.node.as_ref(), s.topic.as_ref(), s.exclude.as_ref()) {
+            Err(e) => return bad(id, e),
+            Ok(Some(_)) if s.all => return bad(id, "all with node, topic or exclude"),
+            Ok(names) => names,
+        };
+        let mut selection = select.selection;
+        // Every process but some is still every process: no uprobe on all of them (design
+        // 6.1); the clients leave the excluded ones out of view.
+        let names = names.filter(|n| !(n.only_excludes() && selection.pids.is_empty()));
+        selection.all |= names.is_none() && selection.exclude.is_some();
+        self.names = names.map(|n| {
+            let listed = selection.pids.clone();
+            let mut pids = n.pids(&self.known());
+            pids.extend(&listed);
+            selection.pids = pids.into_iter().collect();
+            (n, listed)
+        });
+        self.selection = selection;
+        // A listed pid without a method settles as record_start's auto does.
+        self.method_by_pid = select.method_by_pid;
+        self.settle_selection();
+        self.refresh();
+        self.broadcast_state();
+        if self.selection.all {
+            let text = "uprobe attaches only to processes selected by pid: the others show rates \
+                        only when started with preload or lttng";
+            self.event_line(Level::Info, "select_all", text.into(), Vec::new());
+        }
+        ok(id)
+    }
+
+    fn record_start(&mut self, client: u64, id: u64, mut options: RecordOptions) -> ServerMessage {
+        let known = self.known();
         let ongoing = self.active.len();
         if ongoing >= record::MAX_ACTIVE {
             return bad(
@@ -959,20 +1094,28 @@ impl Core {
             mono_ns: sys::mono_ns(),
             real_ns: real,
         };
-        if options
+        let names = match options
             .targets
             .as_ref()
-            .is_some_and(|t| t.node.is_some() || t.topic.is_some() || t.exclude.is_some())
+            .map(|t| Names::new(t.node.as_ref(), t.topic.as_ref(), t.exclude.as_ref()))
         {
-            return bad(
-                id,
-                "node, topic and exclude are not implemented yet: choose processes by pid",
-            );
+            Some(Err(e)) => return bad(id, e),
+            Some(Ok(Some(_))) if options.targets.as_ref().is_some_and(|t| t.all) => {
+                return bad(id, "all with node, topic or exclude");
+            }
+            Some(Ok(names)) => names,
+            None => None,
+        };
+        if let (Some(n), Some(t)) = (&names, options.targets.as_mut()) {
+            let mut pids = n.pids(&known);
+            pids.extend(&t.pids);
+            t.pids = pids.into_iter().collect();
         }
         let mut active = match record::start(options, cx) {
             Ok(a) => a,
             Err(e) => return bad(id, e),
         };
+        active.names = names;
         self.next_record += 1;
         let (record_id, dir) = (active.id.clone(), active.dir.display().to_string());
         // Entities made before the recording are named by the init records the files kept.
@@ -1175,44 +1318,11 @@ impl Core {
                     c.window = streams.contains(&Stream::Window);
                     c.event_line = streams.contains(&Stream::EventLine);
                 }
+                // A first window watcher arms the sources now rather than at the next scan.
+                self.refresh();
                 ok(id)
             }
-            ClientOp::Select(select) => {
-                if let Some(k) = select
-                    .method_by_pid
-                    .keys()
-                    .find(|k| k.parse::<u32>().is_err())
-                {
-                    bad(id, format!("method_by_pid key {k:?} is not a pid"))
-                } else if !self.lt.on()
-                    && select.method_by_pid.values().any(|m| *m == Method::Lttng)
-                {
-                    bad(
-                        id,
-                        "method lttng needs lttng, lttng-sessiond, babeltrace and setpriv on PATH",
-                    )
-                } else {
-                    let mut method_by_pid = select.method_by_pid;
-                    // A listed pid without a method settles as record_start's auto does.
-                    for pid in &select.selection.pids {
-                        let m = if self.shm.has_pid(*pid) {
-                            Method::Preload
-                        } else if self.lt.on() && self.lt.apps.contains(pid) {
-                            Method::Lttng
-                        } else if self.armod == ArmodLink::Connected {
-                            Method::Uprobe
-                        } else {
-                            continue;
-                        };
-                        method_by_pid.entry(pid.to_string()).or_insert(m);
-                    }
-                    self.selection = select.selection;
-                    self.method_by_pid = method_by_pid;
-                    self.refresh();
-                    self.broadcast_state();
-                    ok(id)
-                }
-            }
+            ClientOp::Select(select) => self.select(id, select),
             ClientOp::Configure(c) => {
                 if let Some(w) = c
                     .window_s
@@ -1334,6 +1444,7 @@ impl Core {
             (_, l) => l,
         };
         self.armod_stream = None;
+        self.armod_window = None;
         if let Flush::Waiting { .. } = self.armod_flush {
             self.armod_flush = Flush::Done;
         }
@@ -1359,6 +1470,8 @@ impl Core {
         }
         self.armod = link;
         self.ingest.set_sched(Sel::None);
+        let hot = self.hot(&Sel::None);
+        self.ingest.set_hot(hot);
         self.broadcast_state();
     }
 

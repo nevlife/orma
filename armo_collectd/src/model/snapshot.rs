@@ -291,24 +291,31 @@ impl Model {
             keep(&id, "duration", &cw.dur);
             keep(&id, "dispatch", &cw.dispatch);
             keep(&id, "age", &cw.age);
+            let hot = self.hot.contains(k.pid);
             callbacks.push(Callback {
                 node: node.map(|n| self.node_id(n)),
                 kind: self.cb_kind(k),
                 topic: self.cb_topic(k).map(|t| self.topic_id(t)),
+                service: match cb.and_then(|c| c.owner) {
+                    Some(CbOwner::Service(s)) => {
+                        self.services.get(&(k.pid, s)).map(|s| s.1.clone())
+                    }
+                    _ => None,
+                },
                 symbol: cb.and_then(|c| c.symbol.clone()),
                 group: group.map(|g| format!("g:{}:{}:{g:x}", k.pid, self.starttime(k.pid))),
                 executor: cb.and_then(|c| c.executor).map(|e| self.exec_id(&e)),
-                hz: Some(hz(cw.n, window_ns) * scale),
+                hz: hot.then(|| hz(cw.n, window_ns) * scale),
                 expected_hz: self
                     .expected
                     .get(&id)
                     .copied()
                     .or(period.filter(|p| *p > 0).map(|p| 1e9 / p as f64)),
-                duration: cw.dur.lat(),
-                oncpu_mean_ns: (self.sched.contains(k.pid) && cw.n > 0)
+                duration: cw.dur.lat().filter(|_| hot),
+                oncpu_mean_ns: (hot && self.sched.contains(k.pid) && cw.n > 0)
                     .then(|| (oncpu as f64 / (cw.n as f64 * scale)) as u64),
-                dispatch: cw.dispatch.lat(),
-                age: cw.age.lat(),
+                dispatch: cw.dispatch.lat().filter(|_| hot),
+                age: cw.age.lat().filter(|_| hot),
                 intra_pct: (cw.starts > 0).then(|| cw.intra as f64 * 100.0 / cw.starts as f64),
                 nested: cw.nested,
                 id,
@@ -322,16 +329,17 @@ impl Model {
             }
             let (cbs, count, busy) = node_cbs.remove(&ix).unwrap_or_default();
             let id = self.node_id(ix);
+            let measured = self.hot.contains(n.pid);
             nodes.push(Node {
                 fqn: n.fqn.clone(),
                 pid: n.pid,
-                cpu_pct: Some(pct(node_cpu.get(&ix).copied().unwrap_or(0), window_ns)),
+                cpu_pct: measured.then(|| pct(node_cpu.get(&ix).copied().unwrap_or(0), window_ns)),
                 cpu_source: match self.sched.contains(n.pid) {
                     true => CpuSource::Sched,
                     false => CpuSource::WallBound,
                 },
-                busy_pct: Some(busy * 100.0 / window_ns as f64),
-                cb_hz: Some(count * 1e9 / window_ns as f64),
+                busy_pct: measured.then(|| busy * 100.0 / window_ns as f64),
+                cb_hz: measured.then(|| count * 1e9 / window_ns as f64),
                 callbacks: cbs,
                 malloc: self.win.malloc.get(&Owner::Node(ix)).map(|m| msg::Malloc {
                     alloc_bps: hz(m.alloc, window_ns),
@@ -361,11 +369,13 @@ impl Model {
                 comm: p.comm.clone(),
                 ros,
                 methods_available: p.methods.iter().copied().collect(),
-                method: p.method,
+                method: p.method.filter(|_| self.hot.contains(pid)),
                 cpu_pct: cpu.map(|c| pct(c, window_ns)),
                 rss_bytes: p.memory.map(|m| m.0),
                 pss_bytes: p.memory.map(|m| m.1),
-                shared_cpu_pct: cpu.map(|c| pct(c.saturating_sub(nodes_sum), window_ns)),
+                shared_cpu_pct: cpu
+                    .filter(|_| self.hot.contains(pid))
+                    .map(|c| pct(c.saturating_sub(nodes_sum), window_ns)),
                 threads: threads
                     .iter()
                     .filter(|t| t.id.starts_with(&format!("t:{pid}:")))
@@ -447,7 +457,11 @@ impl Model {
                 name: t.name.clone(),
                 publishers: t.publishers.iter().map(|&o| self.owner_id(o)).collect(),
                 subscribers: t.subscribers.iter().map(|&o| self.owner_id(o)).collect(),
-                pub_hz: Some(pub_hz),
+                pub_hz: t
+                    .publishers
+                    .iter()
+                    .all(|o| self.hot.contains(self.owner_pid(*o)))
+                    .then_some(pub_hz),
                 expected_hz: self
                     .expected
                     .get(&id)
@@ -477,6 +491,7 @@ impl Model {
         for s in &sub_keys {
             let sw = self.win.subs.get(s).unwrap_or(&empty_sub);
             let topic = &self.topics[s.topic];
+            let measured = self.hot.contains(self.owner_pid(s.owner));
             let connected = self.pair.connected.values().any(|c| c.contains_key(s));
             let lost = if topic.transport == Transport::Flux2 {
                 sw.flux2_lost
@@ -489,24 +504,25 @@ impl Model {
                 (sw.takes > 0).then(|| pubs.saturating_sub(sw.takes))
             } else {
                 connected.then_some(sw.lost)
-            };
+            }
+            .filter(|_| measured);
             let id = self.sub_id(s);
             keep(&id, "hop", &sw.hop);
             keep(&id, "wake", &sw.wake);
             subscriptions.push(Subscription {
                 topic: self.topic_id(s.topic),
                 node: self.owner_id(s.owner),
-                recv_hz: Some(
-                    hz(sw.takes, window_ns) * self.scale(self.owner_pid(s.owner), window_ns),
-                ),
+                recv_hz: measured.then(|| {
+                    hz(sw.takes, window_ns) * self.scale(self.owner_pid(s.owner), window_ns)
+                }),
                 loss_pct: lost
                     .filter(|l| sw.takes + l > 0)
                     .map(|l| l as f64 * 100.0 / (sw.takes + l) as f64),
                 lost,
                 intra_pct: (sw.callbacks > 0)
                     .then(|| sw.intra as f64 * 100.0 / sw.callbacks as f64),
-                hop: sw.hop.lat(),
-                wake: sw.wake.lat(),
+                hop: sw.hop.lat().filter(|_| measured),
+                wake: sw.wake.lat().filter(|_| measured),
                 id,
             });
         }

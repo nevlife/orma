@@ -7,7 +7,7 @@ import shlex
 import sys
 
 import armo_client
-from armo_client import ArmoError
+from armo_client import ArmoError, view
 
 METHODS = ("uprobe", "preload", "lttng")
 LAUNCH_METHODS = ("preload", "lttng")
@@ -78,7 +78,7 @@ def print_processes(w):
     armod = a["armod"]
     print(
         f"armo: collectd cpu {num(a['collectd']['cpu_pct'])}% rss {size(a['collectd']['rss_bytes'])}"
-        f", armod cpu {num(armod and armod['cpu_pct'])}%"
+        f", armod cpu {num(armod and armod['cpu_pct'])}% rss {size(armod and armod['rss_bytes'])}"
         f", shm files {a['shm']['files']} ring drops {a['shm']['ring_drops']}"
         f", probes missing {len(a['probes_missing'])}, collect {ns(a['collect_ns'])}"
     )
@@ -100,16 +100,16 @@ LAT_HEADS = ["p99", "p99.9", "max", "p50"]
 
 
 def print_callbacks(w):
-    fqn = {n["id"]: n["fqn"] for n in w["nodes"]}
+    labels = view.callback_labels(w)
     table(
         "callbacks",
-        ["callback", "node", "kind", "Hz", "expected"] + LAT_HEADS + ["dispatch p99"],
+        ["callback", "node", "pid", "Hz", "expected"] + LAT_HEADS + ["dispatch p99"],
         [
-            [c["symbol"] or c["id"], fqn.get(c["node"], c["node"] or "-"), c["kind"]]
+            [labels[c["id"]], view.owner_label(w, c["node"] or c["id"]), view.pid_of(c["id"])]
             + [num(c["hz"]), num(c["expected_hz"])]
             + lat(c["duration"])
             + [lat(c["dispatch"])[0]]
-            for c in w["callbacks"]
+            for c in view.callbacks_in_order(w)
         ],
     )
 
@@ -130,17 +130,17 @@ def print_topics(w):
 
 
 def print_subscriptions(w):
-    fqn = {n["id"]: n["fqn"] for n in w["nodes"]}
     topic = {t["id"]: t["name"] for t in w["topics"]}
     table(
         "subscriptions",
-        ["topic", "node", "recv Hz", "loss%", "lost"] + ["wake " + h for h in LAT_HEADS],
+        ["topic", "node", "pid", "recv Hz", "loss%", "lost"] + ["wake " + h for h in LAT_HEADS],
         [
-            [topic.get(s["topic"], s["topic"]), fqn.get(s["node"], s["node"]), num(s["recv_hz"])]
+            [topic.get(s["topic"], s["topic"]), view.owner_label(w, s["node"])]
+            + [view.pid_of(s["node"]), num(s["recv_hz"])]
             + [num(s["loss_pct"])]
             + [num(s["lost"], "{}")]
             + lat(s["wake"])
-            for s in w["subscriptions"]
+            for s in sorted(w["subscriptions"], key=lambda s: not s["node"].startswith("n:"))
         ],
     )
 
@@ -154,10 +154,10 @@ VIEWS = {
 }
 
 
-def print_window(w, view):
+def print_window(w, name, selection=None, infra=False):
     behind = " behind" if w["behind"] else ""
     print(f"window {w['seq']}  {w['window_ns'] / 1e9:g}s{behind}")
-    VIEWS[view](w)
+    VIEWS[name](view.visible(w, selection, infra))
 
 
 def print_recordings(recordings):
@@ -202,6 +202,9 @@ def cmd_status(args):
         selection = m["selection"]
         pids = " ".join(f"{p}:{m['method_by_pid'].get(str(p), 'auto')}" for p in selection["pids"])
         extra = "".join(f", {k}" for k in ("bandwidth", "sched", "malloc") if m[k])
+        names = "".join(
+            f" {k} {selection[k]}" for k in ("node", "topic", "exclude") if k in selection
+        )
         print(
             f"armo-collectd: {c.server['server']} {c.server['version']}, {armo_client.socket_path()}"
         )
@@ -211,7 +214,7 @@ def cmd_status(args):
         )
         print(
             f"monitor: {'running' if m['running'] else 'idle'}, window {m['window_s']:g}s, "
-            f"selection {'all' if selection['all'] else pids or 'none'}{extra}"
+            f"selection {'all' if selection['all'] else pids or 'none'}{names}{extra}"
         )
         print_recordings(c.state["recordings"])
     return 0
@@ -223,29 +226,38 @@ def cmd_monitor(args):
     methods = args.method or []
     if methods and not args.pid:
         raise ArmoError("--method needs --pid")
+    names = {k: getattr(args, k) for k in ("node", "topic", "exclude") if getattr(args, k)}
     if len(methods) not in (0, 1, len(args.pid)):
         raise ArmoError("give --method once, or once per --pid")
     methods = methods * len(args.pid) if len(methods) == 1 else methods
     with armo_client.connect() as c:
+        # First, so that the event lines `select` raises reach this client.
+        c.request("subscribe", streams=["state", "window", "event_line"])
         if args.window is not None:
             c.request("configure", window_s=args.window)
         c.request(
             "select",
-            all=not args.pid,
+            all=not (args.pid or names),
             pids=args.pid,
             method_by_pid={str(p): m for p, m in zip(args.pid, methods)},
+            **names,
         )
-        c.request("subscribe", streams=["state", "window", "event_line"])
         try:
             while True:
                 m = c.next_message()
                 if m["type"] == "window":
+                    selection = c.state["monitor"]["selection"]
                     if args.json and args.view:
-                        m = {"seq": m["seq"], "window_ns": m["window_ns"], args.view: m[args.view]}
+                        shown = view.visible(m, selection, args.infra)
+                        m = {
+                            "seq": m["seq"],
+                            "window_ns": m["window_ns"],
+                            args.view: shown[args.view],
+                        }
                     if args.json:
                         print(json.dumps(m, separators=(",", ":")))
                     else:
-                        print_window(m, args.view)
+                        print_window(m, args.view, selection, args.infra)
                         print()
                 elif m["type"] == "event_line" and not args.json:
                     print(f"[{m['level']}] {m['kind']}: {m['text']}")
@@ -377,6 +389,14 @@ def parser():
     m.add_argument("view", nargs="?", choices=tuple(VIEWS))
     m.add_argument("--pid", type=int, action="append", default=[])
     m.add_argument("--method", choices=METHODS, action="append")
+    m.add_argument("--node", metavar="REGEX", help="the processes of the nodes it names")
+    m.add_argument("--topic", metavar="REGEX", help="the publishers and subscribers")
+    m.add_argument("--exclude", metavar="REGEX", help="leave out these nodes and topics")
+    m.add_argument(
+        "--infra",
+        action="store_true",
+        help="also show /rosout, /parameter_events, ros_discovery_info, parameter services",
+    )
     m.add_argument("--window", type=float, metavar="S")
     m.add_argument(
         "--json", action="store_true", help="one window message per line, only the view if given"

@@ -81,6 +81,7 @@ fn attach(sel: &Sel, sets: Vec<ProbeSet>, user_words: BTreeMap<String, u64>) -> 
         selection: Selection {
             all: *sel == Sel::All,
             pids: sel.list(),
+            ..Default::default()
         },
         sets,
         user_words,

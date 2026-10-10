@@ -139,6 +139,7 @@ pub fn run(mut d: Daemon, pid: Option<u32>, interval: f64, libs: &[std::path::Pa
     let selection = Selection {
         all: pid.is_none(),
         pids: pid.into_iter().collect(),
+        ..Default::default()
     };
     d.request(
         id,

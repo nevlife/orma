@@ -6,7 +6,7 @@ pub mod files;
 pub mod replay;
 pub mod show;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{File, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -14,6 +14,7 @@ use std::path::{Path, PathBuf};
 use armo_proto::msg::*;
 use serde::Deserialize;
 
+use crate::names::Names;
 use crate::sys::{self, Disk};
 use files::{EventFiles, Split};
 
@@ -119,6 +120,8 @@ pub struct Active {
     ctf_bytes: u64,
     /// Set when the recording should end; the server finalizes it on its next tick.
     pub end: Option<(EndReason, Option<String>)>,
+    /// The name targets, matched again each window.
+    pub names: Option<Names>,
 }
 
 /// `YYYYMMDD-HHMMSS` in UTC.
@@ -173,6 +176,30 @@ fn make_dir(parent: &Path, name: Option<&str>, real_ns: u64) -> Result<PathBuf, 
 }
 
 /// The recording `options` asks for, or why not (an error's `message`).
+/// Whether `t` takes every process: `all`, or neither pids nor names.
+pub fn every_process(t: &Targets) -> bool {
+    t.all || (t.pids.is_empty() && t.node.is_none() && t.topic.is_none() && t.exclude.is_none())
+}
+
+/// The method a recording of `method` takes `pid` by, when it can say so now.
+fn settle(
+    method: RecordMethod,
+    pid: u32,
+    armod: bool,
+    preload: &dyn Fn(u32) -> bool,
+    lttng: Option<&dyn Fn(u32) -> bool>,
+) -> Option<Method> {
+    match method {
+        RecordMethod::Uprobe => Some(Method::Uprobe),
+        RecordMethod::Preload => Some(Method::Preload),
+        RecordMethod::Lttng => Some(Method::Lttng),
+        RecordMethod::Auto if preload(pid) => Some(Method::Preload),
+        RecordMethod::Auto if lttng.is_some_and(|l| l(pid)) => Some(Method::Lttng),
+        RecordMethod::Auto if armod => Some(Method::Uprobe),
+        RecordMethod::Auto => None,
+    }
+}
+
 pub fn start(options: RecordOptions, cx: Context<'_>) -> Result<Active, String> {
     let kind = options.kind.unwrap_or(RecordKind::Events);
     let method = options.method.unwrap_or(RecordMethod::Auto);
@@ -275,16 +302,7 @@ pub fn start(options: RecordOptions, cx: Context<'_>) -> Result<Active, String> 
     let mut methods_by_pid = BTreeMap::new();
     if !targets.all {
         for pid in &targets.pids {
-            let m = match method {
-                RecordMethod::Uprobe => Some(Method::Uprobe),
-                RecordMethod::Preload => Some(Method::Preload),
-                RecordMethod::Lttng => Some(Method::Lttng),
-                RecordMethod::Auto if (cx.preload)(*pid) => Some(Method::Preload),
-                RecordMethod::Auto if cx.lttng.is_some_and(|l| l(*pid)) => Some(Method::Lttng),
-                RecordMethod::Auto if cx.armod => Some(Method::Uprobe),
-                _ => None,
-            };
-            if let Some(m) = m {
+            if let Some(m) = settle(method, *pid, cx.armod, cx.preload, cx.lttng) {
                 methods_by_pid.insert(pid.to_string(), m);
             }
         }
@@ -355,6 +373,7 @@ pub fn start(options: RecordOptions, cx: Context<'_>) -> Result<Active, String> 
         open_gap: None,
         ctf_bytes: 0,
         end: None,
+        names: None,
     };
     active
         .write_meta()
@@ -385,7 +404,36 @@ impl Active {
 
     pub fn targets_pid(&self, pid: u32) -> bool {
         let t = self.targets();
-        t.all || t.pids.is_empty() || t.pids.contains(&pid)
+        every_process(t) || t.pids.contains(&pid)
+    }
+
+    /// Takes in the processes the name targets matched since the start; true if one is new.
+    pub fn add_pids(
+        &mut self,
+        pids: &BTreeSet<u32>,
+        armod: bool,
+        preload: &dyn Fn(u32) -> bool,
+        lttng: Option<&dyn Fn(u32) -> bool>,
+    ) -> bool {
+        let method = self.method();
+        let mut new = false;
+        for &pid in pids {
+            let t = self
+                .meta
+                .options
+                .targets
+                .as_mut()
+                .expect("resolved at start");
+            if t.pids.contains(&pid) {
+                continue;
+            }
+            t.pids.push(pid);
+            new = true;
+            if let Some(m) = settle(method, pid, armod, preload, lttng) {
+                self.meta.methods_by_pid.entry(pid.to_string()).or_insert(m);
+            }
+        }
+        new
     }
 
     fn method_of(&self, pid: u32) -> Option<Method> {
@@ -418,8 +466,7 @@ impl Active {
 
     /// The pids whose uprobe events this recording takes; `None` for every process.
     pub fn uprobe_pids(&self) -> Option<Vec<u32>> {
-        let t = self.targets();
-        if self.method() == RecordMethod::Uprobe && (t.all || t.pids.is_empty()) {
+        if self.method() == RecordMethod::Uprobe && every_process(self.targets()) {
             return None;
         }
         Some(

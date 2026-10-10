@@ -2,7 +2,7 @@
   "type": "hello",
   "proto": [
     1,
-    3
+    5
   ],
   "server": "armod",
   "version": "0.1.0"

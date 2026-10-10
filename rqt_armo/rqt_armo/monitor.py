@@ -2,7 +2,9 @@
 threads, and armo's own cost."""
 
 from python_qt_binding.QtCore import Qt, Signal
+from armo_client import view
 from python_qt_binding.QtWidgets import (
+    QCheckBox,
     QDialog,
     QHeaderView,
     QTabWidget,
@@ -59,9 +61,8 @@ def node_cells(n):
     return [n["fqn"], "node", num(n["cb_hz"]), "-", "-"] + ["-"] * 4 + [num(n["cpu_pct"])]
 
 
-def callback_cells(c):
-    name = c["symbol"] or c["id"]
-    return [name, c["kind"], num(c["hz"]), num(c["expected_hz"]), "-"] + lat(c["duration"]) + ["-"]
+def callback_cells(c, label):
+    return [label, c["kind"], num(c["hz"]), num(c["expected_hz"]), "-"] + lat(c["duration"]) + ["-"]
 
 
 class MonitorView(QTabWidget):
@@ -96,11 +97,17 @@ class MonitorView(QTabWidget):
         cost.addTab(self.maps, "Maps")
         cost.addTab(self.missing, "Probes missing")
         self.addTab(cost, "armo cost")
+        self.infra = QCheckBox("Internal topics and services")
+        self.infra.toggled.connect(lambda _: self._last and self.show_window(self._last))
+        self.setCornerWidget(self.infra)
+        self.selection = None
         self.collapsed = set()
         self._items = {}
+        self._last = None
 
-    def show_window(self, w):
-        names = {n["id"]: n["fqn"] for n in w["nodes"]}
+    def show_window(self, raw):
+        self._last = raw
+        w = view.visible(raw, self.selection, self.infra.isChecked())
         topics = {t["id"]: t["name"] for t in w["topics"]}
         self._fill_tree(w)
         set_rows(
@@ -123,7 +130,7 @@ class MonitorView(QTabWidget):
             [
                 (
                     s["id"],
-                    [topics[s["topic"]], names.get(s["node"], s["node"])]
+                    [topics[s["topic"]], view.owner_label(w, s["node"])]
                     + [num(s["recv_hz"]), warn_if(s["loss_pct"], num(s["loss_pct"]))]
                     + [warn_if(s["lost"]), num(s["intra_pct"])]
                     + lat(s["hop"])
@@ -208,9 +215,16 @@ class MonitorView(QTabWidget):
             add(p["id"], None, process_cells(p), "info" if p["exited"] else None)
         for n in w["nodes"]:
             add(n["id"], process_of(n["id"]), node_cells(n))
-        for c in w["callbacks"]:
-            parent = c["node"] if c["node"] in items else process_of(c["id"])
-            add(c["id"], parent, callback_cells(c))
+        labels = view.callback_labels(w)
+        for c in view.callbacks_in_order(w):
+            parent = c["node"]
+            if parent not in items:
+                process = process_of(c["id"])
+                parent = process + ":" + view.UNLINKED
+                if parent not in items:
+                    label = view.owner_label(w, process)
+                    add(parent, process, [label] + ["-"] * 9)
+            add(c["id"], parent, callback_cells(c, labels[c["id"]]))
         for key, item in items.items():
             item.setExpanded(key not in self.collapsed)
             if key == selected:

@@ -1,6 +1,9 @@
 use std::{
     env, fs,
-    os::unix::{fs::PermissionsExt, net::UnixListener},
+    os::unix::{
+        fs::PermissionsExt,
+        net::{UnixListener, UnixStream},
+    },
     path::{Path, PathBuf},
     process::ExitCode,
 };
@@ -85,6 +88,9 @@ fn listen(socket: &Path, group: &str) -> Result<UnixListener> {
         fs::create_dir_all(dir)?;
     }
     if socket.exists() {
+        if UnixStream::connect(socket).is_ok() {
+            return Err(format!("{}: another armod serves it", socket.display()).into());
+        }
         fs::remove_file(socket)?;
     }
     let l = UnixListener::bind(socket).map_err(|e| format!("{}: {e}", socket.display()))?;

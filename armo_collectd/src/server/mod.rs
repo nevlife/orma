@@ -100,6 +100,8 @@ pub enum Exit {
 pub trait Model: Ingest + Send {
     /// Whether armod delivers scheduler events.
     fn set_sched(&mut self, pids: Sel);
+    /// The processes whose hot events reach the model.
+    fn set_hot(&mut self, pids: Sel);
     /// `configure.expected_hz`, by entity id.
     fn set_expected_hz(&mut self, by_id: BTreeMap<String, f64>);
     /// The time the LTTng chunks of the coming window cover.
@@ -109,6 +111,9 @@ pub trait Model: Ingest + Send {
 impl Model for crate::model::Model {
     fn set_sched(&mut self, pids: Sel) {
         crate::model::Model::set_sched(self, pids);
+    }
+    fn set_hot(&mut self, pids: Sel) {
+        crate::model::Model::set_hot(self, pids);
     }
     fn set_expected_hz(&mut self, by_id: BTreeMap<String, f64>) {
         crate::model::Model::set_expected_hz(self, by_id);

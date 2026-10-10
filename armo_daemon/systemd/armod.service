@@ -1,0 +1,16 @@
+[Unit]
+Description=armod, armo's eBPF probe daemon
+
+[Service]
+ExecStart=/usr/local/sbin/armod
+User=armo
+Group=armo
+# Each capability and why: design 5.1.
+AmbientCapabilities=CAP_BPF CAP_PERFMON CAP_SYS_ADMIN CAP_SYS_PTRACE CAP_DAC_READ_SEARCH
+CapabilityBoundingSet=CAP_BPF CAP_PERFMON CAP_SYS_ADMIN CAP_SYS_PTRACE CAP_DAC_READ_SEARCH
+NoNewPrivileges=true
+RuntimeDirectory=armo
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

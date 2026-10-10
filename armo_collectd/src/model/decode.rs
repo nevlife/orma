@@ -40,6 +40,7 @@ pub enum E {
     ServiceInit {
         handle: u64,
         node: u64,
+        name: String,
     },
     TimerInit {
         timer: u64,
@@ -237,6 +238,7 @@ pub fn decode(r: &Record<'_>) -> Option<E> {
             E::ServiceInit {
                 handle: p.handle,
                 node: p.node,
+                name: next(),
             }
         }
         ARMO_EV_RCL_TIMER_INIT => {

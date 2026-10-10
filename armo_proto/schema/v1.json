@@ -422,6 +422,17 @@
           "minimum": 0,
           "type": "integer"
         },
+        "usage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProcUse"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "armod's own CPU over the window and its RSS (design 6.8). Proto 1.4."
+        },
         "window_ns": {
           "format": "uint64",
           "minimum": 0,
@@ -441,10 +452,23 @@
       "type": "object"
     },
     "Attach": {
+      "description": "`node`, `topic` and `exclude` are regular expressions over whole names (design 14.3). In\n`state`, `pids` also holds the processes they matched. Proto 1.5.",
       "properties": {
         "all": {
           "default": false,
           "type": "boolean"
+        },
+        "exclude": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "node": {
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "pids": {
           "default": [],
@@ -460,6 +484,12 @@
             "$ref": "#/$defs/ProbeSet"
           },
           "type": "array"
+        },
+        "topic": {
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "user_words": {
           "additionalProperties": {
@@ -594,6 +624,13 @@
           "minimum": 0,
           "type": [
             "integer",
+            "null"
+          ]
+        },
+        "service": {
+          "description": "The service name of a service callback. Proto 1.5.",
+          "type": [
+            "string",
             "null"
           ]
         },
@@ -2482,10 +2519,17 @@
       "type": "object"
     },
     "Select": {
+      "description": "`node`, `topic` and `exclude` are regular expressions over whole names (design 14.3). In\n`state`, `pids` also holds the processes they matched. Proto 1.5.",
       "properties": {
         "all": {
           "default": false,
           "type": "boolean"
+        },
+        "exclude": {
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "method_by_pid": {
           "additionalProperties": {
@@ -2494,23 +2538,11 @@
           "default": {},
           "type": "object"
         },
-        "pids": {
-          "default": [],
-          "items": {
-            "format": "uint32",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "type": "array"
-        }
-      },
-      "type": "object"
-    },
-    "Selection": {
-      "properties": {
-        "all": {
-          "default": false,
-          "type": "boolean"
+        "node": {
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "pids": {
           "default": [],
@@ -2520,6 +2552,49 @@
             "type": "integer"
           },
           "type": "array"
+        },
+        "topic": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "Selection": {
+      "description": "`node`, `topic` and `exclude` are regular expressions over whole names (design 14.3). In\n`state`, `pids` also holds the processes they matched. Proto 1.5.",
+      "properties": {
+        "all": {
+          "default": false,
+          "type": "boolean"
+        },
+        "exclude": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "node": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pids": {
+          "default": [],
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "topic": {
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "type": "object"

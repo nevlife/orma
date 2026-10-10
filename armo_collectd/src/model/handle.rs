@@ -112,8 +112,8 @@ impl Model {
             E::RclcppSubscriptionInit { rcl, rclcpp } => {
                 self.rclcpp_subs.insert((pid, rclcpp), rcl);
             }
-            E::ServiceInit { handle, node } => {
-                self.services.insert((pid, handle), node);
+            E::ServiceInit { handle, node, name } => {
+                self.services.insert((pid, handle), (node, name));
             }
             E::TimerInit { timer, period } => {
                 self.timers.entry((pid, timer)).or_default().period = Some(period);

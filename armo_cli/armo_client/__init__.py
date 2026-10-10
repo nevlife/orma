@@ -12,7 +12,7 @@ import time
 
 from ament_index_python.packages import get_package_prefix, get_package_share_directory
 
-PROTO = [1, 3]
+PROTO = [1, 5]
 MAX_LENGTH = 16 << 20
 KIND_JSON = 1
 UNIT = "armo-collectd.service"
@@ -58,9 +58,9 @@ def socket_path():
 
 
 def targets(all=False, pids=(), node=None, topic=None, exclude=None):
-    if node is not None or topic is not None or exclude is not None:
-        raise ArmoError("node, topic and exclude are not implemented yet: choose processes by pid")
-    return {"all": all, "pids": list(pids)}
+    """`node`, `topic` and `exclude` are regular expressions over whole names (design 14.3)."""
+    names = {"node": node, "topic": topic, "exclude": exclude}
+    return {"all": all, "pids": list(pids), **{k: v for k, v in names.items() if v is not None}}
 
 
 def record_start(method=None, targets=None, **options):

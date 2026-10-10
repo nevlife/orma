@@ -104,6 +104,7 @@ fn armed_follows_clients_selection_and_recordings() {
         selection: Selection {
             all: false,
             pids: vec![1],
+            ..Default::default()
         },
         method_by_pid: Default::default(),
     }))
@@ -113,6 +114,7 @@ fn armed_follows_clients_selection_and_recordings() {
         selection: Selection {
             all: true,
             pids: Vec::new(),
+            ..Default::default()
         },
         method_by_pid: Default::default(),
     }))

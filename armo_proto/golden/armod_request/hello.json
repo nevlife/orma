@@ -3,7 +3,7 @@
   "id": 1,
   "proto": [
     1,
-    3
+    5
   ],
   "client": "armo-collectd",
   "pid": 3100

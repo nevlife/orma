@@ -45,6 +45,7 @@ fn empty_armod_window(seq: u64) -> ArmodMessage {
         maps: Vec::new(),
         lost: [("ring".to_string(), 0)].into(),
         probes_missing: Vec::new(),
+        usage: None,
     })
 }
 
@@ -207,6 +208,10 @@ fn armod_follows_selection_and_recordings_and_its_loss_leaves_a_gap() {
     until(|| fake.has(|o| attached(o, ProbeSet::Hot, false, &[TRACED])));
     until(|| fake.has(|o| matches!(o, ArmodOp::Stream { on: true, pids } if *pids == [TRACED])));
 
+    let usage = ProcUse {
+        cpu_pct: Some(0.4),
+        rss_bytes: Some(20 << 20),
+    };
     let mut events = batch(TRACED, 3);
     events.extend(batch(OTHER, 2));
     events.extend(batch(TRACED, 1));
@@ -231,6 +236,7 @@ fn armod_follows_selection_and_recordings_and_its_loss_leaves_a_gap() {
         maps: Vec::new(),
         lost: [("ring".to_string(), 2)].into(),
         probes_missing: Vec::new(),
+        usage: Some(usage.clone()),
     });
     fake.send(Kind::Json, &serde_json::to_vec(&window).unwrap());
     until(|| {
@@ -246,10 +252,14 @@ fn armod_follows_selection_and_recordings_and_its_loss_leaves_a_gap() {
                 .any(|(m, a)| *m == Method::Uprobe && a.count == 4)
     });
 
+    c.until(|m| matches!(m, ServerMessage::Window(w) if w.agent.armod.as_ref() == Some(&usage)));
+
     fake.drop_connection();
     c.until(|m| matches!(m, ServerMessage::EventLine(l) if l.kind == "armod_lost"));
     c.until(|m| matches!(m, ServerMessage::State(s) if s.sources.armod == ArmodLink::Lost));
     c.until(|m| matches!(m, ServerMessage::State(s) if s.sources.armod == ArmodLink::Connected));
+    // The usage of the lost armod does not outlive it.
+    c.until(|m| matches!(m, ServerMessage::Window(w) if w.agent.armod.is_none()));
     assert_eq!(*fake.connections.lock().unwrap(), 2);
     until(|| fake.has(|o| attached(o, ProbeSet::Hot, false, &[TRACED])));
 
@@ -335,6 +345,7 @@ fn selfcheck_waits_for_armod_and_carries_its_checks() {
         selection: Selection {
             all: false,
             pids: vec![TRACED],
+            ..Default::default()
         },
         method_by_pid: Default::default(),
     }))
@@ -575,4 +586,98 @@ fn plan_changes_become_attach_detach_and_stream() {
         pids: Vec::new(),
         sets: vec![ProbeSet::Discovery]
     }));
+}
+
+fn live(pid: u32, fqn: &str) -> (Process, Node) {
+    let id = format!("p:{pid}:0");
+    let process = Process {
+        id: id.clone(),
+        pid,
+        ns_pid: None,
+        comm: "node".into(),
+        ros: None,
+        methods_available: vec![Method::Uprobe],
+        method: None,
+        cpu_pct: None,
+        rss_bytes: None,
+        pss_bytes: None,
+        shared_cpu_pct: None,
+        threads: Vec::new(),
+        nodes: Vec::new(),
+        exited: false,
+        cold: false,
+        overflow: None,
+    };
+    let node = Node {
+        id: format!("n:{pid}:0:a0"),
+        fqn: fqn.into(),
+        pid,
+        cpu_pct: None,
+        cpu_source: CpuSource::WallBound,
+        busy_pct: None,
+        cb_hz: None,
+        callbacks: Vec::new(),
+        malloc: None,
+    };
+    (process, node)
+}
+
+#[test]
+fn a_node_name_selects_the_processes_of_its_nodes_as_they_appear() {
+    let dir = scratch("names");
+    let server = Server::start(&dir, config(&dir));
+    let mut c = server.client("armo");
+    c.request(ClientOp::Subscribe {
+        streams: vec![Stream::Window, Stream::State],
+    })
+    .unwrap();
+    let fake = FakeArmod::start(&dir.join("armod.sock"));
+    c.until(|m| matches!(m, ServerMessage::State(s) if s.sources.armod == ArmodLink::Connected));
+    assert!(
+        c.request(ClientOp::Select(Select {
+            selection: Selection {
+                node: Some("(".into()),
+                ..Default::default()
+            },
+            method_by_pid: Default::default(),
+        }))
+        .is_err()
+    );
+    c.request(ClientOp::Select(Select {
+        selection: Selection {
+            node: Some("/cam/.*".into()),
+            ..Default::default()
+        },
+        method_by_pid: Default::default(),
+    }))
+    .unwrap();
+    {
+        let mut seen = server.seen.0.lock().unwrap();
+        let (p1, n1) = live(TRACED, "/cam/driver");
+        let (p2, n2) = live(OTHER, "/talker");
+        seen.processes = vec![p1, p2];
+        seen.nodes = vec![n1, n2];
+    }
+    fake.send(
+        Kind::Json,
+        &serde_json::to_vec(&empty_armod_window(1)).unwrap(),
+    );
+    c.until(|m| {
+        matches!(m, ServerMessage::State(s) if s.monitor.selection.pids == [TRACED]
+            && s.monitor.selection.node.as_deref() == Some("/cam/.*"))
+    });
+    until(|| fake.has(|o| attached(o, ProbeSet::Hot, false, &[TRACED])));
+    assert!(!fake.has(|o| attached(o, ProbeSet::Hot, false, &[OTHER])));
+
+    c.request(ClientOp::Select(Select {
+        selection: Selection {
+            exclude: Some("/talker".into()),
+            ..Default::default()
+        },
+        method_by_pid: Default::default(),
+    }))
+    .unwrap();
+    let State { monitor, .. } = c.state.clone().unwrap();
+    assert!(monitor.selection.all && monitor.selection.pids.is_empty());
+    assert_eq!(monitor.selection.exclude.as_deref(), Some("/talker"));
 }

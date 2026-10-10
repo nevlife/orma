@@ -58,8 +58,9 @@ def test_initial_state(gui, fake):
     assert lines == [
         "camera_node (4021)",
         "  /camera/driver",
-        "    Driver::on_scan(sensor_msgs::msg::LaserScan const&)",
-        "  c:4021:771234:flux2:5581f000:2",
+        "    sub(/scan) Driver::on_scan(sensor_msgs::msg::LaserScan const&)",
+        "  unlinked",
+        "    flux2(/image)",
         "listener (5100/12)",
     ]
     callback = tree.topLevelItem(0).child(0).child(0)

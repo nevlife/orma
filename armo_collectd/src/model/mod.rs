@@ -360,6 +360,9 @@ pub struct Model {
     live: bool,
     seq: u64,
     sched: Sel,
+    /// The processes whose publish, take and callback events reach the model; the others have
+    /// no rates (null), not zero ones.
+    hot: Sel,
     /// The time this window's LTTng chunks cover; 0 when none came.
     lttng_span: u64,
     clock: Clock,
@@ -380,7 +383,8 @@ pub struct Model {
     rclcpp_subs: HashMap<(u32, u64), u64>,
     sub_groups: HashMap<(u32, u64), u64>,
     timers: HashMap<(u32, u64), Timer>,
-    services: HashMap<(u32, u64), u64>,
+    /// Node handle and service name.
+    services: HashMap<(u32, u64), (u64, String)>,
     cbs: HashMap<CbKey, Cb>,
     known_subs: BTreeSet<SubKey>,
     /// The stamp each publisher last sent, so a dual (intra and rmw) publish links once.
@@ -407,6 +411,7 @@ impl Model {
             live,
             seq: 0,
             sched: Sel::None,
+            hot: Sel::All,
             lttng_span: 0,
             clock: Clock::default(),
             buf: Vec::new(),
@@ -462,6 +467,10 @@ impl Model {
     /// knows each thread's current callback there.
     pub fn set_sched(&mut self, pids: Sel) {
         self.sched = pids;
+    }
+
+    pub fn set_hot(&mut self, pids: Sel) {
+        self.hot = pids;
     }
 
     /// The time the LTTng chunks of the coming window cover. A chunk is a rotation of the
@@ -603,7 +612,7 @@ impl Model {
                 self.subs.get(&(pid, *rcl))?.node
             }
             CbOwner::Timer(t) => self.timers.get(&(pid, t))?.node?,
-            CbOwner::Service(s) => *self.services.get(&(pid, s))?,
+            CbOwner::Service(s) => self.services.get(&(pid, s))?.0,
             CbOwner::Endpoint(e) => {
                 let fqn = self.endpoints.get(&(pid, e))?.node.clone();
                 return self.node_by_fqn(pid, &fqn);

@@ -33,9 +33,10 @@ pub struct Session {
     offset: i64,
     init_topic: HashMap<(u32, u64), String>,
     read_topic: HashMap<(u32, u64), String>,
-    rmw_pubs: HashSet<(u32, u64)>,
-    /// Per process: `rmw_publish` whose first argument was an `rmw_publisher_init` handle, and
-    /// those whose was not.
+    /// Per process: the `rmw_publisher_init` handles.
+    rmw_pubs: HashMap<u32, HashSet<u64>>,
+    /// Per process with a publisher init: `rmw_publish` whose first argument was an init handle,
+    /// and those whose was not.
     abi: BTreeMap<u32, (u64, u64)>,
     rcl_abi_seen: HashSet<u32>,
     published: HashMap<(String, i64), u32>,
@@ -76,7 +77,7 @@ impl Session {
             offset: sys::real_ns() as i64 - sys::mono_ns() as i64,
             init_topic: HashMap::new(),
             read_topic: HashMap::new(),
-            rmw_pubs: HashSet::new(),
+            rmw_pubs: HashMap::new(),
             abi: BTreeMap::new(),
             rcl_abi_seen: HashSet::new(),
             published: HashMap::new(),
@@ -129,15 +130,18 @@ impl Session {
             }
             ARMO_EV_RMW_PUBLISHER_INIT => {
                 let e: armo_ev_rmw_endpoint_init = r.payload();
-                self.rmw_pubs.insert((pid, e.rmw_handle));
+                self.rmw_pubs.entry(pid).or_default().insert(e.rmw_handle);
             }
             ARMO_EV_RMW_PUBLISH => {
                 let e: armo_ev_rmw_publish = r.payload();
-                let a = self.abi.entry(pid).or_default();
-                if self.rmw_pubs.contains(&(pid, e.rmw_publisher)) {
-                    a.0 += 1;
-                } else {
-                    a.1 += 1;
+                // A process started before the probes went on has no init to compare with.
+                if let Some(handles) = self.rmw_pubs.get(&pid) {
+                    let a = self.abi.entry(pid).or_default();
+                    if handles.contains(&e.rmw_publisher) {
+                        a.0 += 1;
+                    } else {
+                        a.1 += 1;
+                    }
                 }
                 if let Some(t) = self.topic(pid, e.rmw_publisher).cloned() {
                     self.rmw_topics.insert(t.clone());
@@ -335,7 +339,7 @@ impl Session {
                     CheckStatus::Fail,
                     "rmw_publish with a handle in an rcl ABI process",
                 ),
-                _ => (CheckStatus::Unknown, "no publish seen"),
+                _ => (CheckStatus::Unknown, "no publish after a publisher init"),
             };
             out.push(check(
                 format!("distro pid {pid} ({})", p.comm),
@@ -575,7 +579,7 @@ mod tests {
             offset: 0,
             init_topic: HashMap::new(),
             read_topic: HashMap::new(),
-            rmw_pubs: HashSet::new(),
+            rmw_pubs: HashMap::new(),
             abi: BTreeMap::new(),
             rcl_abi_seen: HashSet::new(),
             published: HashMap::new(),
@@ -691,5 +695,24 @@ mod tests {
         s.stamp("/t".into(), at(1_700_000_000 - 700), 5 * NS as u64);
         s.stamp("/t".into(), at(1_700_000_002), 5 * NS as u64);
         assert_eq!(s.stamps["/t"], (4, 1));
+    }
+
+    #[test]
+    fn publish_handles_are_judged_only_in_processes_whose_publisher_init_was_seen() {
+        let mut s = session();
+        let publish = |rmw_publisher| armo_ev_rmw_publish {
+            rmw_publisher,
+            ..Default::default()
+        };
+        observe(&mut s, 10, ARMO_EV_RMW_PUBLISH, 1, &publish(0x100));
+        assert!(!s.abi.contains_key(&10));
+        let init = armo_ev_rmw_endpoint_init {
+            rmw_handle: 0x200,
+            ..Default::default()
+        };
+        observe(&mut s, 20, ARMO_EV_RMW_PUBLISHER_INIT, 1, &init);
+        observe(&mut s, 20, ARMO_EV_RMW_PUBLISH, 2, &publish(0x200));
+        observe(&mut s, 20, ARMO_EV_RMW_PUBLISH, 3, &publish(0x300));
+        assert_eq!(s.abi[&20], (1, 1));
     }
 }

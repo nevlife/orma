@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 /// `[major, minor]`.
 pub type Version = [u16; 2];
-pub const PROTO: Version = [1, 3];
+pub const PROTO: Version = [1, 5];
 pub const META_SCHEMA: u32 = 1;
 pub const HIST_LOG2: &str = "log2";
 
@@ -94,11 +94,20 @@ types! {
         pub pid: u32,
     }
 
+    /// `node`, `topic` and `exclude` are regular expressions over whole names (design 14.3). In
+    /// `state`, `pids` also holds the processes they matched. Proto 1.5.
+    #[derive(Default)]
     pub struct Selection {
         #[serde(default)]
         pub all: bool,
         #[serde(default)]
         pub pids: Vec<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub node: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub topic: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub exclude: Option<String>,
     }
 
     pub struct Select {
@@ -451,6 +460,9 @@ types! {
         pub node: Option<String>,
         pub kind: CallbackKind,
         pub topic: Option<String>,
+        /// The service name of a service callback. Proto 1.5.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub service: Option<String>,
         pub symbol: Option<String>,
         pub group: Option<String>,
         pub executor: Option<String>,
@@ -606,6 +618,9 @@ types! {
         pub maps: Vec<MapUse>,
         pub lost: BTreeMap<String, u64>,
         pub probes_missing: Vec<ProbeMissing>,
+        /// armod's own CPU over the window and its RSS (design 6.8). Proto 1.4.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub usage: Option<ProcUse>,
     }
 
     /// One table row's difference over a window (`armo_table_entry`, kinds `ARMO_AGG_*`). `tid`

@@ -10,6 +10,7 @@ from python_qt_binding.QtWidgets import (
     QFormLayout,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QPushButton,
     QTableWidgetItem,
     QVBoxLayout,
@@ -20,6 +21,7 @@ from .common import make_table
 
 HEADS = ["pid", "comm", "distro", "methods available", "method"]
 EXTRAS = ("bandwidth", "sched", "malloc")
+NAMES = ("node", "topic", "exclude")
 
 
 class SelectionView(QWidget):
@@ -36,6 +38,7 @@ class SelectionView(QWidget):
         self.window_s.setSingleStep(0.5)
         self.window_s.setSuffix(" s")
         self.extras = {name: QCheckBox(name) for name in EXTRAS}
+        self.names = {name: QLineEdit() for name in NAMES}
         self.apply_button = QPushButton("Apply")
         self.revert_button = QPushButton("Revert")
         self.apply_button.clicked.connect(self.apply)
@@ -46,7 +49,12 @@ class SelectionView(QWidget):
         self.window_s.valueChanged.connect(self._edit)
         for box in self.extras.values():
             box.toggled.connect(self._edit)
+        for edit in self.names.values():
+            edit.textEdited.connect(self._edit)
         options = QFormLayout()
+        options.addRow("Node regex (--node)", self.names["node"])
+        options.addRow("Topic regex (--topic)", self.names["topic"])
+        options.addRow("Exclude regex (--exclude)", self.names["exclude"])
         options.addRow("Window", self.window_s)
         extras = QHBoxLayout()
         for box in self.extras.values():
@@ -116,6 +124,8 @@ class SelectionView(QWidget):
             method.currentIndexChanged.connect(self._edit)
             self.table.setCellWidget(row, 4, method)
         self.all.setChecked(m["selection"]["all"])
+        for name, edit in self.names.items():
+            edit.setText(m["selection"].get(name, ""))
         self.window_s.setValue(m["window_s"])
         for name, box in self.extras.items():
             box.setChecked(m[name])
@@ -124,7 +134,9 @@ class SelectionView(QWidget):
 
     def apply(self):
         pids, method_by_pid = [], {}
-        if not self.all.isChecked():
+        names = {k: e.text() for k, e in self.names.items() if e.text()}
+        # The names replace the table: the pids they matched come back checked in the state.
+        if not self.all.isChecked() and not names:
             for row in range(self.table.rowCount()):
                 item = self.table.item(row, 0)
                 if item.checkState() == Qt.Checked:
@@ -133,7 +145,13 @@ class SelectionView(QWidget):
                     method = self.table.cellWidget(row, 4).currentData()
                     if method is not None:
                         method_by_pid[str(pid)] = method
-        self.conn.send("select", all=self.all.isChecked(), pids=pids, method_by_pid=method_by_pid)
+        self.conn.send(
+            "select",
+            all=self.all.isChecked() and not names,
+            pids=pids,
+            method_by_pid=method_by_pid,
+            **names,
+        )
         changes = {}
         if self.window_s.value() != self.monitor["window_s"]:
             changes["window_s"] = self.window_s.value()

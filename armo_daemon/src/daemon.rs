@@ -62,6 +62,7 @@ struct Window {
     every: Duration,
     due: Instant,
     last_ns: u64,
+    cpu_ns: u64,
     seq: u64,
     agg: HashMap<AggKey, AggVal>,
     max: HashMap<AggKey, u64>,
@@ -416,6 +417,7 @@ impl Daemon {
                     every,
                     due: Instant::now() + every,
                     last_ns: sys::mono_ns(),
+                    cpu_ns: sys::cpu_ns(),
                     seq: 0,
                     agg: rows.into_iter().collect(),
                     max: HashMap::new(),
@@ -637,6 +639,7 @@ impl Daemon {
             }
         };
         let t_mono_ns = sys::mono_ns();
+        let (cpu_ns, rss_bytes) = (sys::cpu_ns(), sys::rss_bytes());
         for id in due {
             let c = self.clients.get_mut(&id).expect("listed");
             let w = c.window.as_mut().expect("due");
@@ -690,6 +693,11 @@ impl Daemon {
             w.seq += 1;
             let window_ns = t_mono_ns - w.last_ns;
             w.last_ns = t_mono_ns;
+            let usage = ProcUse {
+                cpu_pct: Some((cpu_ns - w.cpu_ns) as f64 * 100.0 / window_ns.max(1) as f64),
+                rss_bytes,
+            };
+            w.cpu_ns = cpu_ns;
             w.due += w.every;
             if w.due < now {
                 w.due = now + w.every;
@@ -703,6 +711,7 @@ impl Daemon {
                 maps: maps.clone(),
                 lost: lost_map,
                 probes_missing: missing.clone(),
+                usage: Some(usage),
             });
             c.send(&m);
         }
