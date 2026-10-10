@@ -1,5 +1,6 @@
 pub mod daemon;
 pub mod flux2;
+pub mod hostcheck;
 pub mod libs;
 pub mod owner;
 pub mod probes;

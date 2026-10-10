@@ -14,7 +14,8 @@ use armo_proto::{
 };
 
 use crate::{
-    libs::Lib, probes::Kernel, procs, procs::DistroFrom, progs::Set, ring::Head, sel::Sel, sys,
+    hostcheck, libs::Lib, probes::Kernel, procs, procs::DistroFrom, progs::Set, ring::Head,
+    sel::Sel, sys,
 };
 
 const NS: i64 = 1_000_000_000;
@@ -57,6 +58,9 @@ pub struct Session {
     rcl_subs: HashSet<(u32, u64)>,
     rclcpp_subs: Vec<(u32, u64)>,
     cxx: BTreeMap<u32, BTreeMap<u16, u64>>,
+    /// Per thread: `rcl_wait` entries and returns. A return the uretprobe missed (the kernel's
+    /// nesting limit, a full return instance pool) leaves an entry unmatched.
+    waits: BTreeMap<(u32, u32), (u64, u64)>,
 }
 
 impl Session {
@@ -93,6 +97,7 @@ impl Session {
             rcl_subs: HashSet::new(),
             rclcpp_subs: Vec::new(),
             cxx: BTreeMap::new(),
+            waits: BTreeMap::new(),
         }
     }
 
@@ -201,6 +206,8 @@ impl Session {
                 let e: armo_ev_rclcpp_subscription_init = r.payload();
                 self.rclcpp_subs.push((pid, e.subscription_handle));
             }
+            ARMO_EV_RCL_WAIT_ENTER => self.waits.entry((pid, head.tid)).or_default().0 += 1,
+            ARMO_EV_RCL_WAIT_EXIT => self.waits.entry((pid, head.tid)).or_default().1 += 1,
             ev @ ARMO_EV_RCLCPP_PUBLISHER_BASE..=ARMO_EV_RCLCPP_COLLECTOR_ADD_GROUP
             | ev @ ARMO_EV_RCLCPP_EXECUTOR_ADD_GROUP => {
                 *self.cxx.entry(pid).or_default().entry(ev).or_default() += 1;
@@ -240,6 +247,16 @@ impl Session {
             Err(e) => check("tracepoint layout".into(), CheckStatus::Fail, e.clone()),
         });
         let stats = k.prog_stats();
+        out.push(check(
+            "bpf load".into(),
+            CheckStatus::Pass,
+            format!(
+                "{} programs loaded; the verifier processed {} instructions",
+                stats.len(),
+                stats.iter().map(|p| p.verified_insns).sum::<u64>()
+            ),
+        ));
+        out.extend(hostcheck::host());
         out.push(check(
             "bpf stats".into(),
             if k.bpf_stats() {
@@ -354,6 +371,34 @@ impl Session {
                     p.gid_len
                 ),
             ));
+        }
+        for (pid, p) in k.procs.iter().filter(|(p, _)| self.target.contains(**p)) {
+            let maps = std::fs::read_to_string(format!("/proc/{pid}/maps")).unwrap_or_default();
+            out.extend(hostcheck::preload(*pid, &p.comm, &maps));
+            out.extend(hostcheck::timens(*pid, &p.comm));
+            let waits: Vec<(u64, u64)> = self
+                .waits
+                .range((*pid, 0)..=(*pid, u32::MAX))
+                .map(|(_, w)| *w)
+                .collect();
+            if !waits.is_empty() {
+                // A thread may be inside rcl_wait at either end of the window.
+                let unmatched = waits.iter().filter(|(e, r)| e.abs_diff(*r) > 1).count();
+                let (e, r) = waits.iter().fold((0, 0), |a, w| (a.0 + w.0, a.1 + w.1));
+                out.push(check(
+                    format!("rcl_wait returns pid {pid} ({})", p.comm),
+                    if unmatched == 0 {
+                        CheckStatus::Pass
+                    } else {
+                        CheckStatus::Fail
+                    },
+                    format!(
+                        "{e} entries, {r} returns on {} threads; {unmatched} threads differ by \
+                         more than one",
+                        waits.len()
+                    ),
+                ));
+            }
         }
         for pid in k.procs.keys().filter(|p| self.target.contains(**p)) {
             let ns = procs::nspid(*pid, *pid);
@@ -596,6 +641,7 @@ mod tests {
             rcl_subs: HashSet::new(),
             rclcpp_subs: Vec::new(),
             cxx: BTreeMap::new(),
+            waits: BTreeMap::new(),
         }
     }
 

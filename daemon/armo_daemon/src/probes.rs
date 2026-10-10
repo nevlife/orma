@@ -270,6 +270,8 @@ pub struct ProgStat {
     pub run_cnt: u64,
     /// Runs skipped because a BPF program was already running on that CPU (5.12+).
     pub recursion_misses: u64,
+    /// Instructions the verifier processed at load (5.16+).
+    pub verified_insns: u64,
     pub attached: bool,
 }
 
@@ -468,6 +470,8 @@ impl Kernel {
             },
         };
         k.config.set(CONFIG_GEN, k.generation, 0)?;
+        // Loading is reported apart from attaching, which the notes and probes_missing report.
+        eprintln!("armod: loaded and verified {} programs", k.prog_fds.len());
         if let Err(why) = &k.stats {
             k.note(true, why.clone());
         }
@@ -1065,6 +1069,7 @@ impl Kernel {
                     run_time_ns: get("run_time_ns"),
                     run_cnt: get("run_cnt"),
                     recursion_misses: get("recursion_misses"),
+                    verified_insns: get("verified_insns"),
                     attached: attached.contains(name),
                 }
             })
