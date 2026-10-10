@@ -21,7 +21,7 @@
 | --- | --- |
 | `XDG_RUNTIME_DIR is not set` | 로그인 세션이 아닌 셸이다(`docker exec`, `sudo -u`). 그 셸에서는 armo를 쓰지 못한다 |
 | `armo status`가 "not running" | `armo status`는 armo-collectd를 띄우지 않는다. 다른 `armo` 명령이나 rqt가 띄운다 |
-| RSS, PSS가 `-` | armo-collectd가 대상과 다른 주 그룹으로 떴다(`sg armo`로 띄운 경우). 끝내고 다시 띄운다 |
+| PSS가 `-` | PSS를 켜지 않았다(`armo top --pss`, rqt의 `pss`). 켰는데도 `-`이면 armo-collectd가 대상과 다른 주 그룹으로 떴다(`sg armo`로 띄운 경우). 끝내고 다시 띄운다 |
 | `method lttng needs lttng, lttng-sessiond, babeltrace and setpriv on PATH` | LTTng 도구가 없다. `sudo apt install lttng-tools babeltrace` |
 | 노드가 `unlinked`, `unlinked (cold)` | armo가 노드를 만드는 순간을 보지 못했다. rclcpp 프로세스는 `--pid`로 고르면 몇 초 뒤 executor에서 노드를 읽어 채운다. 남으면 [usage.md](usage.md) 4절의 남는 경우다. 클라이언트를 먼저 열어 둔 채 노드를 다시 띄운다 |
 | `--node`, `--topic`으로 골랐는데 아무것도 안 나온다 | 그 노드를 armo가 모른다(위 행). armod를 막 띄웠다면 init 프로브가 붙는 몇 초 뒤에 노드를 띄운다. 정규식은 이름 전체에 맞춘다(`/cam`이 아니라 `/cam.*`) |
