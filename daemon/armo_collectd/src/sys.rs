@@ -130,10 +130,14 @@ pub fn hostname() -> String {
     proc_text("/proc/sys/kernel/hostname")
 }
 
+/// The unit of /proc's tick counts (`USER_HZ`).
+pub fn clock_ticks() -> u64 {
+    // SAFETY: sysconf has no preconditions.
+    unsafe { libc::sysconf(libc::_SC_CLK_TCK) as u64 }
+}
+
 /// This process's CPU time in ns.
 pub fn cpu_ns() -> u64 {
-    // SAFETY: sysconf has no preconditions.
-    let tick = unsafe { libc::sysconf(libc::_SC_CLK_TCK) } as u64;
     let stat = crate::model::procfs::stat(pid()).expect("this process exists");
-    stat.cpu_ticks() * 1_000_000_000 / tick
+    stat.cpu_ticks() * 1_000_000_000 / clock_ticks()
 }

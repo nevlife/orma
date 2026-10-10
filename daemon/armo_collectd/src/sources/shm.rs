@@ -304,7 +304,7 @@ impl ShmFile {
     /// Whether the header's pid and starttime name a host process, and of the live slots' thread
     /// ids, how many name a thread of it through NSpid: the container check of `selfcheck`.
     pub fn host_ids(&self) -> (bool, usize, usize) {
-        let found = procfs::stat(self.pid).is_some_and(|s| s.starttime() == self.starttime);
+        let found = procfs::started_at(self.pid, self.starttime);
         let live: Vec<u32> = (0..self.n_threads)
             .filter(|s| self.state(*s) == ARMO_THREAD_LIVE)
             .map(|s| self.ns_tid(s))

@@ -187,12 +187,38 @@ pub fn ns_pid(pid: u32) -> Option<u32> {
     ids.last().copied().filter(|&ns| ns != pid)
 }
 
+/// The boottime offset of a time namespace's `timens_offsets`, in clock ticks.
+fn boottime_ticks(offsets: &str, tick_hz: u64) -> i64 {
+    offsets
+        .lines()
+        .find_map(|l| {
+            let mut f = l.split_whitespace();
+            (f.next()? == "boottime").then_some(())?;
+            let ns =
+                f.next()?.parse::<i128>().ok()? * 1_000_000_000 + f.next()?.parse::<i128>().ok()?;
+            Some((ns * i128::from(tick_hz)).div_euclid(1_000_000_000) as i64)
+        })
+        .unwrap_or(0)
+}
+
+/// Whether `pid` started at `starttime` as the process itself reads it. /proc adds the reader's
+/// time namespace boottime offset, and the shared memory file carries the process's own view.
+pub fn started_at(pid: u32, starttime: u64) -> bool {
+    let Some(host) = stat(pid).map(|s| s.starttime()) else {
+        return false;
+    };
+    host == starttime
+        || fs::read_to_string(proc_path(pid, "timens_offsets")).is_ok_and(|t| {
+            host.wrapping_add_signed(boottime_ticks(&t, crate::sys::clock_ticks())) == starttime
+        })
+}
+
 /// The host pid of the process a container knows as `ns_pid` and that started at `starttime`
 ///: an LD_PRELOAD file names it with the values the process sees.
 pub fn host_pid(ns_pid: u32, starttime: u64) -> Option<u32> {
     fs::read_dir("/proc").ok()?.find_map(|e| {
         let pid: u32 = e.ok()?.file_name().to_str()?.parse().ok()?;
-        (stat(pid)?.starttime() == starttime).then_some(())?;
+        started_at(pid, starttime).then_some(())?;
         let ids = nspids(&fs::read_to_string(proc_path(pid, "status")).ok()?);
         (ids.last() == Some(&ns_pid)).then_some(pid)
     })
@@ -332,6 +358,20 @@ mod tests {
         assert_eq!(k.len(), 2);
         k.retain(me, None);
         assert_eq!(k.len(), 0);
+    }
+
+    #[test]
+    fn starttime_in_a_time_namespace() {
+        assert_eq!(boottime_ticks("monotonic 0 0\nboottime 0 0\n", 100), 0);
+        assert_eq!(
+            boottime_ticks("monotonic 5 0\nboottime 86400 500000000\n", 100),
+            8_640_050
+        );
+        assert_eq!(boottime_ticks("boottime -1 0\n", 100), -100);
+        let me = std::process::id();
+        let st = stat(me).unwrap().starttime();
+        assert!(started_at(me, st));
+        assert!(!started_at(me, st + 1));
     }
 
     #[test]
