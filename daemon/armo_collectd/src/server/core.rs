@@ -77,6 +77,7 @@ pub struct Core {
     bandwidth: bool,
     sched: bool,
     malloc: bool,
+    pss: bool,
 
     active: Vec<Active>,
     finished: VecDeque<Recording>,
@@ -197,6 +198,7 @@ impl Core {
             bandwidth: false,
             sched: true,
             malloc: false,
+            pss: false,
             active: Vec::new(),
             finished: VecDeque::new(),
             next_record: 1,
@@ -341,6 +343,7 @@ impl Core {
                 bandwidth: self.bandwidth,
                 sched: self.sched,
                 malloc: self.malloc,
+                pss: self.pss,
             },
             recordings,
         }
@@ -1343,6 +1346,8 @@ impl Core {
                     self.bandwidth = c.bandwidth.unwrap_or(self.bandwidth);
                     self.sched = c.sched.unwrap_or(self.sched);
                     self.malloc = c.malloc.unwrap_or(self.malloc);
+                    self.pss = c.pss.unwrap_or(self.pss);
+                    self.ingest.set_pss(self.pss);
                     if let Some(hz) = c.expected_hz {
                         self.ingest.set_expected_hz(hz);
                     }

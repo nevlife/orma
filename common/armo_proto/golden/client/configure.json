@@ -3,6 +3,7 @@
   "id": 5,
   "window_s": 0.5,
   "sched": true,
+  "pss": true,
   "expected_hz": {
     "topic:ros:/scan": 10.0
   }

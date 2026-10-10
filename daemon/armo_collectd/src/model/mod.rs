@@ -128,8 +128,9 @@ struct Proc {
     cold: bool,
     exited: bool,
     probed: bool,
-    memory: Option<(u64, u64)>,
-    memory_at: u64,
+    rss: Option<u64>,
+    pss: Option<u64>,
+    pss_at: u64,
     nodes: BTreeSet<NodeIx>,
 }
 
@@ -364,6 +365,9 @@ struct Open {
 
 pub struct Model {
     live: bool,
+    /// Whether to read PSS (`configure.pss`).
+    pss: bool,
+    kept: procfs::Kept,
     seq: u64,
     sched: Sel,
     /// The processes whose publish, take and callback events reach the model; the others have
@@ -417,6 +421,8 @@ impl Model {
     fn new(live: bool) -> Self {
         Model {
             live,
+            pss: false,
+            kept: procfs::Kept::default(),
             seq: 0,
             sched: Sel::None,
             hot: Sel::All,
@@ -480,6 +486,10 @@ impl Model {
 
     pub fn set_hot(&mut self, pids: Sel) {
         self.hot = pids;
+    }
+
+    pub fn set_pss(&mut self, on: bool) {
+        self.pss = on;
     }
 
     /// Processes with a ROS callback no event has named the entity of, first run in the last

@@ -79,12 +79,30 @@ pub fn starttime(pid: u32) -> Option<u64> {
     after_comm.split_whitespace().nth(19)?.parse().ok()
 }
 
+/// Raises the soft open file limit to the hard one: the model keeps a few `/proc` files open per
+/// watched thread (`procfs::Kept`).
+pub fn raise_nofile() {
+    let mut lim = libc::rlimit {
+        rlim_cur: 0,
+        rlim_max: 0,
+    };
+    // SAFETY: lim is a valid out pointer for the call.
+    if unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, &mut lim) } == 0 {
+        lim.rlim_cur = lim.rlim_max;
+        // SAFETY: lim is a valid rlimit.
+        unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &lim) };
+    }
+}
+
+pub fn page_size() -> u64 {
+    // SAFETY: sysconf has no preconditions.
+    unsafe { libc::sysconf(libc::_SC_PAGESIZE) as u64 }
+}
+
 pub fn physical_memory() -> u64 {
     // SAFETY: sysconf has no preconditions.
     let pages = unsafe { libc::sysconf(libc::_SC_PHYS_PAGES) };
-    // SAFETY: as above.
-    let size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
-    pages as u64 * size as u64
+    pages as u64 * page_size()
 }
 
 /// Sends SIGTERM to `pid`.

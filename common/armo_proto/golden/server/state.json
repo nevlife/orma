@@ -20,7 +20,8 @@
     },
     "bandwidth": false,
     "sched": true,
-    "malloc": false
+    "malloc": false,
+    "pss": false
   },
   "recordings": [
     {

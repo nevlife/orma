@@ -88,6 +88,7 @@ impl Model for Counting {
         self.0.lock().unwrap().sched = pids != Sel::None;
     }
     fn set_hot(&mut self, _: Sel) {}
+    fn set_pss(&mut self, _: bool) {}
     fn unowned(&self) -> std::collections::BTreeSet<u32> {
         self.0.lock().unwrap().unowned.clone()
     }

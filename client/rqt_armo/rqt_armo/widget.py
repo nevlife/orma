@@ -163,7 +163,7 @@ class ArmoWidget(QWidget):
         target += "".join(
             f" {k} {selection[k]}" for k in ("node", "topic", "exclude") if k in selection
         )
-        extras = "".join(f", {k}" for k in ("bandwidth", "sched", "malloc") if m[k])
+        extras = "".join(f", {k}" for k in ("bandwidth", "sched", "malloc", "pss") if m[k])
         running = "running" if m["running"] else "idle"
         self.monitor_label.setText(
             f"monitor: {running}, window {m['window_s']:g} s, {target}{extras}"

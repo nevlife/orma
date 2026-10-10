@@ -20,7 +20,7 @@ from python_qt_binding.QtWidgets import (
 from .common import make_table
 
 HEADS = ["pid", "comm", "distro", "methods available", "method"]
-EXTRAS = ("bandwidth", "sched", "malloc")
+EXTRAS = ("bandwidth", "sched", "malloc", "pss")
 NAMES = ("node", "topic", "exclude")
 
 

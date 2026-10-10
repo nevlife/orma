@@ -202,7 +202,7 @@ def cmd_status(args):
         src, m = c.state["sources"], c.state["monitor"]
         selection = m["selection"]
         pids = " ".join(f"{p}:{m['method_by_pid'].get(str(p), 'auto')}" for p in selection["pids"])
-        extra = "".join(f", {k}" for k in ("bandwidth", "sched", "malloc") if m[k])
+        extra = "".join(f", {k}" for k in ("bandwidth", "sched", "malloc", "pss") if m[k])
         names = "".join(
             f" {k} {selection[k]}" for k in ("node", "topic", "exclude") if k in selection
         )
@@ -234,8 +234,9 @@ def cmd_top(args):
     with armo_client.connect() as c:
         # First, so that the event lines `select` raises reach this client.
         c.request("subscribe", streams=["state", "window", "event_line"])
-        if args.window is not None:
-            c.request("configure", window_s=args.window)
+        if args.window is not None or args.pss:
+            options = {"window_s": args.window, "pss": True if args.pss else None}
+            c.request("configure", **{k: v for k, v in options.items() if v is not None})
         c.request(
             "select",
             all=not (args.pid or names),
@@ -396,6 +397,9 @@ def parser():
         help="also show /rosout, /parameter_events, ros_discovery_info, parameter services",
     )
     m.add_argument("--window", type=float, metavar="S")
+    m.add_argument(
+        "--pss", action="store_true", help="also read PSS, which walks each process's page tables"
+    )
     m.add_argument(
         "--json", action="store_true", help="one window message per line, only the view if given"
     )

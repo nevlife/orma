@@ -1,7 +1,9 @@
 //! What armo-collectd reads from `/proc`. Files of a process are opened
 //! through `/proc/<pid>/root`, so a container's libraries are its own.
 
-use std::fs;
+use std::collections::{HashMap, hash_map::Entry};
+use std::fs::{self, File};
+use std::os::unix::fs::FileExt;
 use std::path::PathBuf;
 
 use armo_proto::msg::{PublishAbi, Ros};
@@ -52,7 +54,7 @@ impl Stat {
     }
 }
 
-fn parse_stat(text: &str) -> Option<Stat> {
+pub fn parse_stat(text: &str) -> Option<Stat> {
     let open = text.find('(')?;
     let close = text.rfind(')')?;
     let numbers = text[close + 1..]
@@ -85,29 +87,79 @@ pub fn tids(pid: u32) -> Vec<u32> {
     tids
 }
 
-/// Cumulative on-CPU nanoseconds of a thread (the first field of `schedstat`).
-pub fn schedstat(pid: u32, tid: u32) -> Option<u64> {
-    fs::read_to_string(proc_path(pid, &format!("task/{tid}/schedstat")))
-        .ok()?
+/// Holds every file of /proc it reads, all small.
+const KEPT_BUF: usize = 4096;
+
+/// Files of `/proc` kept open across windows. A read is one pread from offset 0, which has the
+/// kernel generate the whole file in one pass; the file of a thread or process that ended
+/// answers ESRCH, also after its id is reused, and is let go.
+#[derive(Default)]
+pub struct Kept {
+    files: HashMap<(u32, u32, &'static str), File>,
+    buf: Vec<u8>,
+}
+
+impl Kept {
+    /// `/proc/<pid>/task/<tid>/<name>`, or with `tid` 0 `/proc/<pid>/<name>`.
+    pub fn read(&mut self, pid: u32, tid: u32, name: &'static str) -> Option<&str> {
+        let key = (pid, tid, name);
+        let file = match self.files.entry(key) {
+            Entry::Occupied(e) => e.into_mut(),
+            Entry::Vacant(e) => {
+                let rest = if tid == 0 {
+                    name.to_string()
+                } else {
+                    format!("task/{tid}/{name}")
+                };
+                e.insert(File::open(proc_path(pid, &rest)).ok()?)
+            }
+        };
+        self.buf.resize(KEPT_BUF, 0);
+        match file.read_at(&mut self.buf, 0) {
+            Ok(n) => std::str::from_utf8(&self.buf[..n]).ok(),
+            Err(_) => {
+                self.files.remove(&key);
+                None
+            }
+        }
+    }
+
+    /// Lets go of the files of a process's threads not in `tids` (sorted), or with `None` of
+    /// all its files.
+    pub fn retain(&mut self, pid: u32, tids: Option<&[u32]>) {
+        self.files.retain(|&(p, t, _), _| {
+            p != pid || tids.is_some_and(|ts| t == 0 || ts.binary_search(&t).is_ok())
+        });
+    }
+
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.files.len()
+    }
+}
+
+/// Cumulative on-CPU nanoseconds of a thread: the first field of `schedstat`.
+pub fn schedstat_ns(text: &str) -> Option<u64> {
+    text.split_whitespace().next()?.parse().ok()
+}
+
+/// RSS in bytes from `statm`: counters the kernel keeps, read without the target's mmap_lock.
+pub fn statm_rss(text: &str) -> Option<u64> {
+    let pages: u64 = text.split_whitespace().nth(1)?.parse().ok()?;
+    Some(pages * crate::sys::page_size())
+}
+
+/// PSS in bytes from `smaps_rollup`, a walk of every page table of the target under its
+/// mmap_lock: only when a client asks for PSS.
+pub fn rollup_pss(text: &str) -> Option<u64> {
+    let kb: u64 = text
+        .lines()
+        .find_map(|l| l.strip_prefix("Pss:"))?
         .split_whitespace()
         .next()?
         .parse()
-        .ok()
-}
-
-/// RSS and PSS in bytes from `smaps_rollup`.
-pub fn memory(pid: u32) -> Option<(u64, u64)> {
-    let text = fs::read_to_string(proc_path(pid, "smaps_rollup")).ok()?;
-    let kb = |name: &str| {
-        text.lines()
-            .find_map(|l| l.strip_prefix(name))?
-            .split_whitespace()
-            .next()?
-            .parse::<u64>()
-            .ok()
-            .map(|v| v * 1024)
-    };
-    Some((kb("Rss:")?, kb("Pss:")?))
+        .ok()?;
+    Some(kb * 1024)
 }
 
 /// `NSpid` of a `status` file: the id in each pid namespace, host first.
@@ -240,4 +292,46 @@ pub fn ros(pid: u32) -> Option<Ros> {
         tracetools_lttng,
         gated_register,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn kept_files_reread_and_let_go() {
+        let me = std::process::id();
+        let mut k = Kept::default();
+        let a = parse_stat(k.read(me, 0, "stat").unwrap()).unwrap();
+        assert_eq!(a.starttime(), stat(me).unwrap().starttime());
+        assert!(statm_rss(k.read(me, 0, "statm").unwrap()).unwrap() > 0);
+        let child = std::thread::spawn(|| {
+            let link = fs::read_link("/proc/thread-self").unwrap();
+            let tid: u32 = link.file_name().unwrap().to_str().unwrap().parse().unwrap();
+            let mut k = Kept::default();
+            let me = std::process::id();
+            assert!(schedstat_ns(k.read(me, tid, "schedstat").unwrap()).is_some());
+            (tid, k)
+        });
+        let (tid, mut k2) = child.join().unwrap();
+        // join returns when the thread clears its tid, a little before the kernel releases it.
+        let gone = (0..1000).any(|_| {
+            std::thread::sleep(std::time::Duration::from_millis(1));
+            k2.read(me, tid, "schedstat").is_none()
+        });
+        assert!(gone, "ended thread");
+        assert_eq!(k2.len(), 0);
+        k.read(me, 0, "statm");
+        k.retain(me, Some(&[]));
+        assert_eq!(k.len(), 2);
+        k.retain(me, None);
+        assert_eq!(k.len(), 0);
+    }
+
+    #[test]
+    fn pss_from_rollup() {
+        let text =
+            "00400000-7fff [rollup]\nRss:                3700 kB\nPss:                1234 kB\n";
+        assert_eq!(rollup_pss(text), Some(1234 * 1024));
+    }
 }

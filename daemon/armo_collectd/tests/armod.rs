@@ -446,6 +446,7 @@ fn armod_windows_end_the_windows() {
         bandwidth: None,
         sched: None,
         malloc: None,
+        pss: None,
         expected_hz: None,
     }))
     .unwrap();

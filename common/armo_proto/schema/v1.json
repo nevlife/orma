@@ -1029,6 +1029,13 @@
             "null"
           ]
         },
+        "pss": {
+          "description": "Read each process's PSS: a walk of its page tables under its mmap_lock. Proto 1.7.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
         "sched": {
           "type": [
             "boolean",
@@ -1669,6 +1676,11 @@
             "$ref": "#/$defs/Method"
           },
           "type": "object"
+        },
+        "pss": {
+          "default": false,
+          "description": "Proto 1.7.",
+          "type": "boolean"
         },
         "running": {
           "type": "boolean"

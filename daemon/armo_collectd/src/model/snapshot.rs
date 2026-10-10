@@ -12,7 +12,7 @@ use super::*;
 
 /// Windows of callback history that decide whether a thread belongs to one node.
 const HISTORY: usize = 10;
-const MEMORY_EVERY_NS: u64 = 5_000_000_000;
+const PSS_EVERY_NS: u64 = 5_000_000_000;
 
 fn pct(ns: u64, window_ns: u64) -> f64 {
     ns as f64 * 100.0 / window_ns as f64
@@ -104,22 +104,41 @@ impl Model {
         let pids: Vec<u32> = self.procs.keys().copied().collect();
         for pid in pids {
             let st = self.procs[&pid].starttime;
-            if procfs::stat(pid).is_none_or(|s| s.starttime() != st) {
+            let stat = self.kept.read(pid, 0, "stat").and_then(procfs::parse_stat);
+            if stat.is_none_or(|s| s.starttime() != st) {
                 self.procs.get_mut(&pid).expect("listed").exited = true;
+                self.kept.retain(pid, None);
                 continue;
             }
             let tids = procfs::tids(pid);
+            self.kept.retain(pid, Some(&tids));
             self.threads
                 .retain(|&(p, t), _| p != pid || tids.binary_search(&t).is_ok());
             for tid in tids {
-                if let Some(ns) = procfs::schedstat(pid, tid) {
+                let ns = self
+                    .kept
+                    .read(pid, tid, "schedstat")
+                    .and_then(procfs::schedstat_ns);
+                if let Some(ns) = ns {
                     self.thread_cpu(pid, tid, ns);
                 }
             }
+            let rss = self.kept.read(pid, 0, "statm").and_then(procfs::statm_rss);
+            let pss_due = self.pss && {
+                let p = &self.procs[&pid];
+                p.pss.is_none() || now >= p.pss_at + PSS_EVERY_NS
+            };
+            let pss = pss_due.then(|| {
+                self.kept
+                    .read(pid, 0, "smaps_rollup")
+                    .and_then(procfs::rollup_pss)
+            });
             let p = self.procs.get_mut(&pid).expect("listed");
-            if p.memory.is_none() || now >= p.memory_at + MEMORY_EVERY_NS {
-                p.memory = procfs::memory(pid);
-                p.memory_at = now;
+            p.rss = rss;
+            match pss {
+                Some(v) => (p.pss, p.pss_at) = (v, now),
+                None if !self.pss => p.pss = None,
+                None => {}
             }
         }
     }
@@ -234,7 +253,9 @@ impl Model {
                 keep(&id, "cpu_wait", &w.cpu_wait);
             }
             let stat = if self.live {
-                procfs::task_stat(pid, tid)
+                self.kept
+                    .read(pid, tid, "stat")
+                    .and_then(procfs::parse_stat)
             } else {
                 None
             };
@@ -373,8 +394,8 @@ impl Model {
                 methods_available: p.methods.iter().copied().collect(),
                 method: p.method.filter(|_| self.hot.contains(pid)),
                 cpu_pct: cpu.map(|c| pct(c, window_ns)),
-                rss_bytes: p.memory.map(|m| m.0),
-                pss_bytes: p.memory.map(|m| m.1),
+                rss_bytes: p.rss,
+                pss_bytes: p.pss,
                 shared_cpu_pct: cpu
                     .filter(|_| self.hot.contains(pid))
                     .map(|c| pct(c.saturating_sub(nodes_sum), window_ns)),
@@ -569,7 +590,9 @@ impl Model {
                 collectd: ProcUse {
                     cpu_pct: None,
                     rss_bytes: if self.live {
-                        procfs::memory(std::process::id()).map(|m| m.0)
+                        std::fs::read_to_string("/proc/self/statm")
+                            .ok()
+                            .and_then(|s| procfs::statm_rss(&s))
                     } else {
                         None
                     },

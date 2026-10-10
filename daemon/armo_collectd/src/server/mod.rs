@@ -102,6 +102,8 @@ pub trait Model: Ingest + Send {
     fn set_sched(&mut self, pids: Sel);
     /// The processes whose hot events reach the model.
     fn set_hot(&mut self, pids: Sel);
+    /// `configure.pss`.
+    fn set_pss(&mut self, on: bool);
     /// `configure.expected_hz`, by entity id.
     fn set_expected_hz(&mut self, by_id: BTreeMap<String, f64>);
     /// The time the LTTng chunks of the coming window cover.
@@ -116,6 +118,9 @@ impl Model for crate::model::Model {
     }
     fn set_hot(&mut self, pids: Sel) {
         crate::model::Model::set_hot(self, pids);
+    }
+    fn set_pss(&mut self, on: bool) {
+        crate::model::Model::set_pss(self, on);
     }
     fn set_expected_hz(&mut self, by_id: BTreeMap<String, f64>) {
         crate::model::Model::set_expected_hz(self, by_id);

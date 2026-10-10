@@ -95,6 +95,7 @@ fn armed_follows_clients_selection_and_recordings() {
         bandwidth: None,
         sched: None,
         malloc: Some(true),
+        pss: None,
         expected_hz: None,
     }))
     .unwrap();

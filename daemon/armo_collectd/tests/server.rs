@@ -97,6 +97,7 @@ fn select_and_configure_reach_every_client() {
         bandwidth: None,
         sched: Some(false),
         malloc: None,
+        pss: None,
         expected_hz: None,
     };
     gui.request(ClientOp::Configure(configure)).unwrap();
@@ -108,6 +109,7 @@ fn select_and_configure_reach_every_client() {
         bandwidth: None,
         sched: None,
         malloc: None,
+        pss: None,
         expected_hz: None,
     };
     assert_eq!(
@@ -259,6 +261,7 @@ fn duration_and_size_limits_end_recordings() {
         bandwidth: None,
         sched: None,
         malloc: None,
+        pss: None,
         expected_hz: None,
     }))
     .unwrap();
@@ -355,6 +358,7 @@ fn replay_and_export_read_windows() {
         bandwidth: None,
         sched: None,
         malloc: None,
+        pss: None,
         expected_hz: None,
     }))
     .unwrap();
@@ -455,6 +459,7 @@ fn a_slow_client_is_dropped_not_waited_for() {
         bandwidth: None,
         sched: None,
         malloc: None,
+        pss: None,
         expected_hz: None,
     }))
     .unwrap();
@@ -487,6 +492,7 @@ fn out_of_range_values_are_refused_and_the_server_lives_on() {
             bandwidth: None,
             sched: None,
             malloc: None,
+            pss: None,
             expected_hz: None,
         })
     };

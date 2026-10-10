@@ -11,6 +11,7 @@ use armo_collectd::sys;
 
 fn serve() -> io::Result<Exit> {
     let stop = sys::stop_on_signals();
+    sys::raise_nofile();
     server::run(Config::from_env()?, Box::new(Model::live()), stop)
 }
 

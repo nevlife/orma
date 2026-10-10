@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 /// `[major, minor]`.
 pub type Version = [u16; 2];
-pub const PROTO: Version = [1, 6];
+pub const PROTO: Version = [1, 7];
 pub const META_SCHEMA: u32 = 1;
 pub const HIST_LOG2: &str = "log2";
 
@@ -127,6 +127,9 @@ types! {
         pub sched: Option<bool>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub malloc: Option<bool>,
+        /// Read each process's PSS: a walk of its page tables under its mmap_lock. Proto 1.7.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub pss: Option<bool>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub expected_hz: Option<BTreeMap<String, f64>>,
     }
@@ -240,6 +243,9 @@ types! {
         pub bandwidth: bool,
         pub sched: bool,
         pub malloc: bool,
+        /// Proto 1.7.
+        #[serde(default)]
+        pub pss: bool,
     }
 
     pub struct Recording {
