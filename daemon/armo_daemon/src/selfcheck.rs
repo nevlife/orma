@@ -71,7 +71,7 @@ impl Session {
             progs: k
                 .prog_stats()
                 .into_iter()
-                .map(|(n, _, c, _)| (n, c))
+                .map(|p| (p.name, p.run_cnt))
                 .collect(),
             samples: k.samples(),
             offset: sys::real_ns() as i64 - sys::mono_ns() as i64,
@@ -252,7 +252,7 @@ impl Session {
                 if k.bpf_stats() { "held" } else { "refused" },
                 stats
                     .iter()
-                    .filter(|(n, _, c, _)| *c > self.progs.get(n).copied().unwrap_or(0))
+                    .filter(|p| p.run_cnt > self.progs.get(p.name).copied().unwrap_or(0))
                     .count()
             ),
         ));
@@ -266,9 +266,9 @@ impl Session {
                 .iter()
                 .copied()
                 .filter(|n| {
-                    stats
-                        .iter()
-                        .any(|(s, _, c, _)| s == n && *c > self.progs.get(n).copied().unwrap_or(0))
+                    stats.iter().any(|p| {
+                        p.name == *n && p.run_cnt > self.progs.get(n).copied().unwrap_or(0)
+                    })
                 })
                 .collect();
             let idle: Vec<&str> = attached

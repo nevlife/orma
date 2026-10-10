@@ -1485,8 +1485,9 @@ impl Core {
         match message {
             ArmodMessage::Window(w) => {
                 self.ingest.aggregates(Method::Uprobe, &w.aggregates);
-                // The other kinds lose aggregate rows or attribution, not records.
-                let lost = w.lost["ring"];
+                // The other kinds lose aggregate rows or attribution, not records. A program run
+                // the kernel skipped as recursive may have been a record.
+                let lost = w.lost["ring"] + w.lost.get("recursion").copied().unwrap_or(0);
                 if lost > 0 {
                     for r in &mut self.active {
                         if r.methods().contains(&Method::Uprobe) {

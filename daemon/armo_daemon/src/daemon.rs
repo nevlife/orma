@@ -66,7 +66,8 @@ struct Window {
     seq: u64,
     agg: HashMap<AggKey, AggVal>,
     max: HashMap<AggKey, u64>,
-    progs: HashMap<&'static str, (u64, u64)>,
+    /// Run time, run count and recursion misses at the last window.
+    progs: HashMap<&'static str, (u64, u64, u64)>,
     lost: [u64; LOST_SLOTS_ALL as usize],
 }
 
@@ -409,7 +410,7 @@ impl Daemon {
                     .k
                     .prog_stats()
                     .into_iter()
-                    .map(|(n, t, c, _)| (n, (t, c)))
+                    .map(|p| (p.name, (p.run_time_ns, p.run_cnt, p.recursion_misses)))
                     .collect();
                 let lost = self.k.lost();
                 let c = self.clients.get_mut(&id).expect("checked");
@@ -672,23 +673,27 @@ impl Daemon {
             w.agg = rows.iter().copied().collect();
             w.max.clear();
             let mut bpf = Vec::new();
-            for (name, t, n, attached) in &progs {
-                let (t0, n0) = w.progs.get(name).copied().unwrap_or((0, 0));
-                if *attached || *n != n0 {
+            let mut recursion = 0;
+            for p in &progs {
+                let (t0, n0, r0) = w.progs.get(p.name).copied().unwrap_or((0, 0, 0));
+                if p.attached || p.run_cnt != n0 {
                     bpf.push(BpfProg {
-                        prog: name.to_string(),
+                        prog: p.name.to_string(),
                         pid: None,
-                        run_time_ns: t.saturating_sub(t0),
-                        run_cnt: n.saturating_sub(n0),
+                        run_time_ns: p.run_time_ns.saturating_sub(t0),
+                        run_cnt: p.run_cnt.saturating_sub(n0),
                     });
                 }
-                w.progs.insert(name, (*t, *n));
+                recursion += p.recursion_misses.saturating_sub(r0);
+                w.progs
+                    .insert(p.name, (p.run_time_ns, p.run_cnt, p.recursion_misses));
             }
             let mut lost_map = BTreeMap::new();
             for (slot, name) in LOST_NAMES {
                 let d = lost[slot as usize] - w.lost[slot as usize];
                 lost_map.insert(name.to_string(), d);
             }
+            lost_map.insert("recursion".to_string(), recursion);
             w.lost = lost;
             w.seq += 1;
             let window_ns = t_mono_ns - w.last_ns;

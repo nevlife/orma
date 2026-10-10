@@ -38,13 +38,13 @@ colcon build --symlink-install --packages-select armo_daemon armo_lttng
 
 ## Running
 
-The probes need `CAP_BPF` and `CAP_PERFMON`; the eBPF run-time statistics also need `CAP_SYS_ADMIN`. armod serves `armo-collectd` on a unix socket that only root and the members of one group can open:
+The probes need `CAP_BPF` and `CAP_PERFMON`; turning on the eBPF run-time statistics also needs `CAP_SYS_ADMIN`, which armod gives up once they are on. armod serves `armo-collectd` on a unix socket that only root and the members of one group can open:
 
 ```bash
 sudo install/armo_daemon/bin/armod [--socket /run/armo/armod.sock] [--group armo]
 ```
 
-To run armod as a system service, as the user `armo` with only the capabilities it needs (`CAP_BPF`, `CAP_PERFMON`, `CAP_SYS_ADMIN`, plus `CAP_SYS_PTRACE` for other users' `/proc/<pid>/maps` and `CAP_DAC_READ_SEARCH` for tracefs), run `daemon/armo_daemon/systemd/install.sh` from a shell that sourced the workspace, then `sudo systemctl enable --now armod`. The script copies armod to `/usr/local/sbin`, so run it again and restart the service after a rebuild. It adds you to the group `armo`, which applies from your next login.
+To run armod as a system service, as the user `armo` with only the capabilities it needs (`CAP_BPF`, `CAP_PERFMON`, `CAP_SYS_ADMIN`, plus `CAP_SYS_PTRACE` for other users' `/proc/<pid>/maps` and `CAP_DAC_READ_SEARCH` for tracefs), run `daemon/armo_daemon/systemd/install.sh` from a shell that sourced the workspace, then `sudo systemctl enable --now armod`. The unit also sandboxes armod: a read-only file system, no network sockets, no namespaces, a system call allow list (`systemd-analyze security armod` scores it 3.4, from 7.2 without). The script copies armod to `/usr/local/sbin`, so run it again and restart the service after a rebuild. It adds you to the group `armo`, which applies from your next login.
 
 `armo-collectd` asks it for probe sets per process (`discovery` on every process; `hot`, `rclcpp_symbols`, `bandwidth`, `sched` and `names` on the selected ones), for the records of some processes and for a window of aggregates. When the connection closes, armod takes away what that connection asked for. Without the group armod does not start.
 

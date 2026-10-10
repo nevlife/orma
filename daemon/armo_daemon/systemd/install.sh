@@ -9,6 +9,7 @@ sudo install -D -m 644 "$here/armo.sysusers" /etc/sysusers.d/armo.conf
 sudo systemd-sysusers /etc/sysusers.d/armo.conf
 sudo install -m 644 "$here/armod.service" /etc/systemd/system/armod.service
 sudo systemctl daemon-reload
+systemd-analyze security armod.service | tail -n 1
 sudo usermod -aG armo "$USER"
 echo "installed; start with: sudo systemctl enable --now armod, or restart it after an update"
 echo "$USER joins the group armo at the next login"

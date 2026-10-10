@@ -8,7 +8,7 @@ use std::{
     fs,
     hash::{DefaultHasher, Hash, Hasher},
     num::NonZeroU32,
-    os::fd::{AsRawFd, OwnedFd},
+    os::fd::{AsFd, AsRawFd, OwnedFd},
     path::{Path, PathBuf},
     sync::{
         Arc, Condvar, Mutex,
@@ -23,7 +23,7 @@ use aya::{
     Ebpf, include_bytes_aligned,
     maps::{Array, HashMap as BpfHashMap, MapData, RingBuf},
     programs::{
-        TracePoint, UProbe, loaded_programs,
+        TracePoint, UProbe,
         trace_point::TracePointLinkId,
         uprobe::{UProbeAttachLocation, UProbeAttachPoint, UProbeLink, UProbeScope},
     },
@@ -35,6 +35,7 @@ use crate::{
     procs::{self, DistroFrom, Mapped},
     progs::{Cond, PROGS, Prog, SCHED_PROGS, Set, Sym},
     sel::Sel,
+    sys,
 };
 
 pub type Result<T> = std::result::Result<T, Box<dyn Error + Send + Sync>>;
@@ -262,6 +263,33 @@ pub struct Note {
     pub text: String,
 }
 
+/// One program's cumulative counters.
+pub struct ProgStat {
+    pub name: &'static str,
+    pub run_time_ns: u64,
+    pub run_cnt: u64,
+    /// Runs skipped because a BPF program was already running on that CPU (5.12+).
+    pub recursion_misses: u64,
+    pub attached: bool,
+}
+
+/// The `name: value` counters of a BPF object's fdinfo. Unlike a lookup by id this needs no
+/// CAP_SYS_ADMIN.
+fn fdinfo(fd: &OwnedFd) -> HashMap<String, u64> {
+    parse_fdinfo(
+        &fs::read_to_string(format!("/proc/self/fdinfo/{}", fd.as_raw_fd())).unwrap_or_default(),
+    )
+}
+
+fn parse_fdinfo(text: &str) -> HashMap<String, u64> {
+    text.lines()
+        .filter_map(|l| {
+            let (k, v) = l.split_once(':')?;
+            Some((k.to_string(), v.trim().parse().ok()?))
+        })
+        .collect()
+}
+
 /// The sched tracepoint fields armo_ebpf reads, by (event, field, offset, size).
 const SCHED_FIELDS: [(&str, &str, usize, usize); 5] = [
     ("sched_switch", "prev_pid", 24, 4),
@@ -285,8 +313,8 @@ pub struct Kernel {
     flux_stats: BpfHashMap<MapData, CallbackKey, CallbackStat>,
     flux_names: BpfHashMap<MapData, CallbackKey, CallbackName>,
     flux_channels: BpfHashMap<MapData, CallbackKey, u64>,
-    /// name, id, max entries of every map.
-    maps: Vec<(String, u32, u32)>,
+    /// name, fd, max entries of every map.
+    maps: Vec<(String, OwnedFd, u32)>,
     /// The BPF_ENABLE_STATS fd, or why the kernel refused it.
     stats: std::result::Result<OwnedFd, String>,
     generation: u64,
@@ -303,8 +331,8 @@ pub struct Kernel {
     /// Why a wanted link failed, until an attach of it succeeds.
     failed: HashMap<LinkKey, Missing>,
     applied: u64,
-    /// Program ids by name, for the run statistics without the lock the attacher holds.
-    prog_ids: Vec<(&'static str, u32)>,
+    /// Program fds by name, for the run statistics without the lock the attacher holds.
+    prog_fds: Vec<(&'static str, OwnedFd)>,
     sched_links: Vec<TracePointLinkId>,
     pub missing: BTreeSet<Missing>,
     pub layout: std::result::Result<(), String>,
@@ -361,16 +389,30 @@ impl Kernel {
         let maps = ebpf
             .maps()
             .filter_map(|(name, m)| {
-                let info = match m {
+                let d = match m {
                     aya::maps::Map::RingBuf(d)
                     | aya::maps::Map::Array(d)
                     | aya::maps::Map::HashMap(d)
-                    | aya::maps::Map::LruHashMap(d) => d.info().ok()?,
+                    | aya::maps::Map::LruHashMap(d) => d,
                     _ => return None,
                 };
-                Some((name.to_string(), info.id(), info.max_entries()))
+                let max = d.info().ok()?.max_entries();
+                Some((
+                    name.to_string(),
+                    d.fd().as_fd().try_clone_to_owned().ok()?,
+                    max,
+                ))
             })
             .collect();
+        let prog_fds = PROGS
+            .iter()
+            .map(|p| p.name)
+            .chain(SCHED_PROGS)
+            .map(|name| {
+                let p = ebpf.program(name).ok_or("program missing")?;
+                Ok((name, p.fd()?.as_fd().try_clone_to_owned()?))
+            })
+            .collect::<Result<_>>()?;
         // Held for armod's life: the kernel counts run time only while some fd asks for it.
         let stats = enable_stats(Stats::RunTime).map_err(|e| {
             format!(
@@ -378,15 +420,9 @@ impl Kernel {
                 e.io_error
             )
         });
-        let prog_ids = PROGS
-            .iter()
-            .map(|p| p.name)
-            .chain(SCHED_PROGS)
-            .map(|name| {
-                let info = ebpf.program(name).ok_or("program missing")?.info()?;
-                Ok((name, info.id()))
-            })
-            .collect::<Result<_>>()?;
+        // The last use of CAP_SYS_ADMIN: statistics are read through the fds kept above. Before
+        // the attacher and reaper threads start, so they never hold it.
+        sys::drop_cap(sys::CAP_SYS_ADMIN)?;
         let reaper = Reaper::start();
         let (jobs, rx) = mpsc::channel();
         let (tx, done) = mpsc::channel();
@@ -418,7 +454,7 @@ impl Kernel {
             in_flight: HashMap::new(),
             failed: HashMap::new(),
             applied: 0,
-            prog_ids,
+            prog_fds,
             sched_links: Vec::new(),
             missing: BTreeSet::new(),
             layout: check_layout(),
@@ -1005,9 +1041,9 @@ impl Kernel {
         out
     }
 
-    /// Each program's cumulative run time and count (design 6.8), and whether it is attached.
-    /// Read by program id, as the attacher may hold the `Ebpf` for seconds.
-    pub fn prog_stats(&self) -> Vec<(&'static str, u64, u64, bool)> {
+    /// Each program's cumulative counters (design 6.8), and whether it is attached. Read
+    /// through a kept fd, as the attacher may hold the `Ebpf` for seconds.
+    pub fn prog_stats(&self) -> Vec<ProgStat> {
         let attached: HashSet<&str> = self
             .links
             .keys()
@@ -1019,21 +1055,18 @@ impl Kernel {
                     .flatten(),
             )
             .collect();
-        let ids: HashMap<u32, &'static str> = self
-            .prog_ids
+        self.prog_fds
             .iter()
-            .map(|(name, id)| (*id, *name))
-            .collect();
-        loaded_programs()
-            .filter_map(|i| i.ok())
-            .filter_map(|info| {
-                let name = *ids.get(&info.id())?;
-                Some((
+            .map(|(name, fd)| {
+                let info = fdinfo(fd);
+                let get = |k: &str| info.get(k).copied().unwrap_or(0);
+                ProgStat {
                     name,
-                    info.run_time().as_nanos() as u64,
-                    info.run_count(),
-                    attached.contains(name),
-                ))
+                    run_time_ns: get("run_time_ns"),
+                    run_cnt: get("run_cnt"),
+                    recursion_misses: get("recursion_misses"),
+                    attached: attached.contains(name),
+                }
             })
             .collect()
     }
@@ -1051,21 +1084,8 @@ impl Kernel {
         .into();
         self.maps
             .iter()
-            .map(|(name, id, max)| {
-                let memlock = aya::maps::MapInfo::from_id(*id)
-                    .ok()
-                    .and_then(|i| i.fd().ok())
-                    .and_then(|fd| {
-                        let text = fs::read_to_string(format!(
-                            "/proc/self/fdinfo/{}",
-                            fd.as_fd().as_raw_fd()
-                        ))
-                        .ok()?;
-                        text.lines()
-                            .find_map(|l| l.strip_prefix("memlock:"))
-                            .and_then(|v| v.trim().parse().ok())
-                    })
-                    .unwrap_or(0);
+            .map(|(name, fd, max)| {
+                let memlock = fdinfo(fd).get("memlock").copied().unwrap_or(0);
                 (
                     name.clone(),
                     used.get(name.as_str()).copied().unwrap_or(0),
@@ -1107,8 +1127,6 @@ impl Kernel {
     }
 }
 
-use std::os::fd::AsFd;
-
 fn sync(map: &mut BpfHashMap<MapData, u32, u8>, want: &BTreeSet<u32>) {
     let have: Vec<u32> = map.keys().filter_map(|k| k.ok()).collect();
     for k in &have {
@@ -1127,4 +1145,22 @@ fn sync(map: &mut BpfHashMap<MapData, u32, u8>, want: &BTreeSet<u32>) {
 fn opens(f: &LibFile, key: FileKey) -> bool {
     use std::os::unix::fs::MetadataExt;
     fs::metadata(&f.path).is_ok_and(|m| (m.dev(), m.ino()) == key)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fdinfo_counters() {
+        let prog = "pos:\t0\nflags:\t02000002\nprog_type:\t2\nprog_tag:\ta04f5eef06a7f555\n\
+                    memlock:\t4096\nprog_id:\t73\nrun_time_ns:\t1520\nrun_cnt:\t7\n\
+                    recursion_misses:\t2\nverified_insns:\t14\n";
+        let m = parse_fdinfo(prog);
+        assert_eq!(m["run_time_ns"], 1520);
+        assert_eq!(m["run_cnt"], 7);
+        assert_eq!(m["recursion_misses"], 2);
+        assert_eq!(m["memlock"], 4096);
+        assert!(!m.contains_key("prog_tag"));
+    }
 }
