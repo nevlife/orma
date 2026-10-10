@@ -557,6 +557,7 @@ pub fn set_name(s: Set) -> &'static str {
         Set::Hot => "hot",
         Set::Bandwidth => "bandwidth",
         Set::RclcppSymbols => "rclcpp_symbols",
+        Set::Names => "names",
         Set::Sched => "sched",
         Set::Flux1 => "flux1",
     }

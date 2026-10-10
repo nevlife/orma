@@ -64,6 +64,9 @@ pub const ARMO_EV_DDS_SERIALIZED_SIZE: u16 = 80;
 /// rclcpp 16 (Humble) `Executor::add_callback_group_to_map`: `object` is the executor, `arg` the
 /// group. Jazzy reaches the executor through the collector events instead.
 pub const ARMO_EV_RCLCPP_EXECUTOR_ADD_GROUP: u16 = 81;
+/// The entity and node of a callback, read from the rclcpp objects the executor runs, for
+/// processes armod attached to after their entities were made (design 2.1.4).
+pub const ARMO_EV_RCLCPP_CALLBACK_OWNER: u16 = 82;
 
 // flux2_trace_* of flux2_trace_contract_2 (design 11.2).
 pub const ARMO_EV_FLUX2_CHANNEL_INIT: u16 = 128;
@@ -367,6 +370,24 @@ pub struct armo_ev_rcl_wait_exit {
 pub struct armo_ev_rclcpp_object {
     pub object: u64,
     pub arg: u64,
+}
+
+pub const ARMO_OWNER_SUBSCRIPTION: u32 = 1;
+pub const ARMO_OWNER_SERVICE: u32 = 2;
+pub const ARMO_OWNER_TIMER: u32 = 3;
+
+/// `object` is what the matching `*_callback_added` event names: the `SubscriptionBase` for a
+/// subscription, the rcl handle for a service or timer. `node` is the `rcl_node_t`, 0 when
+/// unknown; the record's string is its fully qualified name.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct armo_ev_rclcpp_callback_owner {
+    pub callback: u64,
+    pub object: u64,
+    pub handle: u64,
+    pub node: u64,
+    pub kind: u32,
+    pub pad: u32,
 }
 
 #[repr(C)]

@@ -777,6 +777,7 @@ fn set_of(s: ProbeSet) -> Set {
         ProbeSet::Sched => Set::Sched,
         ProbeSet::Bandwidth => Set::Bandwidth,
         ProbeSet::RclcppSymbols => Set::RclcppSymbols,
+        ProbeSet::Names => Set::Names,
     }
 }
 

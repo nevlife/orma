@@ -63,6 +63,7 @@ PAYLOAD = {
     "rclcpp_timer_callback_added": ("<QQ", "handle callback"),
     "rcl_timer_init": ("<Qq", "timer period"),
     "rclcpp_callback_register": ("<Q", "callback"),
+    "rclcpp_callback_owner": ("<QQQQII", "callback object handle node kind pad"),
     "rcl_publish": ("<QQQ", "publisher message stamp"),
     "rclcpp_publish": ("<QQQ", "publisher message stamp"),
     "rmw_publish": ("<QQqQ", "rmw_publisher message timestamp stamp"),
@@ -598,6 +599,28 @@ def node_checks(f, c, pid, said, prefix, rcl_abi=False, cxx=True, python=False):
         names = {s for r in by["rclcpp_callback_register"] for s in r.strings}
         f.check({"on_message", "on_trigger", "on_timer"} <= names, f"rclpy names {names}")
     if cxx:
+        # What armod reads from the executor (design 2.1.4) against the init events. timer2's own
+        # group holds no subscription, service or client to take the node from.
+        node = [r["node"] for r in by["rcl_node_init"] if r.strings[:1] == ["armo_acc"]]
+        timer_of = {p: h for h, p in periods.items()}
+        want_owner = {
+            sub_cb: (1, rclcpp_sub[0] if rclcpp_sub else None, sub_rcl, node[0], "/armo_acc"),
+            srv_cb: (2, srv[0]["handle"], srv[0]["handle"], node[0], "/armo_acc"),
+            timer_cb.get(10_000_000): (
+                3,
+                timer_of[10_000_000],
+                timer_of[10_000_000],
+                node[0],
+                "/armo_acc",
+            ),
+            timer_cb.get(15_000_000): (3, timer_of[15_000_000], timer_of[15_000_000], 0, ""),
+        }
+        got_owner = {
+            r["callback"]: (r["kind"], r["object"], r["handle"], r["node"], (r.strings or [""])[0])
+            for r in by["rclcpp_callback_owner"]
+            if r["callback"] in want_owner
+        }
+        f.eq(got_owner, want_owner, "callback owners from the executor")
         groups = by["rclcpp_group_add_subscription"]
         f.eq([r["arg"] for r in groups if r["arg"] in rclcpp_sub], rclcpp_sub, "group of sub")
         f.check(len(by["rclcpp_group_add_timer"]) >= 2, "group_add_timer")
@@ -627,7 +650,7 @@ def cpp_node(sock, tmp, f, rmw="rmw_cyclonedds_cpp", bandwidth=False):
     prefix = f"/armo_acc_{os.getpid()}"
     c = Conn(sock)
     p = Proc([exe, prefix, "60"], env=node_env(rmw))
-    sets = ["discovery", "hot", "rclcpp_symbols"] + (["bandwidth"] if bandwidth else [])
+    sets = ["discovery", "hot", "rclcpp_symbols", "names"] + (["bandwidth"] if bandwidth else [])
     c.watch(p.pid, sets=sets)
     p.go()
     said = p.line().split()
@@ -903,7 +926,7 @@ def docker_node(tmp, f, sock, python):
         ).stdout
     )
     c = Conn(sock)
-    c.watch(host, sets=["discovery", "hot", "rclcpp_symbols"])
+    c.watch(host, sets=["discovery", "hot", "rclcpp_symbols"] + ([] if python else ["names"]))
     p.stdin.write("go\n")
     p.stdin.flush()
     said = p.stdout.readline().split()

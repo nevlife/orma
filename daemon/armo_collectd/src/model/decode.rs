@@ -62,6 +62,14 @@ pub enum E {
         callback: u64,
         symbol: String,
     },
+    CallbackOwner {
+        what: Added,
+        callback: u64,
+        object: u64,
+        handle: u64,
+        node: u64,
+        fqn: String,
+    },
     CallbackCode {
         words: [u64; 6],
     },
@@ -276,6 +284,22 @@ pub fn decode(r: &Record<'_>) -> Option<E> {
             callback: r.payload::<armo_ev_rclcpp_callback_register>().callback,
             symbol: next(),
         },
+        ARMO_EV_RCLCPP_CALLBACK_OWNER => {
+            let p: armo_ev_rclcpp_callback_owner = r.payload();
+            E::CallbackOwner {
+                what: match p.kind {
+                    ARMO_OWNER_SUBSCRIPTION => Added::Sub,
+                    ARMO_OWNER_SERVICE => Added::Service,
+                    ARMO_OWNER_TIMER => Added::Timer,
+                    _ => return None,
+                },
+                callback: p.callback,
+                object: p.object,
+                handle: p.handle,
+                node: p.node,
+                fqn: next(),
+            }
+        }
         ARMO_EV_CALLBACK_CODE => {
             let p: armo_ev_callback_code = r.payload();
             let mut words = [p.callback; 6];

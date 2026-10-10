@@ -29,6 +29,9 @@ use decode::{Ev, decode};
 use lat::LatAcc;
 use stamp::Clock;
 
+/// How long armod reads the executor for a callback no event named (design 2.1.4).
+const NAMING_NS: u64 = 10_000_000_000;
+
 /// One callback in one process, keyed as the aggregate tables key it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct CbKey {
@@ -145,6 +148,8 @@ struct Cb {
     late_topic: Option<TopicIx>,
     executor: Option<ExecKey>,
     code_tried: bool,
+    /// When it first started.
+    first: u64,
 }
 
 #[derive(Clone, Copy)]
@@ -207,6 +212,7 @@ struct Thread {
     wait_enter: Option<u64>,
     exec: Option<ExecKey>,
     last_take: Option<Input>,
+    last_take_rmw: Option<u64>,
     last_cb_end: u64,
     pending_rcl: Option<(u64, u64, u64)>,
     last_pub_topic: Option<TopicIx>,
@@ -365,6 +371,8 @@ pub struct Model {
     hot: Sel,
     /// The time this window's LTTng chunks cover; 0 when none came.
     lttng_span: u64,
+    /// The end of the last window.
+    now: u64,
     clock: Clock,
     buf: Vec<Ev>,
     rows: Vec<(Method, Aggregate)>,
@@ -413,6 +421,7 @@ impl Model {
             sched: Sel::None,
             hot: Sel::All,
             lttng_span: 0,
+            now: 0,
             clock: Clock::default(),
             buf: Vec::new(),
             rows: Vec::new(),
@@ -471,6 +480,21 @@ impl Model {
 
     pub fn set_hot(&mut self, pids: Sel) {
         self.hot = pids;
+    }
+
+    /// Processes with a ROS callback no event has named the entity of, first run in the last
+    /// `NAMING_NS`: armod reads those from the executor for that long (design 2.1.4).
+    pub fn unowned(&self) -> BTreeSet<u32> {
+        self.cbs
+            .iter()
+            .filter(|(k, c)| {
+                k.src == ARMO_SRC_ROS
+                    && c.owner.is_none()
+                    && c.first != 0
+                    && c.first + NAMING_NS >= self.now
+            })
+            .map(|(k, _)| k.pid)
+            .collect()
     }
 
     /// The time the LTTng chunks of the coming window cover. A chunk is a rotation of the
@@ -663,6 +687,7 @@ impl Ingest for Model {
     fn window(&mut self, t_mono_ns: u64, t_real_ns: u64, window_ns: u64, hists: bool) -> Window {
         let started = std::time::Instant::now();
         self.clock.rt_offset = Some(t_real_ns as i64 - t_mono_ns as i64);
+        self.now = t_mono_ns;
         let (mut now, later): (Vec<Ev>, Vec<Ev>) =
             self.buf.drain(..).partition(|ev| ev.t <= t_mono_ns);
         self.buf = later;

@@ -46,6 +46,47 @@ pub fn callback_code(callback: u64, ns: u64) {
     emit(ARMO_EV_CALLBACK_CODE, ns, &ev, []);
 }
 
+// `rcl_node_t::impl` and `rcl_node_impl_s::fq_name` (rcl/src/rcl/node.c), the same on Humble,
+// Jazzy and Lyrical.
+const NODE_IMPL: u64 = 8;
+const IMPL_FQ_NAME: u64 = 176;
+
+/// What `rclcpp_execute_*` noted for this callback, once per callback (design 2.1.4). Only a start
+/// one level below the executor's run is its callback.
+fn callback_owner(callback: u64, ns: u64) {
+    let Some(t) = THREADS.get_ptr_mut(tid()) else {
+        return;
+    };
+    // SAFETY: the entry is this thread's own; only its own uprobes write it.
+    let ev = unsafe {
+        let kind = (*t).owner_kind;
+        if kind == 0 {
+            return;
+        }
+        (*t).owner_kind = 0;
+        if (*t).owner_depth + 1 != (*t).depth {
+            return;
+        }
+        armo_ev_rclcpp_callback_owner {
+            callback,
+            object: (*t).owner_object,
+            handle: (*t).owner_handle,
+            node: (*t).owner_node,
+            kind,
+            pad: 0,
+        }
+    };
+    if !first(SEEN_CALLBACK_OWNER, callback) {
+        return;
+    }
+    let fq_name = if ev.node == 0 {
+        0
+    } else {
+        read_u64(read_u64(ev.node + NODE_IMPL) + IMPL_FQ_NAME)
+    };
+    emit(ARMO_EV_RCLCPP_CALLBACK_OWNER, ns, &ev, [fq_name]);
+}
+
 /// The topic of an rmw handle a tool that attached late cannot get from init events: the third
 /// field of `rmw_publisher_t` and `rmw_subscription_t` (rmw/types.h), once per handle.
 fn rmw_topic(event: u16, what: u32, handle: u64, ns: u64) {
@@ -360,6 +401,7 @@ pub fn callback_start(ctx: ProbeContext) -> u32 {
     let callback = a(&ctx, 0);
     crate::emit::callback_start(ARMO_SRC_ROS, callback, 0, ns);
     callback_code(callback, ns);
+    callback_owner(callback, ns);
     let ev = armo_ev_callback_start {
         callback,
         is_intra_process: flag(&ctx, 1),

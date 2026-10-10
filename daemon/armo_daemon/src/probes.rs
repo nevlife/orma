@@ -631,13 +631,19 @@ impl Kernel {
         dead
     }
 
-    /// Clears what a process showed once (code words, topics), so a new client gets it again.
+    /// Clears what a process showed once (code words, topics, callback owners), so a new client
+    /// gets it again.
     pub fn forget_seen(&mut self) {
         let keys: Vec<SeenKey> = self
             .seen
             .keys()
             .filter_map(|k| k.ok())
-            .filter(|k| matches!(k.what, SEEN_CODE | SEEN_SUB_TOPIC | SEEN_PUB_TOPIC))
+            .filter(|k| {
+                matches!(
+                    k.what,
+                    SEEN_CODE | SEEN_SUB_TOPIC | SEEN_PUB_TOPIC | SEEN_CALLBACK_OWNER
+                )
+            })
             .collect();
         for k in &keys {
             let _ = self.seen.remove(k);

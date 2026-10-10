@@ -113,6 +113,10 @@
 // group. Jazzy reaches the executor through the collector events instead.
 #define ARMO_EV_RCLCPP_EXECUTOR_ADD_GROUP 81
 
+// The entity and node of a callback, read from the rclcpp objects the executor runs, for
+// processes armod attached to after their entities were made (design 2.1.4).
+#define ARMO_EV_RCLCPP_CALLBACK_OWNER 82
+
 #define ARMO_EV_FLUX2_CHANNEL_INIT 128
 
 #define ARMO_EV_FLUX2_CLAIM 129
@@ -225,6 +229,12 @@
 #define ARMO_FLUX2_NO_SLOT UINT32_MAX
 
 #define ARMO_FLUX2_NO_ENTRY UINT32_MAX
+
+#define ARMO_OWNER_SUBSCRIPTION 1
+
+#define ARMO_OWNER_SERVICE 2
+
+#define ARMO_OWNER_TIMER 3
 
 // `len` counts this header, the payload and the strings, rounded up to `ARMO_RECORD_ALIGN`.
 typedef struct armo_record {
@@ -407,6 +417,18 @@ typedef struct armo_ev_rclcpp_object {
   uint64_t object;
   uint64_t arg;
 } armo_ev_rclcpp_object;
+
+// `object` is what the matching `*_callback_added` event names: the `SubscriptionBase` for a
+// subscription, the rcl handle for a service or timer. `node` is the `rcl_node_t`, 0 when
+// unknown; the record's string is its fully qualified name.
+typedef struct armo_ev_rclcpp_callback_owner {
+  uint64_t callback;
+  uint64_t object;
+  uint64_t handle;
+  uint64_t node;
+  uint32_t kind;
+  uint32_t pad;
+} armo_ev_rclcpp_callback_owner;
 
 typedef struct armo_ev_rclcpp_ipm_insert_sub_id_for_pub {
   uint64_t ipm;

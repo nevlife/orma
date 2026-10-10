@@ -9,6 +9,8 @@ pub enum Set {
     Hot,
     Bandwidth,
     RclcppSymbols,
+    /// The node of each callback, for processes armod attached to late (design 2.1.4).
+    Names,
     Sched,
     Flux1,
 }
@@ -291,6 +293,24 @@ pub const PROGS: &[Prog] = &[
         ),
         Cond::Rclcpp28,
     ),
+    Prog {
+        set: Set::Names,
+        ..cxx(
+            "rclcpp_execute_16",
+            "rclcpp_callback_owner",
+            Sym::Prefix("_ZN6rclcpp8Executor22execute_any_executableE", false),
+            Cond::Rclcpp16,
+        )
+    },
+    Prog {
+        set: Set::Names,
+        ..cxx(
+            "rclcpp_execute_28",
+            "rclcpp_callback_owner",
+            Sym::Prefix("_ZN6rclcpp8Executor22execute_any_executableE", false),
+            Cond::Rclcpp28,
+        )
+    },
     // DDS serialized size, opt-in (design 2.1.2).
     Prog {
         point: "dds_serialized_size",
@@ -384,6 +404,7 @@ pub fn naming(event: u16) -> bool {
             | ARMO_EV_RCL_TIMER_FINI
             ..=ARMO_EV_RMW_PUBLISHER_TOPIC
                 | ARMO_EV_RCLCPP_EXECUTOR_ADD_GROUP
+                | ARMO_EV_RCLCPP_CALLBACK_OWNER
                 | ARMO_EV_FLUX2_CHANNEL_INIT
                 | ARMO_EV_FLUX2_ENDPOINT_INIT
     )
@@ -420,6 +441,7 @@ mod tests {
         assert!(naming(ARMO_EV_CALLBACK_CODE));
         assert!(naming(ARMO_EV_RMW_SUBSCRIPTION_TOPIC));
         assert!(naming(ARMO_EV_RCLCPP_GROUP_ADD_SUBSCRIPTION));
+        assert!(naming(ARMO_EV_RCLCPP_CALLBACK_OWNER));
         assert!(!naming(ARMO_EV_RMW_PUBLISH));
         assert!(!naming(ARMO_EV_RCL_PUBLISH));
         assert!(!naming(ARMO_EV_RMW_TAKE));

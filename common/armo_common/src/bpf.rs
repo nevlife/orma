@@ -50,6 +50,13 @@ pub struct ThreadState {
     pub wait_key: u64,
     pub wake_ns: u64,
     pub wake_key: u64,
+    /// What `Executor::execute_any_executable` is about to run at depth `owner_depth`, for the
+    /// next callback start (design 2.1.4); `owner_kind` 0 when nothing.
+    pub owner_kind: u32,
+    pub owner_depth: u32,
+    pub owner_object: u64,
+    pub owner_handle: u64,
+    pub owner_node: u64,
     pub frames: [Frame; STACK_DEPTH],
 }
 
@@ -84,6 +91,7 @@ pub const KNOWN_RCLCPP_PUB: u32 = 5;
 pub const LINKED_RCLCPP_SUB: u32 = 6;
 pub const KNOWN_EXECUTOR: u32 = 7;
 pub const KNOWN_COLLECTOR: u32 = 8;
+pub const SEEN_CALLBACK_OWNER: u32 = 9;
 
 /// `CONFIG` slots, written by armod.
 pub const CONFIG_STREAM_ALL: u32 = 0;

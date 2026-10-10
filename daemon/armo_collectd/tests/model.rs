@@ -931,6 +931,103 @@ fn a_late_attached_take_names_the_next_callback() {
     assert!(w.processes.iter().find(|p| p.pid == 1500).unwrap().cold);
 }
 
+impl H {
+    #[allow(clippy::too_many_arguments)]
+    fn owner(
+        &mut self,
+        pid: u32,
+        t: u64,
+        kind: u32,
+        callback: u64,
+        object: u64,
+        node: u64,
+        fqn: &str,
+    ) {
+        let p = armo_ev_rclcpp_callback_owner {
+            callback,
+            object,
+            handle: object + 1,
+            node,
+            kind,
+            pad: 0,
+        };
+        let fqn = fqn.as_bytes();
+        self.ev(pid, pid, t, ARMO_EV_RCLCPP_CALLBACK_OWNER, p, &[fqn]);
+    }
+}
+
+/// A process armod attached to late: its callbacks have no node until armod reads the executor,
+/// and the subscription moves from the process to the node.
+#[test]
+fn an_executor_read_names_the_callbacks_of_a_late_attached_process() {
+    let mut h = H::offline();
+    let p = armo_ev_rmw_topic { rmw_handle: 0x77 };
+    h.ev(
+        1600,
+        1600,
+        T0,
+        ARMO_EV_RMW_SUBSCRIPTION_TOPIC,
+        p,
+        &[b"/late"],
+    );
+    h.take(1600, 1600, T0 + MS, 0x77, 0, 0);
+    h.cb(1600, 1600, T0 + MS + US, T0 + 2 * MS, 0x99);
+    h.cb(1600, 1600, T0 + 3 * MS, T0 + 4 * MS, 0x55);
+    let w = h.window(T0 + W);
+    assert_eq!(cb(&w, 1600, 0x99).node, None);
+    assert_eq!(h.m.unowned(), [1600].into());
+
+    let t = T0 + W;
+    h.take(1600, 1600, t + MS, 0x77, 0, 0);
+    h.owner(
+        1600,
+        t + MS + US,
+        ARMO_OWNER_SUBSCRIPTION,
+        0x99,
+        0x500,
+        0x10,
+        "/ns/listener",
+    );
+    h.cb(1600, 1600, t + MS + US, t + 2 * MS, 0x99);
+    h.owner(
+        1600,
+        t + 3 * MS,
+        ARMO_OWNER_TIMER,
+        0x55,
+        0x600,
+        0x10,
+        "/ns/listener",
+    );
+    h.cb(1600, 1600, t + 3 * MS, t + 4 * MS, 0x55);
+    h.take(1600, 1600, t + 5 * MS, 0x77, 0, 0);
+    h.cb(1600, 1600, t + 5 * MS + US, t + 6 * MS, 0x99);
+    let w = h.window(t + W);
+    let node = &w.nodes.iter().find(|n| n.fqn == "/ns/listener").unwrap().id;
+    let (s, tm) = (cb(&w, 1600, 0x99), cb(&w, 1600, 0x55));
+    assert_eq!(
+        (s.kind, s.topic.as_deref(), s.node.as_ref()),
+        (CallbackKind::Sub, Some("topic:ros:/late"), Some(node))
+    );
+    assert_eq!(
+        (tm.kind, tm.node.as_ref()),
+        (CallbackKind::Timer, Some(node))
+    );
+    let subs: Vec<_> = w.subscriptions.iter().map(|s| s.node.as_str()).collect();
+    assert_eq!(subs, [node.as_str()]);
+    assert_eq!(sub(&w, "topic:ros:/late", 1600).recv_hz, Some(2.0));
+    assert!(h.m.unowned().is_empty());
+}
+
+#[test]
+fn armod_reads_the_executor_for_an_unnamed_callback_only_for_a_while() {
+    let mut h = H::offline();
+    h.cb(1700, 1700, T0 + MS, T0 + 2 * MS, 0x99);
+    h.window(T0 + W);
+    assert_eq!(h.m.unowned(), [1700].into());
+    h.window(T0 + 11 * W);
+    assert!(h.m.unowned().is_empty());
+}
+
 /// The live model takes the uprobe and LD_PRELOAD methods' callback times from their aggregate
 /// tables and leaves the records to pairing; it reads `/proc` of a real process (this one).
 #[test]

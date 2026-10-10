@@ -72,6 +72,7 @@ pub struct Plan {
     pub hot: Sel,
     pub sched: Sel,
     pub bandwidth: Sel,
+    pub names: Sel,
     pub user_words: BTreeMap<String, u64>,
     pub stream: Sel,
 }
@@ -111,6 +112,7 @@ pub fn requests(old: &Plan, new: &Plan) -> Vec<ArmodOp> {
         (ProbeSet::RclcppSymbols, &old.hot, &new.hot),
         (ProbeSet::Sched, &old.sched, &new.sched),
         (ProbeSet::Bandwidth, &old.bandwidth, &new.bandwidth),
+        (ProbeSet::Names, &old.names, &new.names),
     ];
     for (set, o, n) in sets {
         let words = || match set {

@@ -445,6 +445,12 @@ impl Core {
                 plan.bandwidth.add(targets);
             }
         }
+        let unowned = self.ingest.unowned();
+        plan.names = match &plan.hot {
+            Sel::All => Sel::pids(unowned),
+            Sel::Pids(p) => Sel::pids(unowned.intersection(p).copied()),
+            Sel::None => Sel::None,
+        };
         let mut known = plan.hot.clone();
         if plan.sched != Sel::None {
             let lttng: Vec<u32> = self

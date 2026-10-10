@@ -140,6 +140,14 @@ impl Model {
                     Added::Timer => CbOwner::Timer(handle),
                 });
             }
+            E::CallbackOwner {
+                what,
+                callback,
+                object,
+                handle,
+                node,
+                fqn,
+            } => self.callback_owner(pid, tid, what, callback, [object, handle, node], fqn),
             E::CallbackRegister { callback, symbol } => {
                 if !symbol.is_empty() && symbol != NO_SYMBOL {
                     self.cbs
@@ -212,6 +220,7 @@ impl Model {
                 let owner = self.owner(pid, node);
                 let sub = SubKey { topic, owner };
                 self.topics[topic].subscribers.insert(owner);
+                self.thread(pid, tid).last_take_rmw = Some(rmw);
                 let key = (source_timestamp != 0).then_some(PairKey::Ros(topic, source_timestamp));
                 self.take(pid, tid, t, sub, stamp, key, Some(source_timestamp));
             }
@@ -391,6 +400,78 @@ impl Model {
         self.node_fqn.entry((pid, fqn)).or_default().push(ix);
     }
 
+    /// What the executor read for a callback of a process armod attached to late: it stands for
+    /// the init events armod missed. A subscription's topic is that of the take before it.
+    fn callback_owner(
+        &mut self,
+        pid: u32,
+        tid: u32,
+        what: Added,
+        callback: u64,
+        [object, handle, node]: [u64; 3],
+        fqn: String,
+    ) {
+        let key = CbKey::ros(pid, callback);
+        if self.cbs.get(&key).is_some_and(|c| c.owner.is_some()) {
+            return;
+        }
+        if fqn.starts_with('/') && !self.node_ix.contains_key(&(pid, node)) {
+            let (ns, name) = fqn.rsplit_once('/').unwrap_or_default();
+            self.node_init(pid, node, name.into(), ns.into());
+        }
+        let owner = match what {
+            Added::Sub => {
+                self.rclcpp_subs.entry((pid, object)).or_insert(handle);
+                let th = self.thread(pid, tid);
+                let take = th
+                    .last_take
+                    .filter(|tk| tk.t >= th.last_cb_end)
+                    .map(|tk| (tk.topic, th.last_take_rmw));
+                if let Some((topic, rmw)) = take
+                    && !self.subs.contains_key(&(pid, handle))
+                {
+                    self.subs.insert((pid, handle), Ep { topic, node });
+                    if let Some(rmw) = rmw {
+                        self.rmw_subs.insert((pid, rmw), handle);
+                    }
+                    let owner = self.owner(pid, Some(node));
+                    if owner != Owner::Proc(pid) {
+                        let unnamed = SubKey {
+                            topic,
+                            owner: Owner::Proc(pid),
+                        };
+                        let named = SubKey { topic, owner };
+                        self.known_subs.remove(&unnamed);
+                        self.known_subs.insert(named);
+                        self.topics[topic].subscribers.remove(&unnamed.owner);
+                        self.topics[topic].subscribers.insert(owner);
+                        if let Some(sw) = self.win.subs.remove(&unnamed) {
+                            self.win.subs.insert(named, sw);
+                        }
+                        if let Some(tk) = self.thread(pid, tid).last_take.as_mut() {
+                            tk.sub = named;
+                        }
+                    }
+                }
+                CbOwner::Sub(object)
+            }
+            Added::Service => {
+                self.services
+                    .entry((pid, handle))
+                    .or_insert((node, String::new()));
+                CbOwner::Service(handle)
+            }
+            Added::Timer => {
+                let tm = self.timers.entry((pid, handle)).or_default();
+                if node != 0 {
+                    tm.node.get_or_insert(node);
+                }
+                CbOwner::Timer(handle)
+            }
+        };
+        self.cbs.entry(key).or_default().owner = Some(owner);
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn endpoint_init(
         &mut self,
@@ -496,6 +577,9 @@ impl Model {
             self.cbs.get(&key).and_then(|c| c.executor)
         };
         let cb = self.cbs.entry(key).or_default();
+        if cb.first == 0 {
+            cb.first = t;
+        }
         cb.executor = exec.or(cb.executor);
         if cb.owner.is_none()
             && let Some(tk) = input

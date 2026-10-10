@@ -681,3 +681,33 @@ fn a_node_name_selects_the_processes_of_its_nodes_as_they_appear() {
     assert!(monitor.selection.all && monitor.selection.pids.is_empty());
     assert_eq!(monitor.selection.exclude.as_deref(), Some("/talker"));
 }
+
+#[test]
+fn armod_reads_the_executor_only_of_hot_processes_with_unnamed_callbacks() {
+    let dir = scratch("unowned");
+    let server = Server::start(&dir, config(&dir));
+    let mut c = server.client("armo");
+    server.seen.0.lock().unwrap().unowned = [TRACED, OTHER].into();
+    let fake = FakeArmod::start(&dir.join("armod.sock"));
+    c.until(|m| matches!(m, ServerMessage::State(s) if s.sources.armod == ArmodLink::Connected));
+    c.start(RecordOptions {
+        method: Some(RecordMethod::Uprobe),
+        targets: Some(Targets {
+            all: false,
+            pids: vec![TRACED],
+            node: None,
+            topic: None,
+            exclude: None,
+        }),
+        ..options(&dir)
+    });
+    until(|| fake.has(|o| attached(o, ProbeSet::Names, false, &[TRACED])));
+    server.seen.0.lock().unwrap().unowned.clear();
+    until(|| {
+        fake.has(|o| {
+            matches!(o, ArmodOp::Detach { pids, sets } if *pids == [TRACED]
+            && *sets == [ProbeSet::Names])
+        })
+    });
+    assert!(!fake.has(|o| attached(o, ProbeSet::Names, false, &[OTHER])));
+}

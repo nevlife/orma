@@ -60,7 +60,7 @@ def check_session(requests, names, pid, client="armo"):
 
 
 def test_frame_matches_golden():
-    hello = {"id": 1, "op": "hello", "proto": [1, 5], "client": "rqt_armo", "pid": 5555}
+    hello = {"id": 1, "op": "hello", "proto": [1, 6], "client": "rqt_armo", "pid": 5555}
     assert armo_client.encode(hello) == (GOLDEN / "frames" / "hello.bin").read_bytes()
 
 

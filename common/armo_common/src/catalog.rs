@@ -74,6 +74,7 @@ pub const fn init(event: u16) -> bool {
             | ARMO_EV_RCLCPP_COLLECTOR_ADD_GROUP_TO_COLLECTION
             | ARMO_EV_RCLCPP_COLLECTOR_ADD_GROUP
             | ARMO_EV_RCLCPP_EXECUTOR_ADD_GROUP
+            | ARMO_EV_RCLCPP_CALLBACK_OWNER
             | ARMO_EV_CALLBACK_CODE
             | ARMO_EV_FLUX2_CHANNEL_INIT
             | ARMO_EV_FLUX2_ENDPOINT_INIT
@@ -407,6 +408,13 @@ pub const CATALOG: &[EventInfo] = &[
         armo_ev_rclcpp_object,
         0,
         true
+    ),
+    ev!(
+        ARMO_EV_RCLCPP_CALLBACK_OWNER,
+        "rclcpp_callback_owner",
+        armo_ev_rclcpp_callback_owner,
+        1,
+        false
     ),
     ev!(
         ARMO_EV_FLUX2_CHANNEL_INIT,

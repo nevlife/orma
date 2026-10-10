@@ -55,6 +55,7 @@ pub struct Seen {
     /// What each window lists as its processes.
     pub processes: Vec<Process>,
     pub nodes: Vec<Node>,
+    pub unowned: std::collections::BTreeSet<u32>,
 }
 
 /// An `Ingest` that only counts, the stand-in for WP3b's model.
@@ -87,6 +88,9 @@ impl Model for Counting {
         self.0.lock().unwrap().sched = pids != Sel::None;
     }
     fn set_hot(&mut self, _: Sel) {}
+    fn unowned(&self) -> std::collections::BTreeSet<u32> {
+        self.0.lock().unwrap().unowned.clone()
+    }
     fn set_lttng_span(&mut self, _: u64) {}
     fn set_expected_hz(&mut self, by_id: BTreeMap<String, f64>) {
         self.0.lock().unwrap().expected_hz = by_id;

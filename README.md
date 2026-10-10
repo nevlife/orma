@@ -46,7 +46,7 @@ sudo install/armo_daemon/bin/armod [--socket /run/armo/armod.sock] [--group armo
 
 To run armod as a system service, as the user `armo` with only the capabilities it needs (`CAP_BPF`, `CAP_PERFMON`, `CAP_SYS_ADMIN`, plus `CAP_SYS_PTRACE` for other users' `/proc/<pid>/maps` and `CAP_DAC_READ_SEARCH` for tracefs), run `daemon/armo_daemon/systemd/install.sh` from a shell that sourced the workspace, then `sudo systemctl enable --now armod`. The script copies armod to `/usr/local/sbin`, so run it again and restart the service after a rebuild. It adds you to the group `armo`, which applies from your next login.
 
-`armo-collectd` asks it for probe sets per process (`discovery` on every process; `hot`, `rclcpp_symbols`, `bandwidth` and `sched` on the selected ones), for the records of some processes and for a window of aggregates. When the connection closes, armod takes away what that connection asked for. Without the group armod does not start.
+`armo-collectd` asks it for probe sets per process (`discovery` on every process; `hot`, `rclcpp_symbols`, `bandwidth`, `sched` and `names` on the selected ones), for the records of some processes and for a window of aggregates. When the connection closes, armod takes away what that connection asked for. Without the group armod does not start.
 
 | Set | Attaches to |
 | --- | --- |
@@ -55,6 +55,7 @@ To run armod as a system service, as the user `armo` with only the capabilities 
 | `rclcpp_symbols` | rclcpp's C++ functions that put callbacks in groups and groups in executors, and the intra-process wiring, found by the front of the mangled name for rclcpp 16 or 28 and later |
 | `bandwidth` | the serialized size in Fast DDS (`TypeSupport::serialize`) and Cyclone DDS (`serdata_rmw_from_sample`, only with the dbgsym package) |
 | `sched` | `sched_switch` and `sched_wakeup`: CPU wait of the selected processes' threads and off-CPU time inside a callback |
+| `names` | rclcpp's `Executor::execute_any_executable`, read for the node of each callback; only on selected processes armod attached to after their nodes were made, until their callbacks have nodes |
 
 armod finds the libraries itself: it reads `/proc/<pid>/maps` and attaches to each `libtracetools.so`, `librcl.so`, `librclcpp.so`, `libflux2_ffi.so.<abi>` and DDS library the processes have loaded, through `/proc/<pid>/root`, so a build-tree copy, another install or a container's own file is traced as that file. It decides each process's ROS distro from `ROS_DISTRO` or the library path, and attaches Humble's `ros_trace_rmw_publish(message)` form there. A library rebuilt while the process runs is reported and skipped.
 

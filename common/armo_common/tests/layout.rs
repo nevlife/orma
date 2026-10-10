@@ -181,6 +181,14 @@ fn layouts() -> Vec<Layout> {
         layout!(armo_ev_rcl_wait_enter { wait_set, timeout }),
         layout!(armo_ev_rcl_wait_exit { wait_set, ret, pad }),
         layout!(armo_ev_rclcpp_object { object, arg }),
+        layout!(armo_ev_rclcpp_callback_owner {
+            callback,
+            object,
+            handle,
+            node,
+            kind,
+            pad,
+        }),
         layout!(armo_ev_rclcpp_ipm_insert_sub_id_for_pub {
             ipm,
             sub_id,

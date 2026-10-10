@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 /// `[major, minor]`.
 pub type Version = [u16; 2];
-pub const PROTO: Version = [1, 5];
+pub const PROTO: Version = [1, 6];
 pub const META_SCHEMA: u32 = 1;
 pub const HIST_LOG2: &str = "log2";
 
@@ -46,7 +46,7 @@ enums! {
     pub enum LttngState { Available, Absent }
     pub enum Level { Info, Warn, Error }
     pub enum CheckStatus { Pass, Fail, Unknown }
-    pub enum ProbeSet { Discovery, Hot, Sched, Bandwidth, RclcppSymbols }
+    pub enum ProbeSet { Discovery, Hot, Sched, Bandwidth, RclcppSymbols, Names }
     pub enum PublishAbi { Rmw, Rcl }
     pub enum CpuSource { Sched, WallBound }
     pub enum ExecutorKind { Rclcpp, Rclpy, Flux, Flux2 }

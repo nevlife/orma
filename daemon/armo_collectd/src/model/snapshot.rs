@@ -297,9 +297,11 @@ impl Model {
                 kind: self.cb_kind(k),
                 topic: self.cb_topic(k).map(|t| self.topic_id(t)),
                 service: match cb.and_then(|c| c.owner) {
-                    Some(CbOwner::Service(s)) => {
-                        self.services.get(&(k.pid, s)).map(|s| s.1.clone())
-                    }
+                    Some(CbOwner::Service(s)) => self
+                        .services
+                        .get(&(k.pid, s))
+                        .map(|s| s.1.clone())
+                        .filter(|n| !n.is_empty()),
                     _ => None,
                 },
                 symbol: cb.and_then(|c| c.symbol.clone()),

@@ -174,6 +174,7 @@ mod plain {
         armo_ev_rcl_wait_enter,
         armo_ev_rcl_wait_exit,
         armo_ev_rclcpp_object,
+        armo_ev_rclcpp_callback_owner,
         armo_ev_rclcpp_ipm_insert_sub_id_for_pub,
         armo_ev_callback_code,
         armo_ev_rmw_topic,

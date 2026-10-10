@@ -4,7 +4,7 @@
 mod client;
 mod core;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::sources::armod::Sel;
 use std::fs::{File, Permissions};
@@ -106,6 +106,8 @@ pub trait Model: Ingest + Send {
     fn set_expected_hz(&mut self, by_id: BTreeMap<String, f64>);
     /// The time the LTTng chunks of the coming window cover.
     fn set_lttng_span(&mut self, ns: u64);
+    /// Processes with callbacks whose node armod should read from the executor.
+    fn unowned(&self) -> BTreeSet<u32>;
 }
 
 impl Model for crate::model::Model {
@@ -117,6 +119,9 @@ impl Model for crate::model::Model {
     }
     fn set_expected_hz(&mut self, by_id: BTreeMap<String, f64>) {
         crate::model::Model::set_expected_hz(self, by_id);
+    }
+    fn unowned(&self) -> BTreeSet<u32> {
+        crate::model::Model::unowned(self)
     }
     fn set_lttng_span(&mut self, ns: u64) {
         crate::model::Model::set_lttng_span(self, ns);

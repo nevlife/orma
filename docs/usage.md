@@ -106,7 +106,7 @@ armo monitor nodes --exclude '/rviz.*'
 ```
 
 - 정규식은 이름 전체에 맞춘다. `/cam`은 `/camera`에 맞지 않고 `/cam.*`이 맞는다.
-- 노드와 토픽은 armo가 그 노드가 만들어지는 순간을 본 것만 고를 수 있다. 새로 뜨는 노드는 창마다 다시 맞춰 들어온다. 이미 떠 있던 노드는 이름을 몰라 맞지 않는다(아래 `unlinked`).
+- 노드와 토픽은 armo가 이름을 아는 것만 고를 수 있다. 새로 뜨는 노드는 창마다 다시 맞춰 들어온다. armo보다 먼저 떠 있던 노드는 이름을 몰라 맞지 않는다. 그 프로세스를 `--pid`로 고르면 콜백이 돈 뒤 몇 초 안에 이름이 붙는다(아래 `unlinked`).
 - 비용은 프로세스 단위로 든다. 컨테이너 안의 노드 하나를 골라도 uprobe는 그 프로세스 전체에 붙는다. 화면에는 고른 노드와 토픽만 보인다.
 - 아무것도 고르지 않으면 모든 프로세스를 본다. 이때는 uprobe를 붙이지 않는다. 모든 프로세스에 uprobe 비용을 물리지 않기 위해서다. 값은 preload, LTTng로 띄운 프로세스에서만 나오고, 나머지는 방식, Hz, 지연이 `-`다. 시작할 때 `[info] select_all` 줄이 이를 알린다.
 - `--method`는 한 번 주면 모든 pid에, pid마다 한 번 주면 순서대로 짝짓는다. 주지 않으면 프로세스마다 쓸 수 있는 방식을 preload, lttng, uprobe 순으로 고른다. preload나 LTTng로 띄우지 않은 프로세스는 uprobe가 된다.
@@ -143,7 +143,10 @@ callbacks
 | `... #a7e448` | 한 노드 안에 같은 이름이 둘 이상이다. 주소의 끝 여섯 자리로 구분한다 |
 
 - 노드 열은 `/ns/name`, pid 열은 그 프로세스다.
-- 노드를 모르는 콜백과 구독은 노드 열이 `unlinked`이고 맨 아래에 모인다. armo가 그 프로세스에 나중에 붙어 노드를 만드는 순간을 못 봤으면 `unlinked (cold)`다. 처음부터 보려면 `armo monitor`나 rqt를 먼저 열어 둔 채 노드를 띄운다. 클라이언트가 붙어 있는 동안 init 이벤트를 받는 프로브가 모든 프로세스에 있다.
+- 노드를 모르는 콜백과 구독은 노드 열이 `unlinked`이고 맨 아래에 모인다. armo가 그 프로세스에 나중에 붙어 노드를 만드는 순간을 못 봤으면 `unlinked (cold)`다.
+- uprobe로 재는 rclcpp 프로세스는 armo가 executor에서 노드를 읽어 채운다. 노드를 모르는 콜백이 처음 돈 뒤 보통 2~3초 안에 노드가 붙는다. 그동안만 콜백마다 uprobe 하나(약 1.25 us)가 더 든다. 10초 안에 못 찾으면 그만둔다.
+- 그래도 남는 것: rclpy 노드, Humble의 `StaticSingleThreadedExecutor`와 `EventsExecutor`, intra-process로만 받는 구독, 타이머만 든 callback group의 타이머. 늦게 붙은 서비스는 이름 없이 `srv`와 함수 이름만 보인다.
+- 이것들을 처음부터 보려면 `armo monitor`나 rqt를 먼저 열어 둔 채 노드를 띄운다. 클라이언트가 붙어 있는 동안 init 이벤트를 받는 프로브가 모든 프로세스에 있다.
 - `/rosout`, `/parameter_events`, `ros_discovery_info`와 노드마다 rclcpp가 만드는 파라미터 서비스(`get_parameters` 등), 그 콜백은 기본으로 숨긴다. `--infra`를 주면 보인다.
 
 - 지연 열은 꼬리부터 찍는다(p99, p99.9, max, p50).

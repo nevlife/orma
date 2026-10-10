@@ -1,8 +1,9 @@
 //! rclcpp C++ functions (design 2.1.2): which group a callback is in, which executor runs a
-//! group, and the intra-process wiring. No struct offsets are read: `this` is the first argument
+//! group, and the intra-process wiring. These read no struct offsets: `this` is the first argument
 //! and a `shared_ptr` argument is the address of the caller's `shared_ptr`, whose first word is
 //! the object. An argument no tracepoint has named is dropped (roscope's rule), so a changed
-//! signature loses links instead of making wrong ones.
+//! signature loses links instead of making wrong ones. Only `rclcpp_execute_*`, for processes
+//! armod attached to late, reads members at measured offsets (2.1.4).
 
 use armo_common::{bpf::*, events::*};
 use aya_ebpf::{macros::uprobe, programs::ProbeContext};
@@ -147,4 +148,105 @@ pub fn rclcpp_collector_add_group(ctx: ProbeContext) -> u32 {
 #[uprobe]
 pub fn rclcpp_executor_add_group(ctx: ProbeContext) -> u32 {
     group_to(&ctx, KNOWN_EXECUTOR, ARMO_EV_RCLCPP_EXECUTOR_ADD_GROUP)
+}
+
+// Offsets measured on Humble, Jazzy and Lyrical (design 2.1.4). The `shared_ptr` members' first
+// word is the object.
+const ANY_SUBSCRIPTION: u64 = 8;
+const ANY_TIMER: u64 = 24;
+const ANY_SERVICE: u64 = 40;
+const ANY_GROUP: u64 = 88;
+const SUBSCRIPTION_NODE: u64 = 32;
+const SERVICE_NODE: u64 = 8;
+const CLIENT_NODE: u64 = 24;
+const GROUP_SUBSCRIPTIONS: u64 = 64;
+const GROUP_SERVICES: u64 = 112;
+const GROUP_CLIENTS: u64 = 136;
+
+/// The rcl handle members, which moved in rclcpp 28.
+struct Handles {
+    subscription: u64,
+    service: u64,
+    timer: u64,
+}
+
+const HANDLES_16: Handles = Handles {
+    subscription: 48,
+    service: 24,
+    timer: 24,
+};
+const HANDLES_28: Handles = Handles {
+    subscription: 128,
+    service: 104,
+    timer: 104,
+};
+
+/// A timer holds no node: take the node of the first subscription, service or client in its
+/// callback group, which belongs to one node.
+fn group_node(group: u64) -> u64 {
+    for (member, node) in [
+        (GROUP_SUBSCRIPTIONS, SUBSCRIPTION_NODE),
+        (GROUP_SERVICES, SERVICE_NODE),
+        (GROUP_CLIENTS, CLIENT_NODE),
+    ] {
+        let begin = read_u64(group + member);
+        if begin != 0 && begin != read_u64(group + member + 8) {
+            let object = read_u64(begin);
+            if object != 0 {
+                return read_u64(object + node);
+            }
+        }
+    }
+    0
+}
+
+/// Notes on the thread what the executor is about to run; `callback_start` takes it. Every run
+/// overwrites it, so a take that finds no message leaves nothing behind.
+fn execute(ctx: &ProbeContext, h: &Handles) -> u32 {
+    let exec = a(ctx, 1);
+    let subscription = read_u64(exec + ANY_SUBSCRIPTION);
+    let service = read_u64(exec + ANY_SERVICE);
+    let timer = read_u64(exec + ANY_TIMER);
+    let (kind, object, handle, node) = if subscription != 0 {
+        (
+            ARMO_OWNER_SUBSCRIPTION,
+            subscription,
+            read_u64(subscription + h.subscription),
+            read_u64(subscription + SUBSCRIPTION_NODE),
+        )
+    } else if service != 0 {
+        let handle = read_u64(service + h.service);
+        let node = read_u64(service + SERVICE_NODE);
+        (ARMO_OWNER_SERVICE, handle, handle, node)
+    } else if timer != 0 {
+        let handle = read_u64(timer + h.timer);
+        let node = group_node(read_u64(exec + ANY_GROUP));
+        (ARMO_OWNER_TIMER, handle, handle, node)
+    } else {
+        (0, 0, 0, 0)
+    };
+    let Some(t) = thread() else {
+        return 0;
+    };
+    // SAFETY: the entry is this thread's own; only its own uprobes write it.
+    unsafe {
+        (*t).owner_kind = kind;
+        (*t).owner_depth = (*t).depth;
+        (*t).owner_object = object;
+        (*t).owner_handle = handle;
+        (*t).owner_node = node;
+    }
+    0
+}
+
+// rclcpp 16: Executor::execute_any_executable(AnyExecutable &)
+#[uprobe]
+pub fn rclcpp_execute_16(ctx: ProbeContext) -> u32 {
+    execute(&ctx, &HANDLES_16)
+}
+
+// rclcpp 28 and later
+#[uprobe]
+pub fn rclcpp_execute_28(ctx: ProbeContext) -> u32 {
+    execute(&ctx, &HANDLES_28)
 }
