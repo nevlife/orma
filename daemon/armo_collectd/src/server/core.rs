@@ -106,6 +106,7 @@ pub struct Core {
     idle_since: Option<u64>,
     uid: u32,
     host: Host,
+    realtime: sys::RealtimeSteps,
 }
 
 fn reply(id: u64, body: ReplyBody) -> ServerMessage {
@@ -229,6 +230,7 @@ impl Core {
                 arch: std::env::consts::ARCH.into(),
                 cpus: std::thread::available_parallelism().map_or(1, |n| n.get() as u32),
             },
+            realtime: sys::RealtimeSteps::new().expect("timerfd"),
         }
     }
 
@@ -931,6 +933,15 @@ impl Core {
             self.scanned_at = now;
             self.scan(now);
             self.refresh();
+        }
+        if self.realtime.stepped() {
+            for r in &mut self.active {
+                r.meta.realtime_steps.push(now);
+            }
+            let text = "CLOCK_REALTIME stepped: header.stamp ages and source_timestamp checks \
+                        of this window compare against the wrong wall time"
+                .into();
+            self.event_line(Level::Warn, "realtime_step", text, Vec::new());
         }
         self.drain(now);
         self.lttng_poll();

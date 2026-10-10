@@ -681,6 +681,10 @@ types! {
         /// Proto 1.7.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub interference: Option<Interference>,
+        /// When CLOCK_REALTIME stepped during the recording, monotonic ns. Wall-clock ages and
+        /// timestamp pairings near these are not to be trusted. Proto 1.7.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        pub realtime_steps: Vec<u64>,
     }
 
     /// Kernel counters over a recording, end minus start (design 14.9). Per CPU vectors are

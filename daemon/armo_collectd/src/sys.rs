@@ -4,6 +4,7 @@
 
 use std::ffi::CString;
 use std::io;
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
@@ -140,4 +141,76 @@ pub fn clock_ticks() -> u64 {
 pub fn cpu_ns() -> u64 {
     let stat = crate::model::procfs::stat(pid()).expect("this process exists");
     stat.cpu_ticks() * 1_000_000_000 / clock_ticks()
+}
+
+/// A timerfd that a step of CLOCK_REALTIME cancels (settimeofday, clock_settime, an NTP step).
+/// A slew moves CLOCK_REALTIME and CLOCK_MONOTONIC together and leaves it armed.
+pub struct RealtimeSteps(OwnedFd);
+
+impl RealtimeSteps {
+    pub fn new() -> io::Result<RealtimeSteps> {
+        // SAFETY: no pointer arguments.
+        let fd = unsafe {
+            libc::timerfd_create(libc::CLOCK_REALTIME, libc::TFD_NONBLOCK | libc::TFD_CLOEXEC)
+        };
+        if fd < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        // SAFETY: fd is a new descriptor this value owns from now on.
+        let s = RealtimeSteps(unsafe { OwnedFd::from_raw_fd(fd) });
+        s.arm()?;
+        Ok(s)
+    }
+
+    fn arm(&self) -> io::Result<()> {
+        let never = libc::itimerspec {
+            it_interval: libc::timespec {
+                tv_sec: 0,
+                tv_nsec: 0,
+            },
+            it_value: libc::timespec {
+                tv_sec: 1 << 33,
+                tv_nsec: 0,
+            },
+        };
+        let flags = libc::TFD_TIMER_ABSTIME | libc::TFD_TIMER_CANCEL_ON_SET;
+        // SAFETY: never is a valid itimerspec; the old value is not asked for.
+        let r = unsafe {
+            libc::timerfd_settime(self.0.as_raw_fd(), flags, &never, std::ptr::null_mut())
+        };
+        if r != 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(())
+    }
+
+    /// Whether CLOCK_REALTIME stepped since the last call.
+    pub fn stepped(&self) -> bool {
+        let mut expirations = 0u64;
+        // SAFETY: reads 8 bytes into a u64.
+        let n = unsafe {
+            libc::read(
+                self.0.as_raw_fd(),
+                (&raw mut expirations).cast(),
+                size_of::<u64>(),
+            )
+        };
+        let stepped = n < 0 && io::Error::last_os_error().raw_os_error() == Some(libc::ECANCELED);
+        if stepped {
+            self.arm().expect("re-arming a timerfd that armed before");
+        }
+        stepped
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn no_step_without_a_clock_set() {
+        let s = RealtimeSteps::new().unwrap();
+        assert!(!s.stepped());
+        assert!(!s.stepped());
+    }
 }

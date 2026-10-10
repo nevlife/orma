@@ -2242,6 +2242,15 @@
           },
           "type": "array"
         },
+        "realtime_steps": {
+          "description": "When CLOCK_REALTIME stepped during the recording, monotonic ns. Wall-clock ages and\ntimestamp pairings near these are not to be trusted. Proto 1.7.",
+          "items": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
         "ros": {
           "items": {
             "$ref": "#/$defs/ProcessRos"
