@@ -126,9 +126,14 @@ pub const STRING_SLOT: usize = 256;
 #[allow(unsafe_code)]
 mod pod {
     use super::*;
+    // SAFETY: repr(C) integers shared with the eBPF programs; any bit pattern is a value.
     unsafe impl aya::Pod for AggKey {}
+    // SAFETY: repr(C) integers shared with the eBPF programs; any bit pattern is a value.
     unsafe impl aya::Pod for AggVal {}
+    // SAFETY: repr(C) integers shared with the eBPF programs; any bit pattern is a value.
     unsafe impl aya::Pod for ThreadState {}
+    // SAFETY: repr(C) integers shared with the eBPF programs; any bit pattern is a value.
     unsafe impl aya::Pod for OffStart {}
+    // SAFETY: repr(C) integers shared with the eBPF programs; any bit pattern is a value.
     unsafe impl aya::Pod for SeenKey {}
 }

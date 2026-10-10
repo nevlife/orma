@@ -52,10 +52,11 @@ pub struct FakeShm {
     geometry: Geometry,
 }
 
-// The mapping is shared memory accessed only through atomics and the ring protocol.
+// SAFETY: the mapping is shared memory accessed only through atomics and the ring protocol.
 unsafe impl Send for FakeShm {}
 
 fn lock(file: &File, kind: i32, byte: u32) -> io::Result<()> {
+    // SAFETY: flock is plain data; zero is a valid value.
     let mut fl: libc::flock = unsafe { std::mem::zeroed() };
     fl.l_type = kind as libc::c_short;
     fl.l_whence = libc::SEEK_SET as libc::c_short;
@@ -144,25 +145,27 @@ impl FakeShm {
     fn write_bytes(&self, at: usize, bytes: &[u8]) {
         assert!(at + bytes.len() <= self.geometry.file_size());
         // SAFETY: in bounds of the mapping; the ring protocol keeps readers off these bytes.
-        unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), self.map.add(at), bytes.len()) }
+        unsafe {
+            std::ptr::copy_nonoverlapping(bytes.as_ptr(), self.map.wrapping_add(at), bytes.len())
+        }
     }
 
     fn u16_at(&self, at: usize) -> &AtomicU16 {
         assert!(at.is_multiple_of(2) && at + 2 <= self.geometry.file_size());
         // SAFETY: aligned, in bounds, and only ever accessed atomically while mapped.
-        unsafe { AtomicU16::from_ptr(self.map.add(at).cast()) }
+        unsafe { AtomicU16::from_ptr(self.map.wrapping_add(at).cast()) }
     }
 
     fn u32_at(&self, at: usize) -> &AtomicU32 {
         assert!(at.is_multiple_of(4) && at + 4 <= self.geometry.file_size());
         // SAFETY: as in u16_at.
-        unsafe { AtomicU32::from_ptr(self.map.add(at).cast()) }
+        unsafe { AtomicU32::from_ptr(self.map.wrapping_add(at).cast()) }
     }
 
     fn u64_at(&self, at: usize) -> &AtomicU64 {
         assert!(at.is_multiple_of(8) && at + 8 <= self.geometry.file_size());
         // SAFETY: as in u16_at.
-        unsafe { AtomicU64::from_ptr(self.map.add(at).cast()) }
+        unsafe { AtomicU64::from_ptr(self.map.wrapping_add(at).cast()) }
     }
 
     fn slot_at(&self, slot: usize) -> usize {

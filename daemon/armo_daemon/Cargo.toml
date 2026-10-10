@@ -23,5 +23,5 @@ serde_json = { workspace = true }
 [build-dependencies]
 aya-build = { workspace = true }
 
-[lints.rust]
-unsafe_code = "deny"
+[lints]
+workspace = true

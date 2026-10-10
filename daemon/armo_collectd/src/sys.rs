@@ -81,12 +81,9 @@ pub fn starttime(pid: u32) -> Option<u64> {
 
 pub fn physical_memory() -> u64 {
     // SAFETY: sysconf has no preconditions.
-    let (pages, size) = unsafe {
-        (
-            libc::sysconf(libc::_SC_PHYS_PAGES),
-            libc::sysconf(libc::_SC_PAGESIZE),
-        )
-    };
+    let pages = unsafe { libc::sysconf(libc::_SC_PHYS_PAGES) };
+    // SAFETY: as above.
+    let size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
     pages as u64 * size as u64
 }
 

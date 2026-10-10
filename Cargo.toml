@@ -35,6 +35,15 @@ schemars = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
+# armo_ebpf cannot take `unsafe_code = "deny"` and lists the unsafe lints itself.
+[workspace.lints.rust]
+unsafe_code = "deny"
+unsafe_op_in_unsafe_fn = "deny"
+
+[workspace.lints.clippy]
+undocumented_unsafe_blocks = "warn"
+multiple_unsafe_ops_per_block = "warn"
+
 [profile.release.package.armo-ebpf]
 debug = 2
 codegen-units = 1

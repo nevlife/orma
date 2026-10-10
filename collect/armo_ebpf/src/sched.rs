@@ -38,8 +38,9 @@ fn followed(tgid: u32) -> bool {
 /// shim keeps (its 16 bytes: `cur_cb`, `cur_src`, `cur_entry`), else the uprobe stack.
 fn current_callback(tid: u32) -> Option<(u64, u32, u32)> {
     if let Some(addr) = USER_WORDS.get_ptr(tid) {
-        // SAFETY: the entry is a plain u64; the user read is checked by the kernel.
+        // SAFETY: the entry is a plain u64.
         let addr = unsafe { *addr };
+        // SAFETY: the kernel checks the user address; a bad one returns an error.
         let Ok(words) = (unsafe { bpf_probe_read_user(addr as *const [u64; 2]) }) else {
             lost(LOST_USER_WORD);
             return None;

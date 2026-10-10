@@ -19,3 +19,7 @@ bench = false
 [lints.rust]
 # aya-build passes --cfg bpf_target_arch for the host the probes run on.
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(bpf_target_arch, values("x86_64"))'] }
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+undocumented_unsafe_blocks = "warn"

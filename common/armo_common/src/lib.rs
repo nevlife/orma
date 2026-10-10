@@ -138,7 +138,10 @@ mod plain {
     use super::shm::*;
 
     macro_rules! plain {
-        ($($t:ty),* $(,)?) => { $(unsafe impl Plain for $t {})* };
+        ($($t:ty),* $(,)?) => {
+            // SAFETY: generated repr(C) integer records; tests/layout.rs checks they tile.
+            $(unsafe impl Plain for $t {})*
+        };
     }
 
     plain!(
@@ -204,10 +207,16 @@ mod plain {
 #[allow(unsafe_code)]
 mod pod {
     use super::*;
+    // SAFETY: repr(C) integers shared with the eBPF programs; any bit pattern is a value.
     unsafe impl aya::Pod for CallbackKey {}
+    // SAFETY: repr(C) integers shared with the eBPF programs; any bit pattern is a value.
     unsafe impl aya::Pod for CallbackStart {}
+    // SAFETY: repr(C) integers shared with the eBPF programs; any bit pattern is a value.
     unsafe impl aya::Pod for FluxStart {}
+    // SAFETY: repr(C) integers shared with the eBPF programs; any bit pattern is a value.
     unsafe impl aya::Pod for FluxStartKey {}
+    // SAFETY: repr(C) integers shared with the eBPF programs; any bit pattern is a value.
     unsafe impl aya::Pod for CallbackStat {}
+    // SAFETY: repr(C) integers shared with the eBPF programs; any bit pattern is a value.
     unsafe impl aya::Pod for CallbackName {}
 }

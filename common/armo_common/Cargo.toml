@@ -18,5 +18,5 @@ path = "src/lib.rs"
 [dev-dependencies]
 cbindgen = { workspace = true }
 
-[lints.rust]
-unsafe_code = "deny"
+[lints]
+workspace = true

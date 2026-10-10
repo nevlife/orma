@@ -118,7 +118,7 @@ pub struct ShmFile {
     pub corrupt: Option<String>,
 }
 
-// The mapping is shared memory touched only through atomics and the ring protocol.
+// SAFETY: the mapping is shared memory touched only through atomics and the ring protocol.
 unsafe impl Send for ShmFile {}
 
 enum Open {
@@ -238,26 +238,28 @@ impl ShmFile {
     fn u16_at(&self, at: usize) -> &AtomicU16 {
         assert!(at.is_multiple_of(2) && at + 2 <= self.len);
         // SAFETY: aligned, in bounds, and accessed only atomically while mapped.
-        unsafe { AtomicU16::from_ptr(self.map.add(at).cast()) }
+        unsafe { AtomicU16::from_ptr(self.map.wrapping_add(at).cast()) }
     }
 
     fn u32_at(&self, at: usize) -> &AtomicU32 {
         assert!(at.is_multiple_of(4) && at + 4 <= self.len);
         // SAFETY: as in u16_at.
-        unsafe { AtomicU32::from_ptr(self.map.add(at).cast()) }
+        unsafe { AtomicU32::from_ptr(self.map.wrapping_add(at).cast()) }
     }
 
     fn u64_at(&self, at: usize) -> &AtomicU64 {
         assert!(at.is_multiple_of(8) && at + 8 <= self.len);
         // SAFETY: as in u16_at.
-        unsafe { AtomicU64::from_ptr(self.map.add(at).cast()) }
+        unsafe { AtomicU64::from_ptr(self.map.wrapping_add(at).cast()) }
     }
 
     fn copy(&self, at: usize, out: &mut [u8]) {
         assert!(at + out.len() <= self.len);
         // SAFETY: in bounds; the ring protocol keeps the writer off the bytes between tail and
         // head, which are the only ones copied.
-        unsafe { std::ptr::copy_nonoverlapping(self.map.add(at), out.as_mut_ptr(), out.len()) }
+        unsafe {
+            std::ptr::copy_nonoverlapping(self.map.wrapping_add(at), out.as_mut_ptr(), out.len())
+        }
     }
 
     fn store_header(&self, field: usize, value: u32) {
