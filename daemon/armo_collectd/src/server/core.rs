@@ -1504,11 +1504,14 @@ impl Core {
                 // The other kinds lose aggregate rows or attribution, not records. A program run
                 // the kernel skipped as recursive may have been a record.
                 let lost = w.lost["ring"] + w.lost.get("recursion").copied().unwrap_or(0);
-                if lost > 0 {
-                    for r in &mut self.active {
-                        if r.methods().contains(&Method::Uprobe) {
+                for r in &mut self.active {
+                    if r.methods().contains(&Method::Uprobe) {
+                        if lost > 0 {
                             r.add_lost("armod", lost, Method::Uprobe);
                         }
+                        let since = r.meta.started.mono_ns;
+                        let changes = w.probe_changes.iter().filter(|c| c.to_ns >= since);
+                        r.meta.probe_changes.extend(changes.cloned());
                     }
                 }
                 self.armod_window = Some(w);

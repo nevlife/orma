@@ -68,6 +68,7 @@ struct Window {
     max: HashMap<AggKey, u64>,
     /// Run time, run count and recursion misses at the last window.
     progs: HashMap<&'static str, (u64, u64, u64)>,
+    changes: Vec<ProbeChange>,
     lost: [u64; LOST_SLOTS_ALL as usize],
 }
 
@@ -213,6 +214,12 @@ impl Daemon {
         }
         self.housekeeping();
         self.k.take_attached();
+        let changes = self.k.take_changes();
+        if !changes.is_empty() {
+            for w in self.clients.values_mut().filter_map(|c| c.window.as_mut()) {
+                w.changes.extend(changes.iter().cloned());
+            }
+        }
         self.drain();
         let (_, attached) = self.k.applied();
         for c in self.clients.values_mut() {
@@ -424,6 +431,7 @@ impl Daemon {
                     max: HashMap::new(),
                     progs,
                     lost,
+                    changes: Vec::new(),
                 });
                 c.send(&ok(rid));
                 return;
@@ -717,6 +725,7 @@ impl Daemon {
                 lost: lost_map,
                 probes_missing: missing.clone(),
                 usage: Some(usage),
+                probe_changes: std::mem::take(&mut w.changes),
             });
             c.send(&m);
         }

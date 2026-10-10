@@ -406,6 +406,13 @@
           },
           "type": "array"
         },
+        "probe_changes": {
+          "description": "The attaches and detaches that ended since the last window. Proto 1.7.",
+          "items": {
+            "$ref": "#/$defs/ProbeChange"
+          },
+          "type": "array"
+        },
         "probes_missing": {
           "items": {
             "$ref": "#/$defs/ProbeMissing"
@@ -1892,6 +1899,49 @@
       ],
       "type": "object"
     },
+    "ProbeChange": {
+      "description": "One program attached to or detached from the points of one file (design 6.8): the\nkernel patched code and flushed TLBs on the CPUs then, monotonic ns.",
+      "properties": {
+        "attach": {
+          "type": "boolean"
+        },
+        "from_ns": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "pid": {
+          "description": "`None`: every process mapping the file.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "points": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "prog": {
+          "type": "string"
+        },
+        "to_ns": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "from_ns",
+        "to_ns",
+        "attach",
+        "prog",
+        "points"
+      ],
+      "type": "object"
+    },
     "ProbeMissing": {
       "properties": {
         "method": {
@@ -2235,6 +2285,13 @@
         },
         "owner": {
           "$ref": "#/$defs/Owner"
+        },
+        "probe_changes": {
+          "description": "armod's attaches and detaches during the recording. Proto 1.7.",
+          "items": {
+            "$ref": "#/$defs/ProbeChange"
+          },
+          "type": "array"
         },
         "probes_missing": {
           "items": {

@@ -164,5 +164,15 @@
   },
   "realtime_steps": [
     905000000000
+  ],
+  "probe_changes": [
+    {
+      "from_ns": 903000000000,
+      "to_ns": 904100000000,
+      "attach": false,
+      "prog": "sched_switch",
+      "pid": null,
+      "points": 1
+    }
   ]
 }

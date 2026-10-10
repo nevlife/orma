@@ -627,6 +627,21 @@ types! {
         /// armod's own CPU over the window and its RSS (design 6.8). Proto 1.4.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub usage: Option<ProcUse>,
+        /// The attaches and detaches that ended since the last window. Proto 1.7.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        pub probe_changes: Vec<ProbeChange>,
+    }
+
+    /// One program attached to or detached from the points of one file (design 6.8): the
+    /// kernel patched code and flushed TLBs on the CPUs then, monotonic ns.
+    pub struct ProbeChange {
+        pub from_ns: u64,
+        pub to_ns: u64,
+        pub attach: bool,
+        pub prog: String,
+        /// `None`: every process mapping the file.
+        pub pid: Option<u32>,
+        pub points: u32,
     }
 
     /// One table row's difference over a window (`armo_table_entry`, kinds `ARMO_AGG_*`). `tid`
@@ -685,6 +700,9 @@ types! {
         /// timestamp pairings near these are not to be trusted. Proto 1.7.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         pub realtime_steps: Vec<u64>,
+        /// armod's attaches and detaches during the recording. Proto 1.7.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        pub probe_changes: Vec<ProbeChange>,
     }
 
     /// Kernel counters over a recording, end minus start (design 14.9). Per CPU vectors are

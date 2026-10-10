@@ -132,7 +132,8 @@
     "agg_full": 0,
     "depth": 0,
     "user_word": 0,
-    "thread_full": 0
+    "thread_full": 0,
+    "recursion": 0
   },
   "probes_missing": [
     {
@@ -145,5 +146,15 @@
   "usage": {
     "cpu_pct": 0.4,
     "rss_bytes": 20971520
-  }
+  },
+  "probe_changes": [
+    {
+      "from_ns": 899100000000,
+      "to_ns": 899104000000,
+      "attach": true,
+      "prog": "rcl_publish",
+      "pid": 4021,
+      "points": 1
+    }
+  ]
 }

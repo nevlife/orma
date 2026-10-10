@@ -46,6 +46,7 @@ fn empty_armod_window(seq: u64) -> ArmodMessage {
         lost: [("ring".to_string(), 0)].into(),
         probes_missing: Vec::new(),
         usage: None,
+        probe_changes: Vec::new(),
     })
 }
 
@@ -234,9 +235,17 @@ fn armod_follows_selection_and_recordings_and_its_loss_leaves_a_gap() {
         }],
         bpf: Vec::new(),
         maps: Vec::new(),
-        lost: [("ring".to_string(), 2)].into(),
+        lost: [("ring".to_string(), 2), ("recursion".to_string(), 1)].into(),
         probes_missing: Vec::new(),
         usage: Some(usage.clone()),
+        probe_changes: vec![ProbeChange {
+            from_ns: 0,
+            to_ns: armo_collectd::sys::mono_ns(),
+            attach: true,
+            prog: "rcl_publish".into(),
+            pid: Some(TRACED),
+            points: 1,
+        }],
     });
     fake.send(Kind::Json, &serde_json::to_vec(&window).unwrap());
     until(|| {
@@ -270,8 +279,9 @@ fn armod_follows_selection_and_recordings_and_its_loss_leaves_a_gap() {
     assert_eq!(m.methods_by_pid[&TRACED.to_string()], Method::Uprobe);
     assert_eq!(m.counts[&format!("p:{TRACED}:0")].events, 4);
     assert!(!m.counts.keys().any(|k| k.contains(&OTHER.to_string())));
-    assert_eq!(m.drops.armod_ring, 2);
-    assert_eq!(m.counts["armod"].lost, 2);
+    assert_eq!(m.drops.armod_ring, 3);
+    assert_eq!(m.counts["armod"].lost, 3);
+    assert_eq!(m.probe_changes.len(), 1);
     assert_eq!(m.gaps.len(), 1);
     assert_eq!(
         (m.gaps[0].source.as_str(), m.gaps[0].reason.as_str()),

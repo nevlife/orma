@@ -19,6 +19,7 @@ use std::{
 use armo_common::{
     CallbackKey, CallbackName, CallbackStat, LOST_NAME_FULL, LOST_STAT_FULL, bpf::*,
 };
+use armo_proto::msg::ProbeChange;
 use aya::{
     Ebpf, include_bytes_aligned,
     maps::{Array, HashMap as BpfHashMap, MapData, RingBuf},
@@ -61,6 +62,20 @@ type LinkKey = (usize, FileId, Scope);
 
 /// Links of one program on one file that would both fire for the same process: one for every
 /// process and one for a pid. Links for two pids never meet.
+fn change(attach: bool, prog: &str, scope: Scope, points: usize, from_ns: u64) -> ProbeChange {
+    ProbeChange {
+        from_ns,
+        to_ns: sys::mono_ns(),
+        attach,
+        prog: prog.to_string(),
+        pid: match scope {
+            Scope::All => None,
+            Scope::Pid(p) => Some(p),
+        },
+        points: points as u32,
+    }
+}
+
 fn overlap(a: &LinkKey, b: &LinkKey) -> bool {
     (a.0, a.1) == (b.0, b.1) && a.2 != b.2 && (a.2 == Scope::All || b.2 == Scope::All)
 }
@@ -74,6 +89,7 @@ struct Reaper(Arc<(Mutex<Reaping>, Condvar)>);
 
 #[derive(Default)]
 struct Reaping {
+    changes: Vec<ProbeChange>,
     queue: VecDeque<(LinkKey, Vec<UProbeLink>)>,
     dropping: Option<LinkKey>,
     /// Attaches queued or running. The kernel takes uprobes on and off one at a time, so a drop
@@ -99,8 +115,11 @@ impl Reaper {
                 };
                 s.dropping = Some(key);
                 drop(s);
+                let (from, n) = (sys::mono_ns(), links.len());
                 drop(links);
                 s = lock.lock().expect("reaper lock");
+                s.changes
+                    .push(change(false, PROGS[key.0].name, key.2, n, from));
                 s.dropping = None;
                 cv.notify_all();
             }
@@ -116,6 +135,14 @@ impl Reaper {
             .checked_add_signed(change)
             .expect("as many done as queued");
         cv.notify_all();
+    }
+
+    fn log(&self, c: ProbeChange) {
+        self.0.0.lock().expect("reaper lock").changes.push(c);
+    }
+
+    fn take_changes(&self) -> Vec<ProbeChange> {
+        std::mem::take(&mut self.0.0.lock().expect("reaper lock").changes)
     }
 
     fn send(&self, key: LinkKey, links: Vec<UProbeLink>) {
@@ -168,14 +195,18 @@ impl Reaper {
             if k == key {
                 mine = Some(links);
             } else {
-                other.push(links);
+                other.push((k, links));
             }
         }
         while s.dropping.as_ref().is_some_and(same) {
             s = cv.wait(s).expect("reaper lock");
         }
         drop(s);
-        drop(other);
+        for (k, links) in other {
+            let (from, n) = (sys::mono_ns(), links.len());
+            drop(links);
+            self.log(change(false, PROGS[k.0].name, k.2, n, from));
+        }
         mine
     }
 }
@@ -196,8 +227,16 @@ fn attacher(ebpf: Arc<Mutex<Ebpf>>, reaper: Reaper, jobs: Receiver<Job>, done: S
     for j in jobs {
         let result = match reaper.take_back(j.key) {
             Some(links) => Ok(links),
-            None => attach(&mut ebpf.lock().expect("ebpf lock"), &j)
-                .map_err(|e| format!("attach {}: {e:?}", PROGS[j.key.0].name)),
+            None => {
+                let from = sys::mono_ns();
+                let name = PROGS[j.key.0].name;
+                let r = attach(&mut ebpf.lock().expect("ebpf lock"), &j)
+                    .map_err(|e| format!("attach {name}: {e:?}"));
+                if let Ok(links) = &r {
+                    reaper.log(change(true, name, j.key.2, links.len(), from));
+                }
+                r
+            }
         };
         reaper.attaching(-1);
         if done.send((j.key, result)).is_err() {
@@ -884,6 +923,11 @@ impl Kernel {
         }
     }
 
+    /// The attaches and detaches that ended since the last call.
+    pub fn take_changes(&self) -> Vec<ProbeChange> {
+        self.reaper.take_changes()
+    }
+
     /// The number of `apply` calls so far, and the last one whose links have all been tried.
     pub fn applied(&self) -> (u64, u64) {
         let attached = self
@@ -975,13 +1019,17 @@ impl Kernel {
             // Waits for an attach in progress, only when the scheduler probes turn on or off.
             let mut ebpf = self.ebpf.lock().expect("ebpf lock");
             for name in SCHED_PROGS {
+                let from = sys::mono_ns();
                 let t: &mut TracePoint = ebpf
                     .program_mut(name)
                     .expect("loaded")
                     .try_into()
                     .expect("a tracepoint");
                 match t.attach("sched", name) {
-                    Ok(id) => self.sched_links.push(id),
+                    Ok(id) => {
+                        self.sched_links.push(id);
+                        self.reaper.log(change(true, name, Scope::All, 1, from));
+                    }
                     Err(e) => self.notes.push(Note {
                         warn: true,
                         text: format!("attach {name}: {e}"),
@@ -999,7 +1047,9 @@ impl Kernel {
                     .expect("loaded")
                     .try_into()
                     .expect("a tracepoint");
+                let from = sys::mono_ns();
                 let _ = t.detach(id);
+                self.reaper.log(change(false, name, Scope::All, 1, from));
             }
         }
     }

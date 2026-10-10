@@ -363,6 +363,7 @@ pub fn start(options: RecordOptions, cx: Context<'_>) -> Result<Active, String> 
         system_end: BTreeMap::new(),
         interference: None,
         realtime_steps: Vec::new(),
+        probe_changes: Vec::new(),
     };
     let mut active = Active {
         id: cx.id,
