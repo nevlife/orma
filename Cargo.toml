@@ -1,9 +1,20 @@
 [workspace]
 resolver = "3"
 # Every crate of the design (17), listed once here; a work package then edits only its own.
-members = ["armo_common", "armo_proto", "armo_ebpf", "armo_daemon", "armo_collectd"]
+members = [
+    "common/armo_common",
+    "common/armo_proto",
+    "collect/armo_ebpf",
+    "daemon/armo_daemon",
+    "daemon/armo_collectd",
+]
 # armo_ebpf builds only for the BPF target, through armo_daemon's build script.
-default-members = ["armo_common", "armo_proto", "armo_daemon", "armo_collectd"]
+default-members = [
+    "common/armo_common",
+    "common/armo_proto",
+    "daemon/armo_daemon",
+    "daemon/armo_collectd",
+]
 
 [workspace.package]
 version = "0.0.0"
@@ -12,8 +23,8 @@ license = "MIT"
 publish = false
 
 [workspace.dependencies]
-armo-common = { path = "armo_common", default-features = false }
-armo-proto = { path = "armo_proto" }
+armo-common = { path = "common/armo_common", default-features = false }
+armo-proto = { path = "common/armo_proto" }
 aya = { version = "0.14.0", default-features = false }
 aya-build = { version = "0.2.0", default-features = false }
 aya-ebpf = { version = "0.2.1", default-features = false }

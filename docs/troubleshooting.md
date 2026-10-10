@@ -10,7 +10,7 @@
 | `armod: denied` | 그룹 `armo`가 아니다. `id`에 `armo`가 없으면 모든 세션에서 로그아웃한 뒤 다시 로그인한다. 이미 떠 있던 armo-collectd는 예전 그룹을 가지므로 `pkill -x armo-collectd`로 끝낸다. 다음 `armo` 명령이 다시 띄운다 |
 | `armod: lost` | armod가 죽었거나 재시작됐다. 서비스는 실패하면 다시 뜨고(`Restart=on-failure`) armo-collectd가 다시 붙는다. `journalctl -u armod`로 이유를 본다 |
 | `sudo armod`가 "another armod serves it"로 끝난다 | 서비스가 떠 있다. 빌드 트리의 armod를 쓰려면 `sudo systemctl stop armod` 뒤에 띄운다 |
-| 고친 armod가 반영되지 않는다 | 서비스는 `/usr/local/sbin/armod` 사본을 쓴다. `armo_daemon/systemd/install.sh` 뒤에 `sudo systemctl restart armod` |
+| 고친 armod가 반영되지 않는다 | 서비스는 `/usr/local/sbin/armod` 사본을 쓴다. `daemon/armo_daemon/systemd/install.sh` 뒤에 `sudo systemctl restart armod` |
 | 로그에 `the scheduler probes stay off` | tracefs를 읽지 못했다. 서비스 유닛의 권한에 `CAP_DAC_READ_SEARCH`가 있는지 본다 |
 | 방식과 Hz가 `-`다 | `--pid` 없이 모니터링하면 uprobe를 붙이지 않는다([usage.md](usage.md) 4절). `--pid`로 고른다. 그래도 없으면 `journalctl -u armod`에 `attached to` 줄이 있는지 본다. 없으면 다른 사용자 프로세스의 `/proc/<pid>/maps`를 못 읽은 것이다(`CAP_SYS_PTRACE`) |
 | `bpf stats`가 fail | `BPF_ENABLE_STATS`가 거부됐다(`CAP_SYS_ADMIN`). eBPF 실행 시간이 0으로 남는다 |

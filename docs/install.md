@@ -36,7 +36,7 @@ source install/setup.bash
 워크스페이스를 source한 셸에서 돌린다.
 
 ```bash
-src/armo/armo_daemon/systemd/install.sh
+src/armo/daemon/armo_daemon/systemd/install.sh
 sudo systemctl enable --now armod
 ```
 
@@ -73,7 +73,7 @@ armo selfcheck         # fail이 없으면 종료 코드 0
 서비스는 복사한 실행 파일을 쓴다. armod를 다시 빌드하면 복사와 재시작을 다시 한다.
 
 ```bash
-src/armo/armo_daemon/systemd/install.sh
+src/armo/daemon/armo_daemon/systemd/install.sh
 sudo systemctl restart armod
 ```
 

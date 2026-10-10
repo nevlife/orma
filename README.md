@@ -4,20 +4,23 @@ Tracing, monitoring and benchmarking for ROS 2 systems, including those that car
 
 How to install, run and troubleshoot armo, in Korean: [`docs/install.md`](docs/install.md), [`docs/usage.md`](docs/usage.md), [`docs/troubleshooting.md`](docs/troubleshooting.md).
 
+The colcon packages and crates are grouped by where they run; colcon and cargo find them at any depth, so the package names do not carry the group.
+
 | Directory | Contents |
 | --- | --- |
-| `armo_common` | Map keys and values shared by the eBPF programs and `armod`; the event records every collection method writes and the LD_PRELOAD shared memory layout (`no_std`) |
-| `armo_proto` | Frames, JSON messages and their schema (`schema/v1.json`), golden messages, positioned records, and test doubles: `armo-fake-server` and a fake shared memory writer |
-| `armo_preload/include/armo_preload` | C headers: `armo_shm.h` and `armo_events.h`, generated from `armo_common` by cbindgen, and `armo_emit.h`, the functions a backend defines |
-| `armo_preload` | `libarmo_preload.so`, the LD_PRELOAD backend: it intercepts the ROS, rcl, rclcpp and flux2 functions in the process and writes records and aggregates to its shared memory file (C) |
-| `armo_collectd` | `armo-collectd`, the per-user daemon that collects from armod, the shared memory files and LTTng, serves the clients and owns the recordings; `armo-analyze` |
-| `armo_rclpy` | Calls the `ros_trace_*` functions rclpy does not call, loaded at Python start-up through `armo run` and `ArmoTrace` |
-| `armo_cli` | The `armo` command, the `ArmoTrace` launch action and the Python client of armo-collectd |
-| `rqt_armo` | The rqt plugin: a client of armo-collectd |
-| `armo_ebpf` | The eBPF programs (Rust, aya-ebpf, pinned nightly) |
-| `armo_daemon` | `armod` (Rust stable, aya), the colcon package; `test/accuracy.py` and its callers and nodes |
-| `armo_lttng` | `libarmo_lttng.so`, the LTTng backend: armo_preload's interception code with LTTng-UST providers `armo`, `flux2` and, on Humble, `ros2` (C) |
-| `armo_integration` | Integration tests against the real armod, armo-collectd, shim and LTTng backend, their test nodes (rclcpp and rclpy chains, CPU burners), and `cost/`, the tool that measures each method's cost under ROS 2 load; `scripts/run_root_tests.sh` runs the tests |
+| `collect/armo_ebpf` | The eBPF programs (Rust, aya-ebpf, pinned nightly) |
+| `collect/armo_preload` | `libarmo_preload.so`, the LD_PRELOAD backend: it intercepts the ROS, rcl, rclcpp and flux2 functions in the process and writes records and aggregates to its shared memory file (C). `include/armo_preload` holds the C headers: `armo_shm.h` and `armo_events.h`, generated from `armo_common` by cbindgen, and `armo_emit.h`, the functions a backend defines |
+| `collect/armo_lttng` | `libarmo_lttng.so`, the LTTng backend: armo_preload's interception code with LTTng-UST providers `armo`, `flux2` and, on Humble, `ros2` (C) |
+| `collect/armo_rclpy` | Calls the `ros_trace_*` functions rclpy does not call, loaded at Python start-up through `armo run` and `ArmoTrace` |
+| `daemon/armo_daemon` | `armod` (Rust stable, aya), the colcon package; `systemd/`, the service files; `test/accuracy.py` and its callers and nodes |
+| `daemon/armo_collectd` | `armo-collectd`, the per-user daemon that collects from armod, the shared memory files and LTTng, serves the clients and owns the recordings; `armo-analyze` |
+| `client/armo_cli` | The `armo` command, the `ArmoTrace` launch action and the Python client of armo-collectd |
+| `client/rqt_armo` | The rqt plugin: a client of armo-collectd |
+| `common/armo_common` | Map keys and values shared by the eBPF programs and `armod`; the event records every collection method writes and the LD_PRELOAD shared memory layout (`no_std`) |
+| `common/armo_proto` | Frames, JSON messages and their schema (`schema/v1.json`), golden messages, positioned records, and test doubles: `armo-fake-server` and a fake shared memory writer |
+| `integration` | The package `armo_integration`: integration tests against the real armod, armo-collectd, shim and LTTng backend, their test nodes (rclcpp and rclpy chains, CPU burners), and `cost/`, the tool that measures each method's cost under ROS 2 load; `scripts/run_root_tests.sh` runs the tests |
+| `docs` | How to install, run and troubleshoot armo (Korean) |
+| `scripts` | Header generation and the pre-commit checks |
 
 ## Building
 
@@ -41,7 +44,7 @@ The probes need `CAP_BPF` and `CAP_PERFMON`; the eBPF run-time statistics also n
 sudo install/armo_daemon/bin/armod [--socket /run/armo/armod.sock] [--group armo]
 ```
 
-To run armod as a system service, as the user `armo` with only the capabilities it needs (`CAP_BPF`, `CAP_PERFMON`, `CAP_SYS_ADMIN`, plus `CAP_SYS_PTRACE` for other users' `/proc/<pid>/maps` and `CAP_DAC_READ_SEARCH` for tracefs), run `armo_daemon/systemd/install.sh` from a shell that sourced the workspace, then `sudo systemctl enable --now armod`. The script copies armod to `/usr/local/sbin`, so run it again and restart the service after a rebuild. It adds you to the group `armo`, which applies from your next login.
+To run armod as a system service, as the user `armo` with only the capabilities it needs (`CAP_BPF`, `CAP_PERFMON`, `CAP_SYS_ADMIN`, plus `CAP_SYS_PTRACE` for other users' `/proc/<pid>/maps` and `CAP_DAC_READ_SEARCH` for tracefs), run `daemon/armo_daemon/systemd/install.sh` from a shell that sourced the workspace, then `sudo systemctl enable --now armod`. The script copies armod to `/usr/local/sbin`, so run it again and restart the service after a rebuild. It adds you to the group `armo`, which applies from your next login.
 
 `armo-collectd` asks it for probe sets per process (`discovery` on every process; `hot`, `rclcpp_symbols`, `bandwidth` and `sched` on the selected ones), for the records of some processes and for a window of aggregates. When the connection closes, armod takes away what that connection asked for. Without the group armod does not start.
 
@@ -92,7 +95,7 @@ A program that links flux2 statically calls the functions directly and is not se
 `pre-commit run --all-files`, and after a build, as a user with sudo, in a shell that has sourced the workspace:
 
 ```bash
-armo_daemon/test/accuracy.py [--armod PATH] [--only CASE]... [--humble]
+daemon/armo_daemon/test/accuracy.py [--armod PATH] [--only CASE]... [--humble]
 ```
 
 `accuracy.py` starts armod on a private socket, talks to it as armo-collectd does, and fails unless every record and aggregate row matches what the test processes did:
@@ -108,13 +111,13 @@ armo_daemon/test/accuracy.py [--armod PATH] [--only CASE]... [--humble]
 `colcon test --packages-select armo_lttng` (with a private session daemon each):
 
 - `lttng_events`: every ROS and flux2 function called a known number of times arrives as often as its armo or flux2 event, and as often again as a ros2 event;
-- `lttng_flux2`: the flux2 caller (`armo_daemon/test/flux2_caller.c`) on the installed flux2;
+- `lttng_flux2`: the flux2 caller (`daemon/armo_daemon/test/flux2_caller.c`) on the installed flux2;
 - `lttng_agreement`: a C++ pair, an rclpy pair with `armo_rclpy` and the flux2 caller, both libraries in each process, recorded by a real armo-collectd with methods `preload` and `lttng` at once; every event count in the window is the same;
 - `lttng_lifecycle`: a recording outlives its killed client; a burst's kept and discarded events add up to the calls; after armo-collectd or armo-collectd and its guard are killed the session daemon is gone and the recording truncated; a running process registers again with the next daemon.
 
-`test/humble_agreement.py IMAGE HUMBLE_WS` runs the agreement in a Humble container (LTTng there, LD_PRELOAD read by the host's armo-collectd).
+`collect/armo_lttng/test/humble_agreement.py IMAGE HUMBLE_WS` runs the agreement in a Humble container (LTTng there, LD_PRELOAD read by the host's armo-collectd).
 
-`cargo test` (or `scripts/cargo.sh test`) also checks the contracts: the committed C headers, `schema/v1.json` and golden frames against what the code generates now (`scripts/gen_headers.sh` rewrites them), every struct's field offsets in C against Rust, `armo_emit.h` against the event catalog, and every golden message through its Rust type and through `armo_proto/test/read_golden.py`, which validates it against the schema (`python3-jsonschema`).
+`cargo test` (or `scripts/cargo.sh test`) also checks the contracts: the committed C headers, `schema/v1.json` and golden frames against what the code generates now (`scripts/gen_headers.sh` rewrites them), every struct's field offsets in C against Rust, `armo_emit.h` against the event catalog, and every golden message through its Rust type and through `common/armo_proto/test/read_golden.py`, which validates it against the schema (`python3-jsonschema`).
 
 ## License
 
