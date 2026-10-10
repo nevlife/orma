@@ -618,6 +618,7 @@ fn live(pid: u32, fqn: &str) -> (Process, Node) {
         exited: false,
         cold: false,
         overflow: None,
+        flux2_gpu_wedged: None,
     };
     let node = Node {
         id: format!("n:{pid}:0:a0"),

@@ -173,6 +173,9 @@ pub enum E {
         channel: u64,
         count: u32,
     },
+    GpuWedged {
+        result: i32,
+    },
     SchedSwitch {
         next_tid: u32,
         cpu: u32,
@@ -456,6 +459,9 @@ pub fn decode(r: &Record<'_>) -> Option<E> {
                 count: p.count,
             }
         }
+        ARMO_EV_FLUX2_GPU_WEDGED => E::GpuWedged {
+            result: r.payload::<armo_ev_flux2_gpu_wedged>().result,
+        },
         ARMO_EV_SCHED_SWITCH => {
             let p: armo_ev_sched_switch = r.payload();
             E::SchedSwitch {

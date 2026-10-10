@@ -162,6 +162,7 @@ static bool init_event(uint16_t event)
     case ARMO_EV_CALLBACK_CODE:
     case ARMO_EV_FLUX2_CHANNEL_INIT:
     case ARMO_EV_FLUX2_ENDPOINT_INIT:
+    case ARMO_EV_FLUX2_GPU_WEDGED:
       return true;
     default:
       return false;
@@ -361,6 +362,7 @@ STRINGS(
 PLAIN(flux2_py_gil, ARMO_EV_FLUX2_PY_GIL, armo_ev_flux2_py_gil)
 PLAIN(flux2_py_ready, ARMO_EV_FLUX2_PY_READY, armo_ev_flux2_py_ready)
 PLAIN(flux2_record_drop, ARMO_EV_FLUX2_RECORD_DROP, armo_ev_flux2_record_drop)
+PLAIN(flux2_gpu_wedged, ARMO_EV_FLUX2_GPU_WEDGED, armo_ev_flux2_gpu_wedged)
 
 void armo_emit_rclcpp_executor_get_next_ready(void)
 {

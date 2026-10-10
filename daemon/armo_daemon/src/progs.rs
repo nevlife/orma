@@ -118,6 +118,12 @@ pub const PROGS: &[Prog] = &[
         Discovery,
         Sym::Name("flux2_trace_endpoint_init"),
     ),
+    p(
+        "flux2_gpu_wedged",
+        Lib::Flux2,
+        Discovery,
+        Sym::Name("flux2_trace_gpu_wedged"),
+    ),
     // Hot: per message and per callback, the selected processes only.
     tp("rclcpp_publish", Hot),
     tp("rclcpp_intra_publish", Hot),

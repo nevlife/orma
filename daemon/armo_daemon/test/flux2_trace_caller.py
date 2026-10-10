@@ -109,7 +109,10 @@ CALLS = [
         14,
         {"channel": CH, "ticket": 0, "count": 5, "reason": 0},
     ),
+    ("gpu_wedged", [I32(700)], 1, {"result": 700}),
 ]
+# A flux2 build from before GPU wedging has no gpu_wedged.
+CALLS = [c for c in CALLS if hasattr(lib, "flux2_trace_" + c[0])]
 
 print(os.getpid(), flush=True)
 sys.stdin.readline()

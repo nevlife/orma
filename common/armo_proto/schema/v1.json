@@ -2018,6 +2018,14 @@
         "exited": {
           "type": "boolean"
         },
+        "flux2_gpu_wedged": {
+          "description": "The `CUresult` that wedged the process's GPU (`flux2_trace_gpu_wedged`); its GPU\nchannels refuse claims, loans and takes from then on. Proto 1.7.",
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "id": {
           "type": "string"
         },

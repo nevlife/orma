@@ -50,7 +50,7 @@ To run armod as a system service, as the user `armo` with only the capabilities 
 
 | Set | Attaches to |
 | --- | --- |
-| `discovery` | the init, registration and fini tracepoints of `libtracetools.so`, `rcl_timer_fini` in `librcl.so`, flux2's `channel_init` and `endpoint_init` |
+| `discovery` | the init, registration and fini tracepoints of `libtracetools.so`, `rcl_timer_fini` in `librcl.so`, flux2's `channel_init`, `endpoint_init` and `gpu_wedged` (a flux2 build from before GPU wedging lacks the last, and `probes_missing` says so) |
 | `hot` | publish, take, callback, executor and rmw service tracepoints, `rcl_wait` entry and return, the other `flux2_trace_*` functions |
 | `rclcpp_symbols` | rclcpp's C++ functions that put callbacks in groups and groups in executors, and the intra-process wiring, found by the front of the mangled name for rclcpp 16 or 28 and later |
 | `bandwidth` | the serialized size in Fast DDS (`TypeSupport::serialize`) and Cyclone DDS (`serdata_rmw_from_sample`, only with the dbgsym package) |

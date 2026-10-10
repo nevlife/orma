@@ -131,6 +131,7 @@ struct Proc {
     rss: Option<u64>,
     pss: Option<u64>,
     pss_at: u64,
+    gpu_wedged: Option<i32>,
     nodes: BTreeSet<NodeIx>,
 }
 

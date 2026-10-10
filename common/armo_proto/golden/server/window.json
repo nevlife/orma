@@ -57,7 +57,8 @@
       "threads": [],
       "nodes": [],
       "exited": true,
-      "cold": true
+      "cold": true,
+      "flux2_gpu_wedged": 700
     }
   ],
   "threads": [

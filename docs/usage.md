@@ -132,7 +132,7 @@ armo top node --exclude '/rviz.*'
 
 | 보기 | 열 |
 | --- | --- |
-| `proc` | pid, comm, 방식, CPU%, RSS, PSS, 공용 CPU%(노드에 나누지 못한 몫), 끝남. 아래에 armo 자기 비용 한 줄 |
+| `proc` | pid, comm, 방식, CPU%, RSS, PSS, 공용 CPU%(노드에 나누지 못한 몫), 끝남. 아래에 armo 자기 비용 한 줄. flux2가 GPU를 wedged로 표시한 프로세스는 CUresult와 함께 경고 한 줄이 붙는다. 그 뒤로 GPU 채널의 claim, loan, take는 실패하고 토픽의 발행 버림으로 센다 |
 | `node` | 노드 이름, pid, CPU%, CPU 출처, busy%(벽시계), 콜백 Hz |
 | `cb` | 콜백, 노드, pid, Hz, 기대 Hz, 실행 시간 p99, p99.9, max, p50, dispatch 대기 p99 |
 | `topic` | 토픽, 전송(`ros`, `flux`, `flux2`), 발행 Hz, 기대 Hz, 대역폭, 버림, 홉 지연 p99, p99.9, max, p50 |

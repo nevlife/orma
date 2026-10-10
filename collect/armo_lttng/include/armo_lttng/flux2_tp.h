@@ -146,6 +146,10 @@ LTTNG_UST_TRACEPOINT_EVENT(
                           lttng_ust_field_integer(uint32_t, count, count_arg)
                             lttng_ust_field_integer(int32_t, reason, reason_arg)))
 
+LTTNG_UST_TRACEPOINT_EVENT(
+  flux2, gpu_wedged, LTTNG_UST_TP_ARGS(int32_t, result_arg),
+  LTTNG_UST_TP_FIELDS(lttng_ust_field_integer(int32_t, result, result_arg)))
+
 #endif  // ARMO_FLUX2_TP_H
 
 #include <lttng/tracepoint-event.h>

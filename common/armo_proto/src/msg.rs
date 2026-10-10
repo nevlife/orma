@@ -401,6 +401,10 @@ types! {
         /// LD_PRELOAD processes only (design 13.2).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub overflow: Option<Overflow>,
+        /// The `CUresult` that wedged the process's GPU (`flux2_trace_gpu_wedged`); its GPU
+        /// channels refuse claims, loans and takes from then on. Proto 1.7.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub flux2_gpu_wedged: Option<i32>,
     }
 
     /// What the preload shim could not take, counted since it made its file.

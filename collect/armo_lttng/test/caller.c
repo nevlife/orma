@@ -117,6 +117,7 @@ int main(int argc, char ** argv)
     flux2_trace_py_gil(0);
     flux2_trace_py_ready(H(i), 7 + i);
     flux2_trace_record_drop(H(i), 0, 3, 0);
+    flux2_trace_gpu_wedged(700);
 #endif
   }
 
@@ -166,7 +167,7 @@ int main(int argc, char ** argv)
   const char * flux2[] = {
     "channel_init",  "claim",   "loan",     "loan_end",    "commit",         "take",
     "release",       "refused", "wait",     "wake",        "callback_start", "callback_end",
-    "endpoint_init", "py_gil",  "py_ready", "record_drop",
+    "endpoint_init", "py_gil",  "py_ready", "record_drop", "gpu_wedged",
   };
   for (size_t i = 0; i < sizeof flux2 / sizeof flux2[0]; i++) {
     char name[96];

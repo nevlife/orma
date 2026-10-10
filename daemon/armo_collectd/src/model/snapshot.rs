@@ -396,6 +396,7 @@ impl Model {
                 cpu_pct: cpu.map(|c| pct(c, window_ns)),
                 rss_bytes: p.rss,
                 pss_bytes: p.pss,
+                flux2_gpu_wedged: p.gpu_wedged,
                 shared_cpu_pct: cpu
                     .filter(|_| self.hot.contains(pid))
                     .map(|c| pct(c.saturating_sub(nodes_sum), window_ns)),

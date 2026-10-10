@@ -194,3 +194,9 @@ FLUX2_POINT(
     .channel = ARMO_U64(channel), .ticket = ticket, .count = count, .reason = reason};
   armo_emit_flux2_record_drop(&ev);
 }
+
+FLUX2_POINT(gpu_wedged, ARMO_EV_FLUX2_GPU_WEDGED, (int32_t result), (result))
+{
+  armo_ev_flux2_gpu_wedged ev = {.result = result};
+  armo_emit_flux2_gpu_wedged(&ev);
+}

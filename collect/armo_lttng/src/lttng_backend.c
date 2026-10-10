@@ -319,6 +319,11 @@ void armo_emit_flux2_record_drop(const armo_ev_flux2_record_drop * ev)
   lttng_ust_tracepoint(flux2, record_drop, PTR(ev->channel), ev->ticket, ev->count, ev->reason);
 }
 
+void armo_emit_flux2_gpu_wedged(const armo_ev_flux2_gpu_wedged * ev)
+{
+  lttng_ust_tracepoint(flux2, gpu_wedged, ev->result);
+}
+
 void armo_backend_missing(uint16_t event)
 {
   lttng_ust_tracepoint(armo, missing, event);

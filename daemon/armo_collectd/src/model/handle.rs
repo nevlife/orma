@@ -312,6 +312,7 @@ impl Model {
                     }
                 }
             }
+            E::GpuWedged { result } => self.proc_mut(pid).gpu_wedged = Some(result),
             E::RecordDrop { channel, count } => {
                 if let Some(topic) = self.channels.get(&(pid, channel)).map(|c| c.topic) {
                     *self.flux2_win(topic).drop_record.get_or_insert(0) += u64::from(count);

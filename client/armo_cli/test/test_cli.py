@@ -140,7 +140,9 @@ def test_top_prints_only_its_view(fake, env, view):
 def test_top_proc_warns_of_overflow(fake, env):
     warnings = [line for line in top_lines("proc") if line.startswith("warning:")]
     assert warnings == [
-        "warning: pid 4021 (camera_node): 3 samples not aggregated (thread table full)\n"
+        "warning: pid 4021 (camera_node): 3 samples not aggregated (thread table full)\n",
+        "warning: pid 5100 (listener): flux2 GPU wedged (CUresult 700); its GPU channels refuse "
+        "claims, loans and takes\n",
     ]
 
 
@@ -163,7 +165,7 @@ def test_overflow_warning_only_when_nonzero(overflow, expected, capsys):
     window["processes"][0]["overflow"] = overflow
     print_processes(window)
     out = capsys.readouterr().out.splitlines()
-    assert [line for line in out if line.startswith("warning:")] == expected
+    assert [line for line in out if line.startswith("warning: pid 4021")] == expected
 
 
 def test_top_needs_a_view(fake, env, capsys):

@@ -7,14 +7,14 @@
 #define TRACE __attribute__((visibility("default"), noinline))
 
 // Calls that reached each function, so that no two bodies are the same and get merged.
-static uint64_t counts[16];
+static uint64_t counts[17];
 
 #define BODY(tag) __atomic_fetch_add(&counts[tag], 1, __ATOMIC_RELAXED)
 
 TRACE uint64_t stub_calls(void)
 {
   uint64_t n = 0;
-  for (int i = 0; i < 16; i++) n += counts[i];
+  for (int i = 0; i < 17; i++) n += counts[i];
   return n;
 }
 
@@ -130,6 +130,17 @@ TRACE void flux2_trace_record_drop(
 {
   (void)channel, (void)ticket, (void)count, (void)reason;
   BODY(15);
+}
+
+TRACE void flux2_trace_gpu_wedged(int32_t result)
+{
+  (void)result;
+  BODY(16);
+}
+
+TRACE void stub_wedge(int32_t result)
+{
+  flux2_trace_gpu_wedged(result);
 }
 
 #define CH ((const void *)0xC0)

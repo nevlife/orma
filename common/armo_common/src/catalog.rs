@@ -78,6 +78,7 @@ pub const fn init(event: u16) -> bool {
             | ARMO_EV_CALLBACK_CODE
             | ARMO_EV_FLUX2_CHANNEL_INIT
             | ARMO_EV_FLUX2_ENDPOINT_INIT
+            | ARMO_EV_FLUX2_GPU_WEDGED
     )
 }
 
@@ -525,6 +526,13 @@ pub const CATALOG: &[EventInfo] = &[
         ARMO_EV_FLUX2_RECORD_DROP,
         "flux2_record_drop",
         armo_ev_flux2_record_drop,
+        0,
+        true
+    ),
+    ev!(
+        ARMO_EV_FLUX2_GPU_WEDGED,
+        "flux2_gpu_wedged",
+        armo_ev_flux2_gpu_wedged,
         0,
         true
     ),

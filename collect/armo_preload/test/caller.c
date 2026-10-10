@@ -419,13 +419,16 @@ struct flux2_tally
   uint64_t commits;
   uint64_t last_stamp;
   int strings_ok;
+  int32_t wedged;
 };
 
 static void flux2_one(const armo_record * r, void * arg)
 {
   struct flux2_tally * t = arg;
-  if (r->event < ARMO_EV_FLUX2_CHANNEL_INIT || r->event > ARMO_EV_FLUX2_RECORD_DROP) return;
+  if (r->event < ARMO_EV_FLUX2_CHANNEL_INIT || r->event > ARMO_EV_FLUX2_GPU_WEDGED) return;
   t->events++;
+  if (r->event == ARMO_EV_FLUX2_GPU_WEDGED)
+    t->wedged = ((const armo_ev_flux2_gpu_wedged *)(r + 1))->result;
   if (r->event == ARMO_EV_FLUX2_COMMIT) {
     t->commits++;
     t->last_stamp = ((const armo_ev_flux2_commit *)(r + 1))->stamp;
@@ -446,8 +449,13 @@ static void check_flux2(const char * mode, const char * stub)
   CHECK(lib != NULL);
   void (*stub_run)(int) = (void (*)(int))dlsym(lib, "stub_run");
   uint64_t (*stub_calls)(void) = (uint64_t(*)(void))dlsym(lib, "stub_calls");
+  void (*stub_wedge)(int32_t) = (void (*)(int32_t))dlsym(lib, "stub_wedge");
+  // A wedge is once per process and reaches the ring before arming, as init events do.
+  __atomic_store_n(&header->armed, 0, __ATOMIC_RELAXED);
+  stub_wedge(700);
+  __atomic_store_n(&header->armed, 1, __ATOMIC_RELAXED);
   stub_run(FLUX2_ROUNDS);
-  CHECK(stub_calls() == 10 + 10 * FLUX2_ROUNDS);
+  CHECK(stub_calls() == 11 + 10 * FLUX2_ROUNDS);
 
   struct flux2_tally t = {0};
   each_record(slot_of((uint32_t)gettid()), flux2_one, &t);
@@ -455,7 +463,8 @@ static void check_flux2(const char * mode, const char * stub)
     CHECK(t.events == 0 && flux2_count(ARMO_AGG_CALLBACK, 1, 0xE0) == 0);
     return;
   }
-  CHECK(t.events == 10 + 10 * FLUX2_ROUNDS && t.commits == FLUX2_ROUNDS && t.strings_ok);
+  CHECK(t.events == 11 + 10 * FLUX2_ROUNDS && t.commits == FLUX2_ROUNDS && t.strings_ok);
+  CHECK(t.wedged == 700);
   CHECK(t.last_stamp == 0x5000000000u + FLUX2_ROUNDS);
   CHECK(flux2_count(ARMO_AGG_CALLBACK, 1, 0xE0) == FLUX2_ROUNDS);
   CHECK(flux2_count(ARMO_AGG_CALLBACK, 3, 0xE2) == FLUX2_ROUNDS);

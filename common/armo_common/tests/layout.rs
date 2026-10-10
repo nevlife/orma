@@ -285,6 +285,7 @@ fn layouts() -> Vec<Layout> {
             count,
             reason
         }),
+        layout!(armo_ev_flux2_gpu_wedged { result, pad }),
         layout!(armo_ev_sched_switch {
             prev_state,
             next_tid,

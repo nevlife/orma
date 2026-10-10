@@ -85,6 +85,8 @@ pub const ARMO_EV_FLUX2_ENDPOINT_INIT: u16 = 140;
 pub const ARMO_EV_FLUX2_PY_GIL: u16 = 141;
 pub const ARMO_EV_FLUX2_PY_READY: u16 = 142;
 pub const ARMO_EV_FLUX2_RECORD_DROP: u16 = 143;
+/// Once per process, when a sticky CUDA error wedges its GPU; a flux2 build before it has none.
+pub const ARMO_EV_FLUX2_GPU_WEDGED: u16 = 144;
 
 // Kernel scheduler (design 2.3).
 pub const ARMO_EV_SCHED_SWITCH: u16 = 192;
@@ -109,21 +111,25 @@ pub const ARMO_FLUX2_CLAIM_NOT_PUBLISHER: i32 = 3;
 pub const ARMO_FLUX2_CLAIM_WRONG_DEVICE: i32 = 4;
 pub const ARMO_FLUX2_CLAIM_TOO_LARGE: i32 = 5;
 pub const ARMO_FLUX2_CLAIM_FENCE_FAILED: i32 = 6;
+pub const ARMO_FLUX2_CLAIM_GPU_WEDGED: i32 = 7;
 pub const ARMO_FLUX2_LOAN_COMMITTED: i32 = 0;
 pub const ARMO_FLUX2_LOAN_ABORTED: i32 = 1;
 pub const ARMO_FLUX2_LOAN_TOO_LARGE: i32 = 2;
 pub const ARMO_FLUX2_LOAN_FENCE_FAILED: i32 = 3;
 pub const ARMO_FLUX2_LOAN_NOT_PUBLISHER: i32 = 4;
+pub const ARMO_FLUX2_LOAN_GPU_WEDGED: i32 = 5;
 pub const ARMO_FLUX2_WAKE_TIMEOUT: i32 = 0;
 pub const ARMO_FLUX2_WAKE_SOURCE: i32 = 1;
 pub const ARMO_FLUX2_WAKE_CONTROL: i32 = 2;
 pub const ARMO_FLUX2_WAKE_ALREADY: i32 = 3;
+/// Only from flux2 builds before EINTR was retried; later ones keep waiting after a signal.
 pub const ARMO_FLUX2_WAKE_SIGNAL: i32 = 4;
 pub const ARMO_FLUX2_REFUSED_MAX_BORROW: i32 = 0;
 pub const ARMO_FLUX2_REFUSED_NO_READER: i32 = 1;
 pub const ARMO_FLUX2_REFUSED_CONTENDED: i32 = 2;
 pub const ARMO_FLUX2_REFUSED_BAD_FRAME: i32 = 3;
 pub const ARMO_FLUX2_REFUSED_FENCE: i32 = 4;
+pub const ARMO_FLUX2_REFUSED_GPU_WEDGED: i32 = 5;
 pub const ARMO_FLUX2_RECORD_CACHE_FULL: i32 = 0;
 pub const ARMO_FLUX2_RECORD_WRITE_FAILED: i32 = 1;
 pub const ARMO_FLUX2_RECORD_OVERRUN: i32 = 2;
@@ -566,6 +572,14 @@ pub struct armo_ev_flux2_record_drop {
     pub ticket: u64,
     pub count: u32,
     pub reason: i32,
+}
+
+/// `result` is the `CUresult` that wedged the GPU.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct armo_ev_flux2_gpu_wedged {
+    pub result: i32,
+    pub pad: u32,
 }
 
 /// The record's position is the thread leaving the CPU.

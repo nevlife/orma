@@ -198,6 +198,7 @@ mod plain {
         armo_ev_flux2_py_gil,
         armo_ev_flux2_py_ready,
         armo_ev_flux2_record_drop,
+        armo_ev_flux2_gpu_wedged,
         armo_ev_sched_switch,
         armo_ev_sched_wakeup,
     );

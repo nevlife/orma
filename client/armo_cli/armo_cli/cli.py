@@ -74,6 +74,11 @@ def print_processes(w):
         lost = [f"{overflow[k]} {what}" for k, what in OVERFLOW if overflow.get(k)]
         if lost:
             print(f"warning: pid {p['pid']} ({p['comm']}): {', '.join(lost)}")
+        if p.get("flux2_gpu_wedged") is not None:
+            print(
+                f"warning: pid {p['pid']} ({p['comm']}): flux2 GPU wedged (CUresult "
+                f"{p['flux2_gpu_wedged']}); its GPU channels refuse claims, loans and takes"
+            )
     a = w["agent"]
     armod = a["armod"]
     print(

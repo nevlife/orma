@@ -149,6 +149,9 @@
 
 #define ARMO_EV_FLUX2_RECORD_DROP 143
 
+// Once per process, when a sticky CUDA error wedges its GPU; a flux2 build before it has none.
+#define ARMO_EV_FLUX2_GPU_WEDGED 144
+
 #define ARMO_EV_SCHED_SWITCH 192
 
 #define ARMO_EV_SCHED_WAKEUP 193
@@ -182,6 +185,8 @@
 
 #define ARMO_FLUX2_CLAIM_FENCE_FAILED 6
 
+#define ARMO_FLUX2_CLAIM_GPU_WEDGED 7
+
 #define ARMO_FLUX2_LOAN_COMMITTED 0
 
 #define ARMO_FLUX2_LOAN_ABORTED 1
@@ -192,6 +197,8 @@
 
 #define ARMO_FLUX2_LOAN_NOT_PUBLISHER 4
 
+#define ARMO_FLUX2_LOAN_GPU_WEDGED 5
+
 #define ARMO_FLUX2_WAKE_TIMEOUT 0
 
 #define ARMO_FLUX2_WAKE_SOURCE 1
@@ -200,6 +207,7 @@
 
 #define ARMO_FLUX2_WAKE_ALREADY 3
 
+// Only from flux2 builds before EINTR was retried; later ones keep waiting after a signal.
 #define ARMO_FLUX2_WAKE_SIGNAL 4
 
 #define ARMO_FLUX2_REFUSED_MAX_BORROW 0
@@ -211,6 +219,8 @@
 #define ARMO_FLUX2_REFUSED_BAD_FRAME 3
 
 #define ARMO_FLUX2_REFUSED_FENCE 4
+
+#define ARMO_FLUX2_REFUSED_GPU_WEDGED 5
 
 #define ARMO_FLUX2_RECORD_CACHE_FULL 0
 
@@ -567,6 +577,12 @@ typedef struct armo_ev_flux2_record_drop {
   uint32_t count;
   int32_t reason;
 } armo_ev_flux2_record_drop;
+
+// `result` is the `CUresult` that wedged the GPU.
+typedef struct armo_ev_flux2_gpu_wedged {
+  int32_t result;
+  uint32_t pad;
+} armo_ev_flux2_gpu_wedged;
 
 // The record's position is the thread leaving the CPU.
 typedef struct armo_ev_sched_switch {

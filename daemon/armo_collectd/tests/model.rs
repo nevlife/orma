@@ -879,7 +879,41 @@ fn flux2_pairs_by_segment_and_ticket_and_counts_its_own_losses() {
         drop,
         &[],
     );
+    // A wedged GPU: the claim and the loan fail with their GPU_WEDGED results, counted as
+    // publish drops, and the process carries the CUresult.
+    let claim = armo_ev_flux2_claim {
+        result: ARMO_FLUX2_CLAIM_GPU_WEDGED,
+        ..claim
+    };
+    h.ev(1200, 1200, T0 + 700 * MS, ARMO_EV_FLUX2_CLAIM, claim, &[]);
+    let loan_end = armo_ev_flux2_loan_end {
+        channel: 0xa1,
+        slot: 0,
+        result: ARMO_FLUX2_LOAN_GPU_WEDGED,
+    };
+    h.ev(
+        1200,
+        1200,
+        T0 + 710 * MS,
+        ARMO_EV_FLUX2_LOAN_END,
+        loan_end,
+        &[],
+    );
+    let wedged = armo_ev_flux2_gpu_wedged {
+        result: 700,
+        pad: 0,
+    };
+    h.ev(
+        1200,
+        1200,
+        T0 + 720 * MS,
+        ARMO_EV_FLUX2_GPU_WEDGED,
+        wedged,
+        &[],
+    );
     let w = h.window(T0 + W);
+    let p = w.processes.iter().find(|p| p.pid == 1200).unwrap();
+    assert_eq!(p.flux2_gpu_wedged, Some(700));
     let id = "topic:flux2:/image:0123456789abcdef";
     let t = topic(&w, id);
     assert_eq!(t.pub_hz, Some(20.0));
@@ -887,7 +921,7 @@ fn flux2_pairs_by_segment_and_ticket_and_counts_its_own_losses() {
     assert_eq!(t.hop.as_ref().unwrap().n, 38);
     assert_eq!(
         (t.drops.publish, t.drops.record, t.drops.ambiguous),
-        (Some(1), Some(3), None)
+        (Some(3), Some(3), None)
     );
     assert_eq!(t.publishers, vec!["n:1200:0:1".to_string()]);
     let a = sub(&w, id, 1300);

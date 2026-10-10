@@ -100,6 +100,7 @@ PAYLOAD = {
     "flux2_py_gil": ("<iI", "phase pad"),
     "flux2_py_ready": ("<QQ", "channel ticket"),
     "flux2_record_drop": ("<QQIi", "channel ticket count reason"),
+    "flux2_gpu_wedged": ("<iI", "result pad"),
 }
 
 AGG_CALLBACK, AGG_DISPATCH, AGG_WAIT, AGG_OFFCPU, AGG_CPU_WAIT = 1, 2, 3, 4, 5

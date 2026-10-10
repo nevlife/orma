@@ -106,6 +106,7 @@ const FLUX2: &[(&str, &[(&str, usize)])] = &[
         "record_drop",
         &[("channel", 8), ("ticket", 8), ("count", 4), ("reason", 4)],
     ),
+    ("gpu_wedged", &[("result", 4), ("pad", 4)]),
 ];
 
 /// The string fields of each flux2 event with strings, in record order.

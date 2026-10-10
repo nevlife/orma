@@ -82,6 +82,7 @@ void armo_emit_flux2_endpoint_init(
 void armo_emit_flux2_py_gil(const armo_ev_flux2_py_gil * ev);
 void armo_emit_flux2_py_ready(const armo_ev_flux2_py_ready * ev);
 void armo_emit_flux2_record_drop(const armo_ev_flux2_record_drop * ev);
+void armo_emit_flux2_gpu_wedged(const armo_ev_flux2_gpu_wedged * ev);
 
 // The intercept point of `event` found no original function (armo_shm_header.missing).
 void armo_backend_missing(uint16_t event);

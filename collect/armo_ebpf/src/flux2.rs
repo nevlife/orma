@@ -274,3 +274,14 @@ pub fn flux2_record_drop(ctx: ProbeContext) -> u32 {
     hot(ARMO_EV_FLUX2_RECORD_DROP, &ev);
     0
 }
+
+// gpu_wedged(result): once per process, so it rides with the discovery probes.
+#[uprobe]
+pub fn flux2_gpu_wedged(ctx: ProbeContext) -> u32 {
+    let ev = armo_ev_flux2_gpu_wedged {
+        result: w(&ctx, 0) as i32,
+        pad: 0,
+    };
+    emit(ARMO_EV_FLUX2_GPU_WEDGED, now(), &ev, []);
+    0
+}
