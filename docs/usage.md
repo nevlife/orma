@@ -29,6 +29,19 @@ recordings: none
 
 `armo check`는 이 장비에서 armo의 가정이 맞는지 본다(기본 10초, `--duration S`). 검사 동안 노드를 새로 띄워야 나오는 항목이 있다. 행마다 `pass`, `fail`, `unknown`이고 `fail`이 하나라도 있으면 종료 코드가 1이다. `unknown`은 판단할 재료가 없었다는 뜻이고 이유가 옆에 있다.
 
+armod가 있으면 다음 행이 더 나온다.
+
+| 행 | fail의 뜻 |
+| --- | --- |
+| `bpf load` | 없다. 올린 프로그램 수와 verifier가 처리한 명령어 수. 붙기는 `probes ...` 행이 따로 보인다 |
+| `lockdown` | `confidentiality`. tracefs가 닫혀 sched 프로브가 붙지 않는다 |
+| `bpf_jit_enable`, `bpf_jit_harden` | 인터프리터(0)나 상수 블라인딩(2)이라 잰 비용이 맞지 않는다 |
+| `perf_event_paranoid`, `kptr_restrict`, `unprivileged_bpf_disabled`, `BTF` | 값만 보인다. armod는 권한으로 동작하고 BTF를 쓰지 않는다 |
+| `proc hidepid` | fail은 없다. 켜져 있으면 armo-collectd는 자기 사용자의 프로세스만 본다 |
+| `preload pid N` | `LD_PRELOAD`가 armo 라이브러리를 가리키는데 올라오지 않았다. `auxv`의 `AT_SECURE`가 1이면 이유를 적는다(setuid, 파일 capability, LSM 전환) |
+| `time namespace pid N` | 다른 time namespace이고 monotonic 오프셋이 0이 아니다. 그 프로세스의 preload, LTTng 레코드 시각이 그만큼 어긋난다 |
+| `rcl_wait returns pid N` | 한 스레드의 진입과 반환 수가 2 이상 다르다. uretprobe가 반환을 놓쳤다 |
+
 ## 2. 방식 고르기
 
 세 방식은 같은 함수를 보고 같은 형식으로 낸다. 붙는 방법과 비용만 다르다.
@@ -87,7 +100,7 @@ def generate_launch_description():
 
 ```bash
 armo top <보기> [--node RE] [--topic RE] [--exclude RE] [--pid PID]... [--method M]...
-         [--window S] [--infra] [--json]
+         [--window S] [--pss] [--infra] [--json]
 ```
 
 무엇을 볼지는 노드, 토픽, 프로세스 중 편한 것으로 고른다.
@@ -111,6 +124,7 @@ armo top node --exclude '/rviz.*'
 - 아무것도 고르지 않으면 모든 프로세스를 본다. 이때는 uprobe를 붙이지 않는다. 모든 프로세스에 uprobe 비용을 물리지 않기 위해서다. 값은 preload, LTTng로 띄운 프로세스에서만 나오고, 나머지는 방식, Hz, 지연이 `-`다. 시작할 때 `[info] select_all` 줄이 이를 알린다.
 - `--method`는 한 번 주면 모든 pid에, pid마다 한 번 주면 순서대로 짝짓는다. 주지 않으면 프로세스마다 쓸 수 있는 방식을 preload, lttng, uprobe 순으로 고른다. preload나 LTTng로 띄우지 않은 프로세스는 uprobe가 된다.
 - `--window`는 창 길이(초)다. 기본 1초다.
+- RSS는 `statm`으로 읽는다. PSS는 `--pss`(rqt에서는 `pss` 체크)를 켰을 때만 5초마다 `smaps_rollup`으로 읽는다. 그 읽기는 관측 대상의 페이지 표 전체를 대상의 mmap_lock을 쥔 채 훑는다. 그동안 대상의 page fault와 mmap이 기다린다. 끄면 `proc`의 PSS 열이 `-`다.
 - 선택과 창 길이는 armo-collectd에 하나다. 다른 터미널이나 rqt의 선택도 함께 바뀐다.
 - Ctrl-C로 끝난다. 아무 클라이언트도 없으면 armo-collectd가 hot 프로브를 뗀다.
 
@@ -219,6 +233,15 @@ armo-20261008-153012/
   events/000.armoev
   ctf/             LTTng 방식일 때
 ```
+
+`meta.json`에는 장비 상태도 남는다. 측정값을 다른 장비나 다른 날의 값과 비교할 때 먼저 이것을 맞춘다.
+
+| 필드 | 내용 |
+| --- | --- |
+| `system_start`, `system_end` | 시작과 끝의 커널 버전과 설정(`HZ`, preempt), cmdline, clocksource, `clock_gettime` 한 번의 비용, 스케줄러와 sched_ext, 격리 CPU, cpufreq governor와 EPP, 끈 idle 상태, THP, 취약점 완화, lockdown, 가상화, 시계 동기 상태, 대상 프로세스의 Seccomp와 `cpu.max`. root만 읽는 값(debugfs)은 빠진다 |
+| `interference` | 시작부터 끝까지 늘어난 커널 카운터. CPU별 인터럽트(`LOC`, `RES`, `CAL`, `TLB`, 장치 인터럽트 합 `dev`)와 softirq, vmstat의 reclaim·compaction·major fault·TLB flush, PSI, steal, 대상 스레드별 minor·major fault와 실행·대기 시간 |
+| `realtime_steps` | 기록 중 CLOCK_REALTIME이 점프한 시각. 그 근처의 `header.stamp` 나이와 timestamp 짝짓기는 믿지 않는다 |
+| `probe_changes` | armod가 프로브를 붙이고 뗀 시각. 그동안 커널이 코드를 고치고 TLB를 비우므로 그 구간의 꼬리는 armo 자신의 몫이다 |
 
 `meta.json`의 `state`가 `truncated`이면 armo-collectd가 마무리하지 못하고 죽은 기록이다. 다음 시작이 개수를 다시 세어 고친다. `probes_missing`은 그 기록에서 붙지 않은 지점이고, 빈 열이 일이 없었던 것인지 볼 수 없었던 것인지 가른다. `gaps`는 armod가 끊긴 구간 같은 빈 구간이다.
 

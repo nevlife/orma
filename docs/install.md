@@ -49,16 +49,18 @@ sudo systemctl enable --now armod
 
 - 복사하는 이유: 홈 디렉터리(`0750`) 아래의 워크스페이스에는 서비스 사용자 `armo`가 들어가지 못한다.
 - 그룹은 다음 로그인부터 적용된다. 모든 세션에서 로그아웃한 뒤 다시 로그인한다. 그 전에는 armo-collectd가 armod에 붙지 못한다(`armo status`의 `armod: denied`).
-- `sg armo`로 armo-collectd를 띄우면 armod에는 붙지만 쓰지 않는다. 주 그룹이 바뀌어 커널이 같은 사용자 프로세스의 `smaps_rollup`도 막고, RSS와 PSS가 `-`로 나온다.
+- `sg armo`로 armo-collectd를 띄우면 armod에는 붙지만 쓰지 않는다. 주 그룹이 바뀌어 커널이 같은 사용자 프로세스의 `smaps_rollup`도 막고, `--pss`를 켜도 PSS가 `-`로 나온다.
 
 서비스가 받는 권한은 다섯이다. 설계 문서 5.1에 근거가 있다.
 
 | 권한 | 쓰는 곳 |
 | --- | --- |
 | `CAP_BPF`, `CAP_PERFMON` | eBPF 프로그램을 올리고 uprobe와 트레이스포인트에 붙인다 |
-| `CAP_SYS_ADMIN` | eBPF 실행 시간 통계(`BPF_ENABLE_STATS`) |
+| `CAP_SYS_ADMIN` | eBPF 실행 시간 통계(`BPF_ENABLE_STATS`). 통계를 켠 직후 armod가 스스로 버린다 |
 | `CAP_SYS_PTRACE` | 다른 사용자 프로세스의 `/proc/<pid>/maps`, `/proc/<pid>/root`. 없으면 아무 프로브도 붙지 않는다 |
 | `CAP_DAC_READ_SEARCH` | tracefs(`/sys/kernel/tracing`)의 이벤트 `format`, `id`. 없으면 sched 프로브가 꺼진다 |
+
+유닛은 armod를 가둔다. 파일 시스템은 읽기 전용(`/run/armo` 제외)이고, 소켓은 unix만, namespace 생성 금지, 시스템 호출은 `@system-service`에 `bpf`, `perf_event_open`만 더한 목록이다(그 밖은 `EPERM`). `ProtectProc=invisible`, `ProcSubset=pid`는 다른 사용자의 `/proc/<pid>/maps`를 가리므로 쓰지 않는다. 5.11 미만 커널(JetPack 5)은 맵 메모리를 `RLIMIT_MEMLOCK`에 달아서 `LimitMEMLOCK=infinity`를 둔다. `install.sh`가 끝에 `systemd-analyze security armod.service`의 점수를 찍는다(3.4, 가두기 전 7.2).
 
 확인:
 
