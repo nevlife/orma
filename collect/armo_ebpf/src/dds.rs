@@ -27,8 +27,13 @@ fn size(size: u64) {
 
 fn take_stash() -> Option<u64> {
     let t = tid();
+    let Some(p) = STASH.get_ptr(t) else {
+        // The LRU map evicted the entry, or the call began before the attach.
+        lost(LOST_UNPAIRED);
+        return None;
+    };
     // SAFETY: the entry is this thread's own.
-    let v = unsafe { *STASH.get_ptr(t)? };
+    let v = unsafe { *p };
     let _ = STASH.remove(t);
     Some(v)
 }

@@ -36,12 +36,13 @@ const BATCH: usize = 1 << 20;
 const MAPS_EVERY: Duration = Duration::from_secs(30);
 
 /// `LOST` slots by the name `window.lost` gives them. Unvalidated C++ arguments are not losses.
-const LOST_NAMES: [(u32, &str); 5] = [
+const LOST_NAMES: [(u32, &str); 6] = [
     (LOST_RING, "ring"),
     (LOST_AGG_FULL, "agg_full"),
     (LOST_DEPTH, "depth"),
     (LOST_USER_WORD, "user_word"),
     (LOST_THREAD_FULL, "thread_full"),
+    (LOST_UNPAIRED, "unpaired"),
 ];
 
 /// Where a client's messages go.

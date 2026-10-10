@@ -106,9 +106,10 @@ pub const LOST_AGG_FULL: u32 = 3;
 pub const LOST_DEPTH: u32 = 4;
 pub const LOST_USER_WORD: u32 = 5;
 pub const LOST_THREAD_FULL: u32 = 6;
-/// A C++ symbol probe whose argument no tracepoint had named; not a loss of a measurement.
+/// A C++ symbol probe whose argument no tracepoint had named; not a lost measurement.
 pub const LOST_UNVALIDATED: u32 = 7;
-pub const LOST_SLOTS_ALL: u32 = 8;
+pub const LOST_UNPAIRED: u32 = 8;
+pub const LOST_SLOTS_ALL: u32 = 9;
 
 /// `SAMPLE` slots: diagnostics the selfcheck reads (design 6.7).
 pub const SAMPLE_SERDATA_72: u32 = 0;

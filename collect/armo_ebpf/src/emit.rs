@@ -177,6 +177,7 @@ pub fn callback_start(src: u16, key: u64, entry: u32, ns: u64) {
 #[inline(always)]
 pub fn callback_end(src: u16, key: u64, entry: u32) -> u64 {
     let Some(t) = THREADS.get_ptr_mut(tid()) else {
+        lost(LOST_UNPAIRED);
         return 0;
     };
     // SAFETY: as in `callback_start`.
