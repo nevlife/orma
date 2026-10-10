@@ -672,6 +672,42 @@ types! {
         pub drops: RecordDrops,
         pub files: Vec<String>,
         pub bytes: u64,
+        /// The host's settings that change what a measurement means, read at the start and at
+        /// the end; an unreadable one is left out (design 14.9). Proto 1.7.
+        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        pub system_start: BTreeMap<String, String>,
+        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        pub system_end: BTreeMap<String, String>,
+        /// Proto 1.7.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub interference: Option<Interference>,
+    }
+
+    /// Kernel counters over a recording, end minus start (design 14.9). Per CPU vectors are
+    /// indexed by CPU number.
+    pub struct Interference {
+        /// `/proc/interrupts` by row; the numbered (device) rows are summed into `dev`.
+        pub interrupts: BTreeMap<String, Vec<u64>>,
+        pub softirqs: BTreeMap<String, Vec<u64>>,
+        pub vmstat: BTreeMap<String, u64>,
+        /// `total` of `/proc/pressure/<resource>`, by `<resource>.some` and `<resource>.full`.
+        pub pressure_us: BTreeMap<String, u64>,
+        /// Time a hypervisor ran something else, from `/proc/stat`.
+        pub steal_ticks: Vec<u64>,
+        pub threads: Vec<ThreadCounters>,
+    }
+
+    /// A target thread's faults and scheduler statistics; from its start when it began during
+    /// the recording.
+    pub struct ThreadCounters {
+        pub pid: u32,
+        pub tid: u32,
+        pub comm: String,
+        pub minflt: u64,
+        pub majflt: u64,
+        pub run_ns: u64,
+        pub wait_ns: u64,
+        pub slices: u64,
     }
 
     pub struct Host {

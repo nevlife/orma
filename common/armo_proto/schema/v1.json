@@ -1504,6 +1504,75 @@
       ],
       "type": "object"
     },
+    "Interference": {
+      "description": "Kernel counters over a recording, end minus start (design 14.9). Per CPU vectors are\nindexed by CPU number.",
+      "properties": {
+        "interrupts": {
+          "additionalProperties": {
+            "items": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "description": "`/proc/interrupts` by row; the numbered (device) rows are summed into `dev`.",
+          "type": "object"
+        },
+        "pressure_us": {
+          "additionalProperties": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "description": "`total` of `/proc/pressure/<resource>`, by `<resource>.some` and `<resource>.full`.",
+          "type": "object"
+        },
+        "softirqs": {
+          "additionalProperties": {
+            "items": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "type": "object"
+        },
+        "steal_ticks": {
+          "description": "Time a hypervisor ran something else, from `/proc/stat`.",
+          "items": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "threads": {
+          "items": {
+            "$ref": "#/$defs/ThreadCounters"
+          },
+          "type": "array"
+        },
+        "vmstat": {
+          "additionalProperties": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "interrupts",
+        "softirqs",
+        "vmstat",
+        "pressure_us",
+        "steal_ticks",
+        "threads"
+      ],
+      "type": "object"
+    },
     "Lat": {
       "properties": {
         "max_ns": {
@@ -2144,6 +2213,17 @@
         "id": {
           "type": "string"
         },
+        "interference": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Interference"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Proto 1.7."
+        },
         "methods_by_pid": {
           "additionalProperties": {
             "$ref": "#/$defs/Method"
@@ -2178,6 +2258,19 @@
         },
         "state": {
           "$ref": "#/$defs/RecordState"
+        },
+        "system_end": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "system_start": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "The host's settings that change what a measurement means, read at the start and at\nthe end; an unreadable one is left out (design 14.9). Proto 1.7.",
+          "type": "object"
         }
       },
       "required": [
@@ -2971,6 +3064,60 @@
         "prio",
         "bucket",
         "cpus"
+      ],
+      "type": "object"
+    },
+    "ThreadCounters": {
+      "description": "A target thread's faults and scheduler statistics; from its start when it began during\nthe recording.",
+      "properties": {
+        "comm": {
+          "type": "string"
+        },
+        "majflt": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "minflt": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "pid": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "run_ns": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "slices": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tid": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "wait_ns": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "pid",
+        "tid",
+        "comm",
+        "minflt",
+        "majflt",
+        "run_ns",
+        "wait_ns",
+        "slices"
       ],
       "type": "object"
     },

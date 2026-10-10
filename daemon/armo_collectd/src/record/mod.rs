@@ -14,6 +14,7 @@ use std::path::{Path, PathBuf};
 use armo_proto::msg::*;
 use serde::Deserialize;
 
+use crate::host;
 use crate::names::Names;
 use crate::sys::{self, Disk};
 use files::{EventFiles, Split};
@@ -122,6 +123,8 @@ pub struct Active {
     pub end: Option<(EndReason, Option<String>)>,
     /// The name targets, matched again each window.
     pub names: Option<Names>,
+    /// Kernel counters at the start, for `interference`.
+    counters: host::Counters,
 }
 
 /// `YYYYMMDD-HHMMSS` in UTC.
@@ -308,6 +311,8 @@ pub fn start(options: RecordOptions, cx: Context<'_>) -> Result<Active, String> 
         }
     }
     let name = dir.file_name().map(|n| n.to_string_lossy().into_owned());
+    let counters = host::Counters::take(&targets.pids);
+    let system_start = host::system(&targets.pids);
     let resolved = RecordOptions {
         method: Some(method),
         targets: Some(targets),
@@ -354,6 +359,9 @@ pub fn start(options: RecordOptions, cx: Context<'_>) -> Result<Active, String> 
         },
         files,
         bytes: 0,
+        system_start,
+        system_end: BTreeMap::new(),
+        interference: None,
     };
     let mut active = Active {
         id: cx.id,
@@ -374,6 +382,7 @@ pub fn start(options: RecordOptions, cx: Context<'_>) -> Result<Active, String> 
         ctf_bytes: 0,
         end: None,
         names: None,
+        counters,
     };
     active
         .write_meta()
@@ -428,6 +437,7 @@ impl Active {
                 continue;
             }
             t.pids.push(pid);
+            self.counters.add_threads(pid);
             new = true;
             if let Some(m) = settle(method, pid, armod, preload, lttng) {
                 self.meta.methods_by_pid.entry(pid.to_string()).or_insert(m);
@@ -686,6 +696,9 @@ impl Active {
                 detail = Some(e.to_string());
             }
         }
+        let pids = self.targets().pids.clone();
+        self.meta.interference = Some(self.counters.until(&host::Counters::take(&pids)));
+        self.meta.system_end = host::system(&pids);
         self.meta.state = RecordState::Finalized;
         self.meta.end_reason = Some(reason);
         self.meta.end_detail = detail;

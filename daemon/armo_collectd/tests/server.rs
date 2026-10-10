@@ -167,6 +167,11 @@ fn a_recording_outlives_its_client_and_any_client_stops_it() {
     assert_eq!(m.owner.client, "rqt_armo");
     assert!(m.ended.is_some());
     assert_eq!(m.files, ["events/000.armoev", "windows.jsonl"]);
+    for system in [&m.system_start, &m.system_end] {
+        assert!(system.contains_key("kernel.release") && system.contains_key("clocksource"));
+    }
+    let i = m.interference.as_ref().unwrap();
+    assert!(i.interrupts.contains_key("dev") && !i.softirqs.is_empty());
     let events = std::fs::read(rec_dir.join("events/000.armoev")).unwrap();
     assert_eq!(&events[..8], b"ARMOEV1\0");
     assert!(!rec_dir.join("meta.json.tmp").exists());

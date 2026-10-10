@@ -27,6 +27,12 @@ impl Stat {
     pub fn starttime(&self) -> u64 {
         self.field(22)
     }
+    pub fn minflt(&self) -> u64 {
+        self.field(10)
+    }
+    pub fn majflt(&self) -> u64 {
+        self.field(12)
+    }
     /// utime plus stime, in clock ticks.
     pub fn cpu_ticks(&self) -> u64 {
         self.field(14) + self.field(15)

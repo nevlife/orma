@@ -94,6 +94,15 @@ pub fn raise_nofile() {
     }
 }
 
+/// The kernel clock discipline's state (`TIME_OK` 0 ... `TIME_ERROR` 5) and status bits.
+pub fn adjtimex() -> Option<(i32, i32)> {
+    // SAFETY: timex is plain data; modes 0 only reads.
+    let mut t: libc::timex = unsafe { std::mem::zeroed() };
+    // SAFETY: t is a valid timex for the call.
+    let state = unsafe { libc::adjtimex(&mut t) };
+    (state >= 0).then_some((state, t.status))
+}
+
 pub fn page_size() -> u64 {
     // SAFETY: sysconf has no preconditions.
     unsafe { libc::sysconf(libc::_SC_PAGESIZE) as u64 }

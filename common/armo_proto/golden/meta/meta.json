@@ -102,5 +102,64 @@
     "events/000.armoev",
     "windows.jsonl"
   ],
-  "bytes": 157286400
+  "bytes": 157286400,
+  "system_start": {
+    "clock_gettime_ns": "21.4",
+    "clocksource": "tsc",
+    "config.CONFIG_HZ": "1000",
+    "kernel.release": "6.8.12-rt-tegra",
+    "thp.enabled": "always [madvise] never"
+  },
+  "system_end": {
+    "clock_gettime_ns": "21.6",
+    "clocksource": "hpet",
+    "config.CONFIG_HZ": "1000",
+    "kernel.release": "6.8.12-rt-tegra",
+    "thp.enabled": "always [madvise] never"
+  },
+  "interference": {
+    "interrupts": {
+      "LOC": [
+        4012,
+        3998
+      ],
+      "TLB": [
+        3,
+        0
+      ],
+      "dev": [
+        120,
+        0
+      ]
+    },
+    "softirqs": {
+      "TIMER": [
+        401,
+        399
+      ]
+    },
+    "vmstat": {
+      "allocstall": 0,
+      "pgmajfault": 2
+    },
+    "pressure_us": {
+      "cpu.some": 1520
+    },
+    "steal_ticks": [
+      0,
+      0
+    ],
+    "threads": [
+      {
+        "pid": 4021,
+        "tid": 4023,
+        "comm": "talker",
+        "minflt": 12,
+        "majflt": 0,
+        "run_ns": 81000000,
+        "wait_ns": 2300000,
+        "slices": 4010
+      }
+    ]
+  }
 }
