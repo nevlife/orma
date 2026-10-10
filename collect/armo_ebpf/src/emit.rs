@@ -8,7 +8,7 @@ use armo_common::{
     events::{armo_position, armo_record},
 };
 use aya_ebpf::{
-    bindings::BPF_NOEXIST,
+    bindings::{BPF_NOEXIST, BPF_RB_NO_WAKEUP},
     helpers::{bpf_probe_read_user, generated::bpf_probe_read_user_str},
 };
 
@@ -63,7 +63,9 @@ pub fn emit<T: Copy + 'static, const N: usize>(
             i += 1;
         }
     }
-    entry.submit(0);
+    // armod reads the ring on its own tick and never waits on it, so the wakeup (an irq_work
+    // on this CPU, a kthread on PREEMPT_RT) would buy nothing.
+    entry.submit(BPF_RB_NO_WAKEUP as u64);
 }
 
 pub fn read_u64(addr: u64) -> u64 {
