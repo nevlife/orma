@@ -42,7 +42,7 @@ target_compile_definitions(armo_lttng PRIVATE
 target_compile_options(armo_lttng PRIVATE -Wall -Wextra -Wshadow -Wstrict-prototypes)
 target_link_libraries(armo_lttng PRIVATE
   -Wl,--whole-archive armo_preload::armo_intercept -Wl,--no-whole-archive armo_preload::armo_slots
-  PkgConfig::LTTNG_UST ${CMAKE_DL_LIBS} -pthread -Wl,-z,defs)
+  PkgConfig::LTTNG_UST ${CMAKE_DL_LIBS} -pthread -Wl,-z,defs -Wl,-z,now)
 install(TARGETS armo_lttng LIBRARY DESTINATION lib)
 
 if(BUILD_TESTING)

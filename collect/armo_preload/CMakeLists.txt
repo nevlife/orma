@@ -30,7 +30,9 @@ add_custom_command(
 add_custom_target(armo_preload_symbols DEPENDS
   ${generated}/armo_preload/armo_tracepoints.h ${generated}/armo_preload/armo_rclcpp_symbols.h)
 
-set(warnings -Wall -Wextra -Wshadow -Wstrict-prototypes)
+# The shim runs on threads whose stack size it does not know (DDS, SDK): frames stay small.
+set(warnings -Wall -Wextra -Wshadow -Wstrict-prototypes -Wframe-larger-than=2048
+  -Wstack-usage=2048)
 # Every caught call passes through these functions; the canary in each costs 3 to 5 ns per
 # callback pair (design 8.1), and none of them copies into a stack buffer.
 set(shim_flags ${warnings} -fno-stack-protector)
@@ -67,7 +69,7 @@ target_include_directories(armo_preload PRIVATE include)
 target_compile_options(armo_preload PRIVATE ${shim_flags})
 target_link_libraries(armo_preload PRIVATE
   -Wl,--whole-archive armo_intercept -Wl,--no-whole-archive armo_slots ${CMAKE_DL_LIBS} -pthread
-  -Wl,-z,defs)
+  -Wl,-z,defs -Wl,-z,now)
 
 install(TARGETS armo_preload LIBRARY DESTINATION lib)
 install(TARGETS armo_intercept armo_slots EXPORT armo_interceptTargets ARCHIVE DESTINATION lib)

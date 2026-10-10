@@ -4,6 +4,7 @@
 // table, ring and slot overflow, slot reuse, and fork. Run with ARMO_THREADS=8.
 //
 //     caller                       the ROS checks
+//     caller asan                  the same but malloc attribution, with libasan.so preloaded first
 //     caller flux2-global STUB     flux2 events of a stub loaded RTLD_GLOBAL
 //     caller flux2-local STUB      the same loaded RTLD_LOCAL, as Python loads libflux2_ffi
 //     caller flux2-none STUB       a stub without flux2_trace_contract_2: no events
@@ -40,6 +41,8 @@ int rcl_wait(rcl_wait_set_t * wait_set, int64_t timeout);
 
 static armo_shm_header * header;
 static int fd;
+// ASan's allocator, preloaded first, serves the process: the shim sees no malloc.
+static int asan;
 
 static armo_thread_slot * slot_at(uint32_t i)
 {
@@ -255,6 +258,7 @@ static void check_fields(void)
   CHECK(r->flags == ARMO_RECORD_TRUNCATED && strlen(strs) == ARMO_STRING_MAX - 1);
   CHECK(strcmp(strs + ARMO_STRING_MAX, "/ns") == 0 && r->len % 8 == 0);
 
+  if (asan) return;
   // malloc attribution, switched on by the reader: inside a callback to its key, outside to 0.
   __atomic_store_n(&header->options, ARMO_OPTION_MALLOC, __ATOMIC_RELAXED);
   ros_trace_callback_start(K(0xF), false);
@@ -285,6 +289,19 @@ static void * nest_deep(void * arg)
   return NULL;
 }
 
+// A thread's slot is faulted in when the thread takes it, ring included, before the ring fills:
+// the few records of a fresh slot touched only its first ring page.
+static void check_resident(const armo_thread_slot * s)
+{
+  uintptr_t page = (uintptr_t)sysconf(_SC_PAGESIZE);
+  uintptr_t from = (uintptr_t)s & ~(page - 1);
+  size_t pages = ((uintptr_t)s + header->thread_size - from + page - 1) / page;
+  unsigned char * resident = calloc(pages, 1);
+  CHECK(mincore((void *)from, pages * page, resident) == 0);
+  for (size_t i = 0; i < pages; i++) CHECK(resident[i] & 1);
+  free(resident);
+}
+
 static void * many_keys(void * arg)
 {
   (void)arg;
@@ -296,6 +313,7 @@ static void * many_keys(void * arg)
   uint64_t rows = 0;
   for (int k = 0; k < 130; k++) rows += count(s, ARMO_AGG_CALLBACK, 0x200 + k);
   CHECK(rows == 128 && s->table_overflow == 2);
+  check_resident(s);
   return NULL;
 }
 
@@ -458,6 +476,7 @@ int main(int argc, char ** argv)
   if (argc == 3) {
     check_flux2(argv[1], argv[2]);
   } else {
+    asan = argc == 2 && strcmp(argv[1], "asan") == 0;
     check_workers();
     check_fields();
     run(nest_deep);

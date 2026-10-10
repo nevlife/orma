@@ -17,6 +17,15 @@ ament_add_test(preload_caller
   COMMAND $<TARGET_FILE:armo_preload_caller>
   ENV ${preload} ARMO_THREADS=8
   GENERATE_RESULT_FOR_RETURN_CODE_ZERO TIMEOUT 60)
+# The same with ASan's run time loaded ahead of the shim (design 4.4).
+execute_process(COMMAND ${CMAKE_C_COMPILER} -print-file-name=libasan.so
+  OUTPUT_VARIABLE libasan OUTPUT_STRIP_TRAILING_WHITESPACE)
+if(EXISTS "${libasan}")
+  ament_add_test(preload_caller_asan
+    COMMAND $<TARGET_FILE:armo_preload_caller> asan
+    ENV LD_PRELOAD=${libasan}:$<TARGET_FILE:armo_preload> ARMO_THREADS=8
+    GENERATE_RESULT_FOR_RETURN_CODE_ZERO TIMEOUT 60)
+endif()
 foreach(mode global local none)
   if(mode STREQUAL "none")
     set(stub $<TARGET_FILE:flux2_stub_none>)

@@ -171,6 +171,11 @@ static struct armo_thread * take(armo_thread_slot * s, bool reclaim)
   ARMO_STORE(&s->depth_overflow, 0);
   ARMO_STORE(&s->ring_drops, 0);
   if (reclaim) ARMO_STORE(&s->ring_tail, ARMO_LOAD(&s->ring_head));
+  // The ring's pages, faulted in now rather than one shmem fault per page as the ring first
+  // fills (64 for 256 KiB). Before 5.14 the kernel refuses the advice and they fault as before.
+  uintptr_t page = (uintptr_t)sysconf(_SC_PAGESIZE);
+  uintptr_t from = (uintptr_t)s & ~(page - 1);
+  madvise((void *)from, (uintptr_t)s + proc.thread_size - from, MADV_POPULATE_WRITE);
   ARMO_STORE(&s->tid, (uint32_t)gettid());
   __atomic_fetch_add(&s->generation, 1, __ATOMIC_RELEASE);
   memset(&armo_self, 0, sizeof armo_self);

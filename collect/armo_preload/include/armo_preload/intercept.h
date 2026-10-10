@@ -16,14 +16,23 @@ void * armo_find(const char * name);
 
 #define ARMO_MISSING ((void *)-1)
 
+// A call site's cache, for binding at load what RTLD_NEXT already finds (resolve.c).
+struct armo_next
+{
+  void ** cache;
+  const char * name;
+};
+
 void armo_rclcpp_report_unbound(void);
 
-#define ARMO_NEXT(fn, lib, event)                                \
-  ({                                                             \
-    static void * cache_;                                        \
-    void * f_ = __atomic_load_n(&cache_, __ATOMIC_RELAXED);      \
-    if (f_ == NULL) f_ = armo_resolve(&cache_, #fn, lib, event); \
-    (__typeof__(&fn))(f_ == ARMO_MISSING ? NULL : f_);           \
+#define ARMO_NEXT(fn, lib, event)                                   \
+  ({                                                                \
+    static void * cache_;                                           \
+    static const struct armo_next next_                             \
+      __attribute__((used, section("armo_next"))) = {&cache_, #fn}; \
+    void * f_ = __atomic_load_n(&cache_, __ATOMIC_RELAXED);         \
+    if (f_ == NULL) f_ = armo_resolve(&cache_, #fn, lib, event);    \
+    (__typeof__(&fn))(f_ == ARMO_MISSING ? NULL : f_);              \
   })
 
 static inline uint64_t armo_stamp(const void * message)
