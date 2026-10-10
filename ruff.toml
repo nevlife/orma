@@ -1,2 +1,4 @@
 # Formatting only: flake8 (setup.cfg) stays the linter. The width matches rustfmt.toml.
 line-length = 100
+# Python 3.10 is the floor: Humble on Ubuntu 22.04 (design 17).
+target-version = "py310"

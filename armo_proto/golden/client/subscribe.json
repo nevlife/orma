@@ -1,0 +1,9 @@
+{
+  "op": "subscribe",
+  "id": 2,
+  "streams": [
+    "state",
+    "window",
+    "event_line"
+  ]
+}

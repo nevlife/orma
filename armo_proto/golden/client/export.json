@@ -1,0 +1,10 @@
+{
+  "op": "export",
+  "id": 19,
+  "dir": "/home/u/rec/run1",
+  "out": "/home/u/run1.csv",
+  "metrics": [
+    "callbacks",
+    "topics"
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "type": "reply",
+  "id": 20,
+  "ok": true,
+  "checks": [
+    {
+      "item": "rclpy handle",
+      "status": "pass",
+      "detail": "4/4 handles equal"
+    },
+    {
+      "item": "flux2 contract",
+      "status": "fail",
+      "detail": "libflux2_ffi.so.2 lacks flux2_trace_contract_2"
+    },
+    {
+      "item": "rmw timestamp",
+      "status": "unknown",
+      "detail": "no publisher in the window"
+    }
+  ]
+}

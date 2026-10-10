@@ -1,0 +1,28 @@
+[package]
+name = "armo-collectd"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "armo-collectd"
+path = "src/main.rs"
+
+[[bin]]
+name = "armo-analyze"
+path = "src/bin/armo_analyze.rs"
+
+[dependencies]
+armo-common = { workspace = true }
+armo-proto = { workspace = true }
+cpp_demangle = { version = "0.5.1", default-features = false, features = ["std"] }
+object = { workspace = true }
+libc = { workspace = true, features = ["std"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { version = "0.9", default-features = false, features = ["parse", "serde"] }
+zstd = { version = "0.13", default-features = false }
+
+[lints.rust]
+unsafe_code = "deny"

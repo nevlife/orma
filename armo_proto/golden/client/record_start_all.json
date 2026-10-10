@@ -1,0 +1,26 @@
+{
+  "op": "record_start",
+  "id": 7,
+  "method": "preload",
+  "targets": {
+    "all": false,
+    "pids": [
+      4021
+    ],
+    "node": "/camera/.*",
+    "topic": "/scan|/image",
+    "exclude": "/rosout"
+  },
+  "kind": "events",
+  "dir": "/home/u/rec",
+  "name": "run1",
+  "max_duration_s": 600,
+  "max_bytes": 4294967296,
+  "split_bytes": 1073741824,
+  "split_duration_s": 60,
+  "cache_bytes": 16777216,
+  "compression": "zstd",
+  "bandwidth": true,
+  "sched": false,
+  "malloc": true
+}

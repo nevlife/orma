@@ -1,0 +1,9 @@
+{
+  "op": "configure",
+  "id": 5,
+  "window_s": 0.5,
+  "sched": true,
+  "expected_hz": {
+    "topic:ros:/scan": 10.0
+  }
+}

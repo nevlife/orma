@@ -1,5 +1,14 @@
 # armo pre-commit. Enable: pipx install pre-commit && pre-commit install
 repos:
+  - repo: https://github.com/pre-commit/mirrors-clang-format
+    rev: v18.1.6
+    hooks:
+      - id: clang-format
+        types_or: [c, c++]
+        files: ^armo_(preload|lttng)/
+        # Generated: armo_common's header test compares them byte for byte with cbindgen's output.
+        exclude: ^armo_preload/include/armo_preload/armo_(shm|events)\.h$
+
   - repo: https://github.com/adrienverge/yamllint
     rev: v1.37.1
     hooks:
@@ -72,6 +81,15 @@ repos:
         entry: python3 -m flake8
         language: system
         types: [python]
+
+      # Needs the build's compile commands (scripts/check_clang_tidy.py says where it looks).
+      - id: clang-tidy
+        name: clang-tidy defect classes (.clang-tidy)
+        entry: scripts/check_clang_tidy.py
+        language: python
+        additional_dependencies: [clang-tidy==22.1.8]
+        types_or: [c, c++]
+        files: ^armo_(preload|lttng)/
 
       - id: docs-tracked
         name: no untracked files under docs/

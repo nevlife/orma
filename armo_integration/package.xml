@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>armo_integration</name>
+  <version>0.0.0</version>
+  <description>
+    armo's integration tests against the real armod, armo-collectd, shim and LTTng backend, their
+    test nodes, and the tool that measures each method's cost under real ROS 2 load.
+  </description>
+  <maintainer email="nevlife000720@gmail.com">nevlife</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>rclcpp_components</depend>
+  <depend>std_msgs</depend>
+
+  <!-- The tests and the cost tool run from the source tree on the host and need the other armo
+       packages there; the container builds only the nodes, with armo_preload, armo_lttng and
+       armo_rclpy beside them. -->
+  <exec_depend>rclpy</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

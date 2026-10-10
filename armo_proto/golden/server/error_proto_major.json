@@ -1,0 +1,6 @@
+{
+  "type": "error",
+  "id": 1,
+  "code": "proto_major",
+  "message": "client speaks 2.0, server 1.3"
+}

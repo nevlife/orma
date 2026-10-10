@@ -1,0 +1,12 @@
+{
+  "type": "reply",
+  "id": 7,
+  "ok": true,
+  "checks": [
+    {
+      "item": "tracepoint layout",
+      "status": "pass",
+      "detail": "sched_switch and sched_wakeup fields at the built offsets"
+    }
+  ]
+}

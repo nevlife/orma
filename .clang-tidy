@@ -1,0 +1,25 @@
+# Defect classes only, style checks off. Each disabled check below was run over the tree and every
+# hit was a false positive or intended: macros whose arguments are parameter lists, _GNU_SOURCE and
+# glibc's __libc_* entry points, a test node's main that ends on an exception.
+# Only armo's own headers: the ROS headers the shim includes are not ours to change, and the two
+# generated from armo_common are cbindgen's output.
+HeaderFilterRegex: '.*/armo_[a-z]+/include/.*'
+ExcludeHeaderFilterRegex: '.*/armo_(shm|events)\.h'
+Checks: >
+  -*,
+  bugprone-*,
+  concurrency-*,
+  performance-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-exception-escape,
+  -bugprone-macro-parentheses,
+  -bugprone-reserved-identifier,
+  -bugprone-narrowing-conversions,
+  -bugprone-branch-clone,
+  -bugprone-switch-missing-default-case,
+  -concurrency-mt-unsafe,
+  -performance-no-int-to-ptr
+CheckOptions:
+  # rclcpp dispatches a callback on its exact signature, which takes these by value.
+  performance-unnecessary-value-param.AllowedTypes: >-
+    shared_ptr;shared_future;SharedPtr;SharedFuture

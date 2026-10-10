@@ -1,0 +1,8 @@
+{
+  "op": "selfcheck",
+  "id": 7,
+  "duration_s": 10.0,
+  "pids": [
+    4021
+  ]
+}

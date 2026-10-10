@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>armo_cli</name>
+  <version>0.0.0</version>
+  <description>
+    The armo command, the armo_client module that speaks to armo-collectd, and the ArmoTrace
+    launch action.
+  </description>
+  <maintainer email="nevlife000720@gmail.com">nevlife</maintainer>
+  <license>MIT</license>
+
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>armo_collectd</exec_depend>
+  <exec_depend>armo_lttng</exec_depend>
+  <exec_depend>armo_preload</exec_depend>
+  <exec_depend>armo_rclpy</exec_depend>
+  <exec_depend>launch</exec_depend>
+
+  <test_depend>python3-pytest</test_depend>
+  <test_depend>rclpy</test_depend>
+  <test_depend>ros2launch</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

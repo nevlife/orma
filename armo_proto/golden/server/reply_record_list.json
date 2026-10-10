@@ -1,0 +1,50 @@
+{
+  "type": "reply",
+  "id": 10,
+  "ok": true,
+  "recordings": [
+    {
+      "id": "r-20261008-153012-1",
+      "state": "finalized",
+      "dir": "/home/u/.local/share/armo/records/armo-20261008-153012",
+      "kind": "events",
+      "methods": [
+        "uprobe",
+        "preload"
+      ],
+      "targets": {
+        "all": false,
+        "pids": [
+          4021
+        ]
+      },
+      "started_real_ns": 1791473412000000000,
+      "elapsed_s": 61.5,
+      "bytes": 104857600,
+      "limits": {
+        "max_duration_s": 1800,
+        "max_bytes": 8589934592,
+        "disk_floor_bytes": 2147483648
+      },
+      "owner": {
+        "uid": 1000,
+        "client": "rqt_armo",
+        "pid": 5555,
+        "host": "orin"
+      },
+      "totals": {
+        "events": 1200000,
+        "lost": 0
+      },
+      "per_entity": [
+        {
+          "id": "topic:ros:/scan",
+          "events": 4200,
+          "lost": 0
+        }
+      ],
+      "per_entity_truncated": false,
+      "end_reason": "user_stop"
+    }
+  ]
+}

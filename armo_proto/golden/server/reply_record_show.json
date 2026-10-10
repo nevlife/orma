@@ -1,0 +1,43 @@
+{
+  "type": "reply",
+  "id": 11,
+  "ok": true,
+  "table": {
+    "entities": [
+      {
+        "id": "p:4021:8812345",
+        "events": 4200,
+        "lost": 3,
+        "hz": 10.0
+      },
+      {
+        "id": "p:4022:8812399",
+        "events": 0,
+        "lost": 0,
+        "hz": null
+      }
+    ],
+    "warnings": [
+      {
+        "kind": "empty_target",
+        "text": "target pid 4022 has no events",
+        "ids": []
+      },
+      {
+        "kind": "probe_missing",
+        "text": "rmw_send_request (Uprobe): not exported",
+        "ids": [
+          "p:4021:8812345"
+        ]
+      }
+    ],
+    "totals": {
+      "events": 1200000,
+      "lost": 3,
+      "duration_s": 61.5,
+      "bytes": 157286400
+    },
+    "end_reason": "user_stop",
+    "end_detail": null
+  }
+}

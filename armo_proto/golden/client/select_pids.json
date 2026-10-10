@@ -1,0 +1,13 @@
+{
+  "op": "select",
+  "id": 3,
+  "all": false,
+  "pids": [
+    4021,
+    4022
+  ],
+  "method_by_pid": {
+    "4021": "preload",
+    "4022": "uprobe"
+  }
+}

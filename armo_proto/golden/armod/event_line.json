@@ -1,0 +1,10 @@
+{
+  "type": "event_line",
+  "t_real_ns": 1791473415000000000,
+  "level": "info",
+  "kind": "process_exit",
+  "text": "4021 exited",
+  "ids": [
+    "p:4021:771234"
+  ]
+}

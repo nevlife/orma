@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>armo_preload</name>
+  <version>0.0.0</version>
+  <description>
+    libarmo_preload.so, loaded with LD_PRELOAD: catches ros_trace_*, rcl_wait, rcl_timer_fini,
+    rclcpp construction functions and flux2_trace_*, and writes armo's shared memory file. Also
+    the static interception library armo_intercept that the LTTng backend links.
+  </description>
+  <maintainer email="nevlife000720@gmail.com">nevlife</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <build_depend>rclcpp</build_depend>
+  <build_depend>rmw</build_depend>
+  <build_depend>tracetools</build_depend>
+
+  <test_depend>ament_cmake_test</test_depend>
+  <test_depend>armo_rclpy</test_depend>
+  <test_depend>rclpy</test_depend>
+  <test_depend>std_msgs</test_depend>
+  <test_depend>std_srvs</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

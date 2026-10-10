@@ -1,0 +1,17 @@
+<library path="rqt_armo">
+  <class name="Armo" type="rqt_armo.plugin.Armo" base_class_type="rqt_gui_py::Plugin">
+    <description>
+      Monitoring, recordings and the message flow graph from armo-collectd.
+    </description>
+    <qtgui>
+      <group>
+        <label>Introspection</label>
+        <icon type="theme">folder</icon>
+        <statustip>Plugins related to introspection.</statustip>
+      </group>
+      <label>armo</label>
+      <icon type="theme">utilities-system-monitor</icon>
+      <statustip>Monitoring, recordings and the message flow graph from armo-collectd.</statustip>
+    </qtgui>
+  </class>
+</library>

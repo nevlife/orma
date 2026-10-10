@@ -1,10 +1,15 @@
-//! Map keys and values shared by the eBPF programs and armod. Both sides read these through the
-//! same definitions, so a layout change reaches both at once.
+//! armo's contracts: the eBPF map types armod reads (here and `bpf`), the event records every collection method
+//! writes (`events`, `catalog`) and the LD_PRELOAD shared memory layout (`shm`). C reads the last
+//! two through headers cbindgen writes from those files.
 #![no_std]
 
-/// log2 buckets over nanoseconds: bucket `i` holds `[2^i, 2^(i+1))`, bucket 0 also holds 0.
+pub mod bpf;
+pub mod catalog;
+pub mod events;
+pub mod shm;
+
 /// 2^40 ns is about 18 minutes.
-pub const BUCKETS: usize = 40;
+pub const BUCKETS: usize = shm::ARMO_BUCKETS;
 pub const NAME_LEN: usize = 128;
 
 pub const KIND_ROS: u32 = 0;
@@ -100,7 +105,102 @@ pub const fn bucket(ns: u64) -> usize {
     if b >= BUCKETS { BUCKETS - 1 } else { b }
 }
 
+/// A `#[repr(C)]` type of integers with no padding, so every byte pattern is a value and every
+/// byte of a value is initialized. The layout test checks that the fields of each tile its size.
+///
+/// # Safety
+/// Implement only for such types.
+#[allow(unsafe_code)]
+pub unsafe trait Plain: Copy {}
+
+pub fn bytes_of<T: Plain>(value: &T) -> &[u8] {
+    #[allow(unsafe_code)]
+    // SAFETY: Plain types have no padding, so all size_of::<T>() bytes are initialized.
+    unsafe {
+        core::slice::from_raw_parts((value as *const T).cast::<u8>(), size_of::<T>())
+    }
+}
+
+/// The value at the start of `bytes`, which need not be aligned.
+pub fn read<T: Plain>(bytes: &[u8]) -> Option<T> {
+    if bytes.len() < size_of::<T>() {
+        return None;
+    }
+    #[allow(unsafe_code)]
+    // SAFETY: the length is checked, and any bytes are a valid Plain value.
+    Some(unsafe { core::ptr::read_unaligned(bytes.as_ptr().cast::<T>()) })
+}
+
+#[allow(unsafe_code)]
+mod plain {
+    use super::Plain;
+    use super::events::*;
+    use super::shm::*;
+
+    macro_rules! plain {
+        ($($t:ty),* $(,)?) => { $(unsafe impl Plain for $t {})* };
+    }
+
+    plain!(
+        (),
+        armo_shm_header,
+        armo_thread_slot,
+        armo_table_entry,
+        armo_record,
+        armo_position,
+        armo_evfile_header,
+        armo_ev_rcl_init,
+        armo_ev_rcl_node_init,
+        armo_ev_rmw_endpoint_init,
+        armo_ev_rcl_topic_init,
+        armo_ev_publish,
+        armo_ev_rmw_publish,
+        armo_ev_rmw_publish_rcl,
+        armo_ev_rclcpp_subscription_init,
+        armo_ev_callback_added,
+        armo_ev_rmw_take,
+        armo_ev_take,
+        armo_ev_rcl_service_init,
+        armo_ev_rcl_timer_init,
+        armo_ev_rclcpp_timer_link_node,
+        armo_ev_rclcpp_callback_register,
+        armo_ev_callback_start,
+        armo_ev_handle,
+        armo_ev_rclcpp_executor_wait_for_work,
+        armo_ev_rmw_send_request,
+        armo_ev_rmw_take_request,
+        armo_ev_rmw_send_response,
+        armo_ev_rmw_take_response,
+        armo_ev_rcl_wait_enter,
+        armo_ev_rcl_wait_exit,
+        armo_ev_rclcpp_object,
+        armo_ev_rclcpp_ipm_insert_sub_id_for_pub,
+        armo_ev_callback_code,
+        armo_ev_rmw_topic,
+        armo_ev_dds_serialized_size,
+        armo_ev_flux2_channel_init,
+        armo_ev_flux2_claim,
+        armo_ev_flux2_loan,
+        armo_ev_flux2_loan_end,
+        armo_ev_flux2_commit,
+        armo_ev_flux2_take,
+        armo_ev_flux2_release,
+        armo_ev_flux2_refused,
+        armo_ev_flux2_wait,
+        armo_ev_flux2_wake,
+        armo_ev_flux2_callback_start,
+        armo_ev_flux2_callback_end,
+        armo_ev_flux2_endpoint_init,
+        armo_ev_flux2_py_gil,
+        armo_ev_flux2_py_ready,
+        armo_ev_flux2_record_drop,
+        armo_ev_sched_switch,
+        armo_ev_sched_wakeup,
+    );
+}
+
 #[cfg(feature = "user")]
+#[allow(unsafe_code)]
 mod pod {
     use super::*;
     unsafe impl aya::Pod for CallbackKey {}

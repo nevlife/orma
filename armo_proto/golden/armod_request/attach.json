@@ -1,0 +1,16 @@
+{
+  "op": "attach",
+  "id": 2,
+  "all": false,
+  "pids": [
+    4021
+  ],
+  "sets": [
+    "discovery",
+    "hot",
+    "sched"
+  ],
+  "user_words": {
+    "4025": 281473048977472
+  }
+}
