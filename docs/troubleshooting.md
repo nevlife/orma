@@ -1,6 +1,6 @@
 # 문제 해결
 
-먼저 `armo status`와 `armo selfcheck`를 본다([usage.md](usage.md) 1절).
+먼저 `armo status`와 `armo check`를 본다([usage.md](usage.md) 1절).
 
 ## armod
 
@@ -38,7 +38,7 @@
 
 ## 넘침 경고
 
-`armo monitor processes` 아래의 `warning: pid N (...)`은 preload 프로세스의 공유 메모리 표가 찼다는 뜻이다. 표 칸과 깊이가 넘친 몫은 창 집계에서만 빠지고 기록의 이벤트는 남는다. 스레드 칸이 넘친 스레드는 이벤트도 기록되지 않는다.
+`armo top proc` 아래의 `warning: pid N (...)`은 preload 프로세스의 공유 메모리 표가 찼다는 뜻이다. 표 칸과 깊이가 넘친 몫은 창 집계에서만 빠지고 기록의 이벤트는 남는다. 스레드 칸이 넘친 스레드는 이벤트도 기록되지 않는다.
 
 | 경고 | 한도 | 조치 |
 | --- | --- | --- |

@@ -65,7 +65,7 @@ sudo systemctl enable --now armod
 ```bash
 systemctl status armod
 armo status            # armod: connected
-armo selfcheck         # fail이 없으면 종료 코드 0
+armo check         # fail이 없으면 종료 코드 0
 ```
 
 ### 다시 빌드한 뒤

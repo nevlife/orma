@@ -145,19 +145,20 @@ def print_subscriptions(w):
     )
 
 
+# View name: the window field it shows, and its printer.
 VIEWS = {
-    "processes": print_processes,
-    "nodes": print_nodes,
-    "callbacks": print_callbacks,
-    "topics": print_topics,
-    "subscriptions": print_subscriptions,
+    "proc": ("processes", print_processes),
+    "node": ("nodes", print_nodes),
+    "cb": ("callbacks", print_callbacks),
+    "topic": ("topics", print_topics),
+    "sub": ("subscriptions", print_subscriptions),
 }
 
 
 def print_window(w, name, selection=None, infra=False):
     behind = " behind" if w["behind"] else ""
     print(f"window {w['seq']}  {w['window_ns'] / 1e9:g}s{behind}")
-    VIEWS[name](view.visible(w, selection, infra))
+    VIEWS[name][1](view.visible(w, selection, infra))
 
 
 def print_recordings(recordings):
@@ -220,9 +221,9 @@ def cmd_status(args):
     return 0
 
 
-def cmd_monitor(args):
+def cmd_top(args):
     if args.view is None and not args.json:
-        raise ArmoError(f"armo monitor needs a view: {', '.join(VIEWS)}")
+        raise ArmoError(f"armo top needs a view: {', '.join(VIEWS)}")
     methods = args.method or []
     if methods and not args.pid:
         raise ArmoError("--method needs --pid")
@@ -248,12 +249,9 @@ def cmd_monitor(args):
                 if m["type"] == "window":
                     selection = c.state["monitor"]["selection"]
                     if args.json and args.view:
+                        field = VIEWS[args.view][0]
                         shown = view.visible(m, selection, args.infra)
-                        m = {
-                            "seq": m["seq"],
-                            "window_ns": m["window_ns"],
-                            args.view: shown[args.view],
-                        }
+                        m = {"seq": m["seq"], "window_ns": m["window_ns"], field: shown[field]}
                     if args.json:
                         print(json.dumps(m, separators=(",", ":")))
                     else:
@@ -354,7 +352,7 @@ def cmd_export(args):
     return 0
 
 
-def cmd_selfcheck(args):
+def cmd_check(args):
     with armo_client.connect() as c:
         checks = c.request("selfcheck", duration_s=args.duration)["checks"]
     rows = [[x["item"], x["status"], x["detail"]] for x in checks]
@@ -385,7 +383,7 @@ def parser():
         run=cmd_status
     )
 
-    m = sub.add_parser("monitor", help="print one view of each window")
+    m = sub.add_parser("top", help="print one view of each window")
     m.add_argument("view", nargs="?", choices=tuple(VIEWS))
     m.add_argument("--pid", type=int, action="append", default=[])
     m.add_argument("--method", choices=METHODS, action="append")
@@ -401,7 +399,7 @@ def parser():
     m.add_argument(
         "--json", action="store_true", help="one window message per line, only the view if given"
     )
-    m.set_defaults(run=cmd_monitor)
+    m.set_defaults(run=cmd_top)
 
     r = sub.add_parser("record", help="start a recording; list, stop, show")
     r.add_argument("--method", choices=("auto",) + METHODS)
@@ -444,9 +442,9 @@ def parser():
     e.add_argument("--metric", action="append")
     e.set_defaults(run=cmd_export)
 
-    s = sub.add_parser("selfcheck", help="check this machine's assumptions")
+    s = sub.add_parser("check", help="check this machine's assumptions (selfcheck)")
     s.add_argument("--duration", type=float, default=10.0, metavar="S")
-    s.set_defaults(run=cmd_selfcheck)
+    s.set_defaults(run=cmd_check)
 
     x = sub.add_parser("run", help="run a command with the method's environment")
     x.add_argument("--method", choices=LAUNCH_METHODS, default="preload")

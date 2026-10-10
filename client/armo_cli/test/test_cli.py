@@ -36,7 +36,7 @@ COMMANDS = [
     (["record", "show", STATE_RECORD], ["record_show_id"]),
     (["record", "show", "/home/u/.local/share/armo/records/armo-20261008-153012"], ["record_show_dir"]),
     (["export", "/home/u/rec/run1", "-o", "/home/u/run1.csv", "--metric", "callbacks", "--metric", "topics"], ["export"]),
-    (["selfcheck", "--duration", "15"], ["selfcheck"]),
+    (["check", "--duration", "15"], ["selfcheck"]),
 ]  # fmt: skip
 
 
@@ -73,7 +73,7 @@ def test_name_targets_are_sent(fake, option):
 
 @pytest.mark.parametrize("argv,names", COMMANDS, ids=lambda x: "_".join(x)[:40])
 def test_request_matches_golden(fake, argv, names, capsys):
-    assert main(argv) == (1 if argv[0] == "selfcheck" else 0)
+    assert main(argv) == (1 if argv[0] == "check" else 0)
     # The fake server logs the bye after the CLI has already returned.
     wait_for(lambda: fake.requests()[-1]["op"] == "bye")
     check_session(fake.requests(), names, os.getpid())
@@ -103,16 +103,16 @@ def test_request_matches_golden(fake, argv, names, capsys):
         ),
     ],
 )
-def test_monitor(fake, env, argv, expected):
-    lines = monitor_lines("callbacks", *argv)
+def test_top(fake, env, argv, expected):
+    lines = top_lines("cb", *argv)
     assert "window 381  1s\n" in lines and "callbacks\n" in lines
     requests = [without_id(r) for r in fake.requests()]
     assert requests[1:] == [without_id(e) for e in expected] + [{"op": "bye"}]
 
 
-def monitor_lines(*argv):
+def top_lines(*argv):
     """Lines up to the golden's last event line, then Ctrl-C."""
-    process = subprocess.Popen(armo("monitor", *argv), stdout=subprocess.PIPE, text=True)
+    process = subprocess.Popen(armo("top", *argv), stdout=subprocess.PIPE, text=True)
     lines = [process.stdout.readline()]
     while not lines[-1].startswith("[warn] probe_missing"):
         assert lines[-1]
@@ -122,17 +122,23 @@ def monitor_lines(*argv):
     return lines
 
 
-TITLES = {"processes", "nodes", "callbacks", "topics", "subscriptions"}
+TITLES = {
+    "proc": "processes",
+    "node": "nodes",
+    "cb": "callbacks",
+    "topic": "topics",
+    "sub": "subscriptions",
+}
 
 
 @pytest.mark.parametrize("view", sorted(TITLES))
-def test_monitor_prints_only_its_view(fake, env, view):
-    titles = {line.strip() for line in monitor_lines(view)} & TITLES
-    assert titles == {view}
+def test_top_prints_only_its_view(fake, env, view):
+    titles = {line.strip() for line in top_lines(view)} & set(TITLES.values())
+    assert titles == {TITLES[view]}
 
 
-def test_monitor_processes_warns_of_overflow(fake, env):
-    warnings = [line for line in monitor_lines("processes") if line.startswith("warning:")]
+def test_top_proc_warns_of_overflow(fake, env):
+    warnings = [line for line in top_lines("proc") if line.startswith("warning:")]
     assert warnings == [
         "warning: pid 4021 (camera_node): 3 samples not aggregated (thread table full)\n"
     ]
@@ -160,24 +166,24 @@ def test_overflow_warning_only_when_nonzero(overflow, expected, capsys):
     assert [line for line in out if line.startswith("warning:")] == expected
 
 
-def test_monitor_needs_a_view(fake, env, capsys):
-    assert main(["monitor"]) == 1
+def test_top_needs_a_view(fake, env, capsys):
+    assert main(["top"]) == 1
     assert "needs a view" in capsys.readouterr().err
 
 
-def monitor_json(*argv):
-    process = subprocess.Popen(armo("monitor", "--json", *argv), stdout=subprocess.PIPE, text=True)
+def top_json(*argv):
+    process = subprocess.Popen(armo("top", "--json", *argv), stdout=subprocess.PIPE, text=True)
     line = process.stdout.readline()
     process.send_signal(signal.SIGINT)
     assert process.wait(10) == 0
     return json.loads(line)
 
 
-def test_monitor_json(fake, env):
+def test_top_json(fake, env):
     window = json.loads((GOLDEN.parent / "golden/server/window.json").read_text())
-    assert monitor_json() == window
+    assert top_json() == window
     view = {"seq": window["seq"], "window_ns": window["window_ns"], "topics": window["topics"]}
-    assert monitor_json("topics") == view
+    assert top_json("topic") == view
 
 
 def start_record(fake):

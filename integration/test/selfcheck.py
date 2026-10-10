@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""`armo selfcheck` against the real armod and armo-collectd (design 6.7, 18 WP9).
+"""`armo check` against the real armod and armo-collectd (design 6.7, 18 WP9).
 
 Processes that wait before they create any ROS entity are selected first, so the check attaches
-only to them; `armo selfcheck` then runs and they start inside its window: two node.cpp on one
+only to them; `armo check` then runs and they start inside its window: two node.cpp on one
 topic (one under libarmo_preload.so), node.py with armo_rclpy and, when the workspace has
 flux2_ffi, armo_daemon's flux2 caller. Each row of 6.7 must come out as an item that passes;
 the Cyclone m_size offset may stay unknown with its reason (it needs Cyclone's debug symbols).
@@ -90,7 +90,7 @@ MAY_BE_UNKNOWN = {"cyclone serdata_rmw::m_size offset"}
 
 
 def parse(out):
-    """Rows of `armo selfcheck`'s table: item -> (status, detail)."""
+    """Rows of `armo check`'s table: item -> (status, detail)."""
     lines = out.splitlines()
     head = next(i for i, line in enumerate(lines) if line.split()[:2] == ["item", "status"])
     status_at = lines[head].index("status")
@@ -127,7 +127,7 @@ def main():
             client = armo_client.connect(start=False)
             client.request("select", all=False, pids=sorted(pids.values()))
             check = subprocess.Popen(
-                ["armo", "selfcheck", "--duration", str(a.duration)],
+                ["armo", "check", "--duration", str(a.duration)],
                 env=collectd.env,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
@@ -148,7 +148,7 @@ def main():
             for p in procs.values():
                 p.go()
             out = check.communicate(timeout=600)[0]
-            print(f"armo selfcheck ended {time.monotonic() - t0:.0f} s after the nodes started")
+            print(f"armo check ended {time.monotonic() - t0:.0f} s after the nodes started")
             print(out)
             client.close()
         finally:

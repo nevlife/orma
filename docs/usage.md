@@ -6,7 +6,7 @@
 
 ```bash
 armo status
-armo selfcheck
+armo check
 ```
 
 `armo status`의 둘째 줄이 출처 상태다.
@@ -27,7 +27,7 @@ recordings: none
 | `lttng: absent` | `lttng`가 PATH에 없다 |
 | `preload processes` | preload나 LTTng 방식으로 띄운 프로세스 수 |
 
-`armo selfcheck`는 이 장비에서 armo의 가정이 맞는지 본다(기본 10초, `--duration S`). 검사 동안 노드를 새로 띄워야 나오는 항목이 있다. 행마다 `pass`, `fail`, `unknown`이고 `fail`이 하나라도 있으면 종료 코드가 1이다. `unknown`은 판단할 재료가 없었다는 뜻이고 이유가 옆에 있다.
+`armo check`는 이 장비에서 armo의 가정이 맞는지 본다(기본 10초, `--duration S`). 검사 동안 노드를 새로 띄워야 나오는 항목이 있다. 행마다 `pass`, `fail`, `unknown`이고 `fail`이 하나라도 있으면 종료 코드가 1이다. `unknown`은 판단할 재료가 없었다는 뜻이고 이유가 옆에 있다.
 
 ## 2. 방식 고르기
 
@@ -86,8 +86,8 @@ def generate_launch_description():
 ## 4. 모니터링
 
 ```bash
-armo monitor <보기> [--node RE] [--topic RE] [--exclude RE] [--pid PID]... [--method M]...
-             [--window S] [--infra] [--json]
+armo top <보기> [--node RE] [--topic RE] [--exclude RE] [--pid PID]... [--method M]...
+         [--window S] [--infra] [--json]
 ```
 
 무엇을 볼지는 노드, 토픽, 프로세스 중 편한 것으로 고른다.
@@ -100,9 +100,9 @@ armo monitor <보기> [--node RE] [--topic RE] [--exclude RE] [--pid PID]... [--
 | `--pid PID` | 그 프로세스 | 그 프로세스 |
 
 ```bash
-armo monitor callbacks --node /talker
-armo monitor subscriptions --topic '/camera/.*'
-armo monitor nodes --exclude '/rviz.*'
+armo top cb --node /talker
+armo top sub --topic '/camera/.*'
+armo top node --exclude '/rviz.*'
 ```
 
 - 정규식은 이름 전체에 맞춘다. `/cam`은 `/camera`에 맞지 않고 `/cam.*`이 맞는다.
@@ -118,11 +118,11 @@ armo monitor nodes --exclude '/rviz.*'
 
 | 보기 | 열 |
 | --- | --- |
-| `processes` | pid, comm, 방식, CPU%, RSS, PSS, 공용 CPU%(노드에 나누지 못한 몫), 끝남. 아래에 armo 자기 비용 한 줄 |
-| `nodes` | 노드 이름, pid, CPU%, CPU 출처, busy%(벽시계), 콜백 Hz |
-| `callbacks` | 콜백, 노드, pid, Hz, 기대 Hz, 실행 시간 p99, p99.9, max, p50, dispatch 대기 p99 |
-| `topics` | 토픽, 전송(`ros`, `flux`, `flux2`), 발행 Hz, 기대 Hz, 대역폭, 버림, 홉 지연 p99, p99.9, max, p50 |
-| `subscriptions` | 토픽, 구독 노드, pid, 받음 Hz, 손실%, 손실 수, 깨움 지연 p99, p99.9, max, p50 |
+| `proc` | pid, comm, 방식, CPU%, RSS, PSS, 공용 CPU%(노드에 나누지 못한 몫), 끝남. 아래에 armo 자기 비용 한 줄 |
+| `node` | 노드 이름, pid, CPU%, CPU 출처, busy%(벽시계), 콜백 Hz |
+| `cb` | 콜백, 노드, pid, Hz, 기대 Hz, 실행 시간 p99, p99.9, max, p50, dispatch 대기 p99 |
+| `topic` | 토픽, 전송(`ros`, `flux`, `flux2`), 발행 Hz, 기대 Hz, 대역폭, 버림, 홉 지연 p99, p99.9, max, p50 |
+| `sub` | 토픽, 구독 노드, pid, 받음 Hz, 손실%, 손실 수, 깨움 지연 p99, p99.9, max, p50 |
 
 ```text
 callbacks
@@ -146,7 +146,7 @@ callbacks
 - 노드를 모르는 콜백과 구독은 노드 열이 `unlinked`이고 맨 아래에 모인다. armo가 그 프로세스에 나중에 붙어 노드를 만드는 순간을 못 봤으면 `unlinked (cold)`다.
 - uprobe로 재는 rclcpp 프로세스는 armo가 executor에서 노드를 읽어 채운다. 노드를 모르는 콜백이 처음 돈 뒤 보통 2~3초 안에 노드가 붙는다. 그동안만 콜백마다 uprobe 하나(약 1.25 us)가 더 든다. 10초 안에 못 찾으면 그만둔다.
 - 그래도 남는 것: rclpy 노드, Humble의 `StaticSingleThreadedExecutor`와 `EventsExecutor`, intra-process로만 받는 구독, 타이머만 든 callback group의 타이머. 늦게 붙은 서비스는 이름 없이 `srv`와 함수 이름만 보인다.
-- 이것들을 처음부터 보려면 `armo monitor`나 rqt를 먼저 열어 둔 채 노드를 띄운다. 클라이언트가 붙어 있는 동안 init 이벤트를 받는 프로브가 모든 프로세스에 있다.
+- 이것들을 처음부터 보려면 `armo top`이나 rqt를 먼저 열어 둔 채 노드를 띄운다. 클라이언트가 붙어 있는 동안 init 이벤트를 받는 프로브가 모든 프로세스에 있다.
 - `/rosout`, `/parameter_events`, `ros_discovery_info`와 노드마다 rclcpp가 만드는 파라미터 서비스(`get_parameters` 등), 그 콜백은 기본으로 숨긴다. `--infra`를 주면 보인다.
 
 - 지연 열은 꼬리부터 찍는다(p99, p99.9, max, p50).
@@ -154,15 +154,15 @@ callbacks
 - 노드의 CPU 출처가 `sched`이면 armod가 잰 on-CPU이고, `wall_bound`이면 sched 없이 콜백 벽시계 시간으로 낸 상한이다.
 - 창 줄 끝의 `behind`는 armo-collectd가 창 하나를 창 길이 안에 모으지 못했다는 뜻이다.
 
-`processes` 아래 줄은 armo 자신의 비용이다.
+`proc` 보기의 표 아래 줄은 armo 자신의 비용이다.
 
 ```text
 armo: collectd cpu 1.0% rss 6.9MiB, armod cpu 0.4% rss 22.5MiB, shm files 0 ring drops 0, probes missing 6, collect 1.7ms
 ```
 
-`probes missing`은 붙지 않은 지점 수다. 그 함수가 없는 라이브러리(예: Jazzy의 rmw 서비스 트레이스포인트)도 센다. 자세한 이유는 `armo selfcheck`가 보인다.
+`probes missing`은 붙지 않은 지점 수다. 그 함수가 없는 라이브러리(예: Jazzy의 rmw 서비스 트레이스포인트)도 센다. 자세한 이유는 `armo check`가 보인다.
 
-preload 프로세스의 표가 넘치면 `processes` 표 바로 아래에 경고가 나온다.
+preload 프로세스의 표가 넘치면 `proc` 보기의 표 바로 아래에 경고가 나온다.
 
 ```text
 warning: pid 4021 (camera_node): 3 samples not aggregated (thread table full)
