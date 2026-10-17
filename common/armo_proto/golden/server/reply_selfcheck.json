@@ -9,9 +9,9 @@
       "detail": "4/4 handles equal"
     },
     {
-      "item": "flux2 contract",
+      "item": "flux contract",
       "status": "fail",
-      "detail": "libflux2_ffi.so.2 lacks flux2_trace_contract_2"
+      "detail": "libflux_ffi.so.2 lacks flux_trace_contract_2"
     },
     {
       "item": "rmw timestamp",

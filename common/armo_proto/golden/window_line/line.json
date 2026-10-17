@@ -123,7 +123,7 @@
         "cb_hz": 40.0,
         "callbacks": [
           "c:4021:771234:ros:55a0c1d0",
-          "c:4021:771234:flux2:5581f000:2"
+          "c:4021:771234:flux:5581f000:2"
         ],
         "malloc": {
           "alloc_bps": 1048576.0,
@@ -218,10 +218,10 @@
         "futex_mean_ns": 12000
       },
       {
-        "id": "c:4021:771234:flux2:5581f000:2",
+        "id": "c:4021:771234:flux:5581f000:2",
         "node": null,
-        "kind": "flux2",
-        "topic": "topic:flux2:/image:9f3a0c11d2e4b5a6",
+        "kind": "flux",
+        "topic": "topic:flux:/image:9f3a0c11d2e4b5a6",
         "symbol": null,
         "group": null,
         "executor": null,
@@ -293,8 +293,8 @@
         }
       },
       {
-        "id": "topic:flux2:/image:9f3a0c11d2e4b5a6",
-        "transport": "flux2",
+        "id": "topic:flux:/image:9f3a0c11d2e4b5a6",
+        "transport": "flux",
         "name": "/image",
         "publishers": [],
         "subscribers": [
@@ -362,10 +362,10 @@
         "ambiguous": 0
       },
       {
-        "id": "f:latest:n:4021:771234:5581e0a0#topic:flux2:/image:9f3a0c11d2e4b5a6#topic:ros:/scan_filtered",
+        "id": "f:latest:n:4021:771234:5581e0a0#topic:flux:/image:9f3a0c11d2e4b5a6#topic:ros:/scan_filtered",
         "kind": "latest",
         "node": "n:4021:771234:5581e0a0",
-        "input": "topic:flux2:/image:9f3a0c11d2e4b5a6",
+        "input": "topic:flux:/image:9f3a0c11d2e4b5a6",
         "output": "topic:ros:/scan_filtered",
         "count": 10,
         "dwell": {

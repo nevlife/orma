@@ -344,7 +344,7 @@ pub fn start(options: RecordOptions, cx: Context<'_>) -> Result<Active, String> 
         id: cx.id.clone(),
         host: cx.host,
         ros: Vec::new(),
-        flux2_contract: None,
+        flux_contract: None,
         options: resolved,
         methods_by_pid,
         owner: cx.owner,

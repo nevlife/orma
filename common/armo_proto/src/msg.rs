@@ -49,9 +49,9 @@ enums! {
     pub enum ProbeSet { Discovery, Hot, Sched, Bandwidth, RclcppSymbols, Names, Gpu, Dds, Futex }
     pub enum PublishAbi { Rmw, Rcl }
     pub enum CpuSource { Sched, WallBound }
-    pub enum ExecutorKind { Rclcpp, Rclpy, Flux, Flux2 }
-    pub enum CallbackKind { Sub, Timer, Service, Flux, Flux2, Unknown }
-    pub enum Transport { Ros, Flux, Flux2 }
+    pub enum ExecutorKind { Rclcpp, Rclpy, Flux }
+    pub enum CallbackKind { Sub, Timer, Service, Flux, Unknown }
+    pub enum Transport { Ros, Flux }
     pub enum FlowKind { Sync, Stamp, Blind, Latest }
     pub enum ChainMode { Lineage, First }
 }
@@ -460,10 +460,10 @@ types! {
         /// LD_PRELOAD processes only (design 13.2).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub overflow: Option<Overflow>,
-        /// The `CUresult` that wedged the process's GPU (`flux2_trace_gpu_wedged`); its GPU
+        /// The `CUresult` that wedged the process's GPU (`flux_trace_gpu_wedged`); its GPU
         /// channels refuse claims, loans and takes from then on. Proto 1.7.
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        pub flux2_gpu_wedged: Option<i32>,
+        pub flux_gpu_wedged: Option<i32>,
         /// Proto 1.8 (design 20.1).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub cuda: Option<ProcCuda>,
@@ -851,7 +851,7 @@ types! {
         pub id: String,
         pub host: Host,
         pub ros: Vec<ProcessRos>,
-        pub flux2_contract: Option<String>,
+        pub flux_contract: Option<String>,
         pub options: RecordOptions,
         pub methods_by_pid: BTreeMap<String, Method>,
         pub owner: Owner,

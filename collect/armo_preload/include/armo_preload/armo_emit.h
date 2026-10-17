@@ -1,7 +1,7 @@
 // The seam between armo_intercept, which catches the functions of design 2, and a backend
 // (libarmo_preload.so writes shared memory, libarmo_lttng.so LTTng events). The intercept calls
 // armo_emit_<event> once per caught call with the record payload filled; it has already read the
-// stamp and callback code words, answered gated enabled_ functions and checked the flux2
+// stamp and callback code words, answered gated enabled_ functions and checked the flux
 // contract. A backend reads the clock, keeps per-thread state and defines every function here.
 // A string argument may be NULL, which the backend records as an empty string.
 #ifndef ARMO_PRELOAD_ARMO_EMIT_H
@@ -64,25 +64,25 @@ void armo_emit_rclcpp_collector_add_group_to_collection(const armo_ev_rclcpp_obj
 void armo_emit_rclcpp_collector_add_group(const armo_ev_rclcpp_object * ev);
 void armo_emit_rclcpp_executor_add_group(const armo_ev_rclcpp_object * ev);
 void armo_emit_callback_code(const armo_ev_callback_code * ev);
-void armo_emit_flux2_channel_init(const armo_ev_flux2_channel_init * ev, const char * segment);
-void armo_emit_flux2_claim(const armo_ev_flux2_claim * ev);
-void armo_emit_flux2_loan(const armo_ev_flux2_loan * ev);
-void armo_emit_flux2_loan_end(const armo_ev_flux2_loan_end * ev);
-void armo_emit_flux2_commit(const armo_ev_flux2_commit * ev);
-void armo_emit_flux2_take(const armo_ev_flux2_take * ev);
-void armo_emit_flux2_release(const armo_ev_flux2_release * ev);
-void armo_emit_flux2_refused(const armo_ev_flux2_refused * ev);
-void armo_emit_flux2_wait(const armo_ev_flux2_wait * ev);
-void armo_emit_flux2_wake(const armo_ev_flux2_wake * ev);
-void armo_emit_flux2_callback_start(const armo_ev_flux2_callback_start * ev);
-void armo_emit_flux2_callback_end(const armo_ev_flux2_callback_end * ev, const char * segment);
-void armo_emit_flux2_endpoint_init(
-  const armo_ev_flux2_endpoint_init * ev, const char * node, const char * key,
+void armo_emit_flux_channel_init(const armo_ev_flux_channel_init * ev, const char * segment);
+void armo_emit_flux_claim(const armo_ev_flux_claim * ev);
+void armo_emit_flux_loan(const armo_ev_flux_loan * ev);
+void armo_emit_flux_loan_end(const armo_ev_flux_loan_end * ev);
+void armo_emit_flux_commit(const armo_ev_flux_commit * ev);
+void armo_emit_flux_take(const armo_ev_flux_take * ev);
+void armo_emit_flux_release(const armo_ev_flux_release * ev);
+void armo_emit_flux_refused(const armo_ev_flux_refused * ev);
+void armo_emit_flux_wait(const armo_ev_flux_wait * ev);
+void armo_emit_flux_wake(const armo_ev_flux_wake * ev);
+void armo_emit_flux_callback_start(const armo_ev_flux_callback_start * ev);
+void armo_emit_flux_callback_end(const armo_ev_flux_callback_end * ev, const char * segment);
+void armo_emit_flux_endpoint_init(
+  const armo_ev_flux_endpoint_init * ev, const char * node, const char * key,
   const char * signpost);
-void armo_emit_flux2_py_gil(const armo_ev_flux2_py_gil * ev);
-void armo_emit_flux2_py_ready(const armo_ev_flux2_py_ready * ev);
-void armo_emit_flux2_record_drop(const armo_ev_flux2_record_drop * ev);
-void armo_emit_flux2_gpu_wedged(const armo_ev_flux2_gpu_wedged * ev);
+void armo_emit_flux_py_gil(const armo_ev_flux_py_gil * ev);
+void armo_emit_flux_py_ready(const armo_ev_flux_py_ready * ev);
+void armo_emit_flux_record_drop(const armo_ev_flux_record_drop * ev);
+void armo_emit_flux_gpu_wedged(const armo_ev_flux_gpu_wedged * ev);
 void armo_emit_dds_write(const armo_ev_dds_write * ev);
 void armo_emit_cuda_call(const armo_ev_cuda_call * ev);
 void armo_emit_span_begin(const armo_ev_span * ev, const char * name);

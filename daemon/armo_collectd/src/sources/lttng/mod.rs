@@ -323,7 +323,7 @@ impl Worker {
             discarded: 0,
             rotated_ns: sys::mono_ns(),
         });
-        self.lttng(&["enable-event", "-u", "armo:*,flux2:*", "-s", name])?;
+        self.lttng(&["enable-event", "-u", "armo:*,flux:*", "-s", name])?;
         self.lttng(&["add-context", "-u", "-t", "vpid", "-t", "vtid", "-s", name])?;
         self.lttng(&["start", name])?;
         Ok(())
@@ -464,7 +464,7 @@ mod tests {
     #[test]
     fn reads_lttng_output() {
         let listing = "UST events:\n-------------\n\nPID: 3880525 - Name: sleep\n      \
-                       flux2:py_gil (loglevel: TRACE_DEBUG_LINE (13)) (type: tracepoint)\n\n\
+                       flux:py_gil (loglevel: TRACE_DEBUG_LINE (13)) (type: tracepoint)\n\n\
                        PID: 12 - Name: /usr/bin/x\n";
         assert_eq!(apps(listing), BTreeSet::from([12, 3880525]));
         let list = "    Statistics:\n      Discarded events: 245476\n\n    Statistics:\n      \

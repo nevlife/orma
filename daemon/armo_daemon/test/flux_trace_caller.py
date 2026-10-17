@@ -1,8 +1,8 @@
-"""Calls every flux2_trace_* of a libflux2_ffi.so a known number of times with known arguments,
+"""Calls every flux_trace_* of a libflux_ffi.so a known number of times with known arguments,
 for accuracy.py to check that each program reads each argument (design 11.2). Prints its pid,
 waits for "go", calls, prints what it expects as JSON, and waits for a line before it exits.
 
-    flux2_trace_caller.py LIBFLUX2_FFI
+    flux_trace_caller.py LIBFLUX_FFI
 """
 
 import ctypes
@@ -24,7 +24,7 @@ CH, EX, EP = 0xC4A1, 0xE7EC, 0xE4D0
 CALLS = [
     (
         "channel_init",
-        [V(CH), U64(11), U64(22), S(b"/flux2.v6..k.00ab.e1"), I32(1), U32(4), U32(64), I32(-1)],
+        [V(CH), U64(11), U64(22), S(b"/flux.v6..k.00ab.e1"), I32(1), U32(4), U32(64), I32(-1)],
         2,
         {
             "channel": CH,
@@ -34,7 +34,7 @@ CALLS = [
             "slot_count": 4,
             "slot_size": 64,
             "stamp_offset": -1,
-            "strings": ["/flux2.v6..k.00ab.e1"],
+            "strings": ["/flux.v6..k.00ab.e1"],
         },
     ),
     (
@@ -71,14 +71,14 @@ CALLS = [
     ("callback_start", [V(EX), U32(2), V(EP)], 11, {"executor": EX, "endpoint": EP, "entry": 2}),
     (
         "callback_end",
-        [V(EX), U32(2), I32(1), V(CH), S(b"/flux2.v6..k.00ab.e1")],
+        [V(EX), U32(2), I32(1), V(CH), S(b"/flux.v6..k.00ab.e1")],
         11,
         {
             "executor": EX,
             "channel": CH,
             "entry": 2,
             "delivered": 1,
-            "strings": ["/flux2.v6..k.00ab.e1"],
+            "strings": ["/flux.v6..k.00ab.e1"],
         },
     ),
     (
@@ -87,7 +87,7 @@ CALLS = [
             V(EP),
             S(b"/caller_node"),
             S(b"/cam"),
-            S(b"/flux2.v6..cam.00ab"),
+            S(b"/flux.v6..cam.00ab"),
             U64(0xAB),
             I32(1),
             I32(0),
@@ -98,7 +98,7 @@ CALLS = [
             "fingerprint": 0xAB,
             "role": 1,
             "lang": 0,
-            "strings": ["/caller_node", "/cam", "/flux2.v6..cam.00ab"],
+            "strings": ["/caller_node", "/cam", "/flux.v6..cam.00ab"],
         },
     ),
     ("py_gil", [I32(1)], 12, {"phase": 1}),
@@ -111,14 +111,14 @@ CALLS = [
     ),
     ("gpu_wedged", [I32(700)], 1, {"result": 700}),
 ]
-# A flux2 build from before GPU wedging has no gpu_wedged.
-CALLS = [c for c in CALLS if hasattr(lib, "flux2_trace_" + c[0])]
+# A flux build from before GPU wedging has no gpu_wedged.
+CALLS = [c for c in CALLS if hasattr(lib, "flux_trace_" + c[0])]
 
 print(os.getpid(), flush=True)
 sys.stdin.readline()
 funcs = {}
 for name, args, _, _ in CALLS:
-    funcs[name] = getattr(lib, "flux2_trace_" + name)
+    funcs[name] = getattr(lib, "flux_trace_" + name)
     funcs[name].restype = None
 for name, args, n, _ in CALLS:
     if name == "wake":
@@ -128,7 +128,7 @@ for name, args, n, _ in CALLS:
         # Each wait ends in a wake: the wait interval is timed per executor.
         if name == "wait":
             funcs["wake"](*{c[0]: c[1] for c in CALLS}["wake"])
-expect = {f"flux2_{name}": {"n": n, "fields": fields} for name, _, n, fields in CALLS}
+expect = {f"flux_{name}": {"n": n, "fields": fields} for name, _, n, fields in CALLS}
 print(
     json.dumps(
         {

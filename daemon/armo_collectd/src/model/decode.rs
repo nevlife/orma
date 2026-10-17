@@ -144,18 +144,18 @@ pub enum E {
         lost: u64,
         stamp: u64,
     },
-    Flux2Wait {
+    FluxWait {
         executor: u64,
     },
-    Flux2Wake {
+    FluxWake {
         executor: u64,
     },
-    Flux2Start {
+    FluxStart {
         executor: u64,
         entry: u32,
         endpoint: u64,
     },
-    Flux2End {
+    FluxEnd {
         executor: u64,
         entry: u32,
         delivered: bool,
@@ -396,8 +396,8 @@ pub fn decode(r: &Record<'_>) -> Option<E> {
         ARMO_EV_RCL_WAIT_EXIT => E::WaitExit {
             wait_set: r.payload::<armo_ev_rcl_wait_exit>().wait_set,
         },
-        ARMO_EV_FLUX2_CHANNEL_INIT => {
-            let p: armo_ev_flux2_channel_init = r.payload();
+        ARMO_EV_FLUX_CHANNEL_INIT => {
+            let p: armo_ev_flux_channel_init = r.payload();
             E::ChannelInit {
                 channel: p.channel,
                 dev: p.dev,
@@ -406,22 +406,22 @@ pub fn decode(r: &Record<'_>) -> Option<E> {
                 segment: next(),
             }
         }
-        ARMO_EV_FLUX2_CLAIM => {
-            let p: armo_ev_flux2_claim = r.payload();
+        ARMO_EV_FLUX_CLAIM => {
+            let p: armo_ev_flux_claim = r.payload();
             E::Claim {
                 channel: p.channel,
                 result: p.result,
             }
         }
-        ARMO_EV_FLUX2_LOAN_END => {
-            let p: armo_ev_flux2_loan_end = r.payload();
+        ARMO_EV_FLUX_LOAN_END => {
+            let p: armo_ev_flux_loan_end = r.payload();
             E::LoanEnd {
                 channel: p.channel,
                 result: p.result,
             }
         }
-        ARMO_EV_FLUX2_COMMIT => {
-            let p: armo_ev_flux2_commit = r.payload();
+        ARMO_EV_FLUX_COMMIT => {
+            let p: armo_ev_flux_commit = r.payload();
             E::Commit {
                 channel: p.channel,
                 ticket: p.ticket,
@@ -429,8 +429,8 @@ pub fn decode(r: &Record<'_>) -> Option<E> {
                 stamp: p.stamp,
             }
         }
-        ARMO_EV_FLUX2_TAKE => {
-            let p: armo_ev_flux2_take = r.payload();
+        ARMO_EV_FLUX_TAKE => {
+            let p: armo_ev_flux_take = r.payload();
             E::Take {
                 channel: p.channel,
                 ticket: p.ticket,
@@ -438,23 +438,23 @@ pub fn decode(r: &Record<'_>) -> Option<E> {
                 stamp: p.stamp,
             }
         }
-        ARMO_EV_FLUX2_WAIT => E::Flux2Wait {
-            executor: r.payload::<armo_ev_flux2_wait>().executor,
+        ARMO_EV_FLUX_WAIT => E::FluxWait {
+            executor: r.payload::<armo_ev_flux_wait>().executor,
         },
-        ARMO_EV_FLUX2_WAKE => E::Flux2Wake {
-            executor: r.payload::<armo_ev_flux2_wake>().executor,
+        ARMO_EV_FLUX_WAKE => E::FluxWake {
+            executor: r.payload::<armo_ev_flux_wake>().executor,
         },
-        ARMO_EV_FLUX2_CALLBACK_START => {
-            let p: armo_ev_flux2_callback_start = r.payload();
-            E::Flux2Start {
+        ARMO_EV_FLUX_CALLBACK_START => {
+            let p: armo_ev_flux_callback_start = r.payload();
+            E::FluxStart {
                 executor: p.executor,
                 entry: p.entry,
                 endpoint: p.endpoint,
             }
         }
-        ARMO_EV_FLUX2_CALLBACK_END => {
-            let p: armo_ev_flux2_callback_end = r.payload();
-            E::Flux2End {
+        ARMO_EV_FLUX_CALLBACK_END => {
+            let p: armo_ev_flux_callback_end = r.payload();
+            E::FluxEnd {
                 executor: p.executor,
                 entry: p.entry,
                 delivered: p.delivered != 0,
@@ -462,26 +462,26 @@ pub fn decode(r: &Record<'_>) -> Option<E> {
                 segment: next(),
             }
         }
-        ARMO_EV_FLUX2_ENDPOINT_INIT => {
-            let p: armo_ev_flux2_endpoint_init = r.payload();
+        ARMO_EV_FLUX_ENDPOINT_INIT => {
+            let p: armo_ev_flux_endpoint_init = r.payload();
             E::EndpointInit {
                 endpoint: p.endpoint,
                 fingerprint: p.fingerprint,
-                publisher: p.role == ARMO_FLUX2_ROLE_PUBLISHER,
+                publisher: p.role == ARMO_FLUX_ROLE_PUBLISHER,
                 node: next(),
                 key: next(),
                 signpost: next(),
             }
         }
-        ARMO_EV_FLUX2_RECORD_DROP => {
-            let p: armo_ev_flux2_record_drop = r.payload();
+        ARMO_EV_FLUX_RECORD_DROP => {
+            let p: armo_ev_flux_record_drop = r.payload();
             E::RecordDrop {
                 channel: p.channel,
                 count: p.count,
             }
         }
-        ARMO_EV_FLUX2_GPU_WEDGED => E::GpuWedged {
-            result: r.payload::<armo_ev_flux2_gpu_wedged>().result,
+        ARMO_EV_FLUX_GPU_WEDGED => E::GpuWedged {
+            result: r.payload::<armo_ev_flux_gpu_wedged>().result,
         },
         ARMO_EV_SCHED_SWITCH => {
             let p: armo_ev_sched_switch = r.payload();

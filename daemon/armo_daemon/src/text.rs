@@ -5,13 +5,13 @@ use std::collections::{BTreeSet, HashMap};
 
 use armo_common::{
     events::*,
-    shm::{ARMO_AGG_CALLBACK, ARMO_SRC_FLUX2},
+    shm::{ARMO_AGG_CALLBACK, ARMO_SRC_FLUX},
 };
 use armo_proto::{msg::*, records};
 
 use crate::{
     daemon::{Client, Daemon, Sink},
-    flux2,
+    flux,
     probes::Scope,
     stats::quantile_upper_ns,
 };
@@ -24,7 +24,7 @@ struct Names {
     rclcpp_rcl: HashMap<(u32, u64), u64>,
     rmw_topic: HashMap<(u32, u64), String>,
     taken: HashMap<u32, u64>,
-    flux2: HashMap<(u32, u64, u32), String>,
+    flux: HashMap<(u32, u64, u32), String>,
 }
 
 impl Names {
@@ -84,13 +84,13 @@ impl Names {
                     self.callbacks.entry((pid, e.callback)).or_insert(t.clone());
                 }
             }
-            ARMO_EV_FLUX2_CALLBACK_END => {
-                let e: armo_ev_flux2_callback_end = r.payload();
+            ARMO_EV_FLUX_CALLBACK_END => {
+                let e: armo_ev_flux_callback_end = r.payload();
                 let segment = s(0);
                 if !segment.is_empty() {
-                    self.flux2
+                    self.flux
                         .entry((pid, e.executor, e.entry))
-                        .or_insert_with(|| flux2::topic(&segment, pid));
+                        .or_insert_with(|| flux::topic(&segment, pid));
                 }
             }
             _ => {}
@@ -233,12 +233,12 @@ fn print_window(w: &ArmodWindow, names: &Names, secs: f64) {
         ..
     } in merged
     {
-        let (label, id, name) = if src == ARMO_SRC_FLUX2 {
+        let (label, id, name) = if src == ARMO_SRC_FLUX {
             (
-                "flux2",
+                "flux",
                 format!("{key:#x}:{entry}"),
                 names
-                    .flux2
+                    .flux
                     .get(&(pid, key, entry))
                     .cloned()
                     .unwrap_or_default(),

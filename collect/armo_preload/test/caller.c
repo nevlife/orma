@@ -5,9 +5,9 @@
 //
 //     caller                       the ROS checks
 //     caller asan                  the same but malloc attribution, with libasan.so preloaded first
-//     caller flux2-global STUB     flux2 events of a stub loaded RTLD_GLOBAL
-//     caller flux2-local STUB      the same loaded RTLD_LOCAL, as Python loads libflux2_ffi
-//     caller flux2-none STUB       a stub without flux2_trace_contract_2: no events
+//     caller flux-global STUB     flux events of a stub loaded RTLD_GLOBAL
+//     caller flux-local STUB      the same loaded RTLD_LOCAL, as Python loads libflux_ffi
+//     caller flux-none STUB       a stub without flux_trace_contract_2: no events
 //     caller collect CUDA DDS      spans, and stub CUDA and DDS calls with their options off and on
 #define _GNU_SOURCE
 #include "armo_preload/armo_events.h"
@@ -410,13 +410,13 @@ static void check_fork(void)
   CHECK(glob(path, 0, NULL, &g) == GLOB_NOMATCH);
 }
 
-static uint64_t flux2_count(uint16_t kind, uint32_t entry, uint64_t key)
+static uint64_t flux_count(uint16_t kind, uint32_t entry, uint64_t key)
 {
-  const armo_table_entry * e = row(slot_of((uint32_t)gettid()), kind, ARMO_SRC_FLUX2, entry, key);
+  const armo_table_entry * e = row(slot_of((uint32_t)gettid()), kind, ARMO_SRC_FLUX, entry, key);
   return e != NULL ? e->count : 0;
 }
 
-struct flux2_tally
+struct flux_tally
 {
   uint64_t events;
   uint64_t commits;
@@ -425,30 +425,30 @@ struct flux2_tally
   int32_t wedged;
 };
 
-static void flux2_one(const armo_record * r, void * arg)
+static void flux_one(const armo_record * r, void * arg)
 {
-  struct flux2_tally * t = arg;
-  if (r->event < ARMO_EV_FLUX2_CHANNEL_INIT || r->event > ARMO_EV_FLUX2_GPU_WEDGED) return;
+  struct flux_tally * t = arg;
+  if (r->event < ARMO_EV_FLUX_CHANNEL_INIT || r->event > ARMO_EV_FLUX_GPU_WEDGED) return;
   t->events++;
-  if (r->event == ARMO_EV_FLUX2_GPU_WEDGED)
-    t->wedged = ((const armo_ev_flux2_gpu_wedged *)(r + 1))->result;
-  if (r->event == ARMO_EV_FLUX2_COMMIT) {
+  if (r->event == ARMO_EV_FLUX_GPU_WEDGED)
+    t->wedged = ((const armo_ev_flux_gpu_wedged *)(r + 1))->result;
+  if (r->event == ARMO_EV_FLUX_COMMIT) {
     t->commits++;
-    t->last_stamp = ((const armo_ev_flux2_commit *)(r + 1))->stamp;
+    t->last_stamp = ((const armo_ev_flux_commit *)(r + 1))->stamp;
   }
-  if (r->event == ARMO_EV_FLUX2_ENDPOINT_INIT) {
-    const char * s = (const char *)(r + 1) + sizeof(armo_ev_flux2_endpoint_init);
+  if (r->event == ARMO_EV_FLUX_ENDPOINT_INIT) {
+    const char * s = (const char *)(r + 1) + sizeof(armo_ev_flux_endpoint_init);
     t->strings_ok = strcmp(s, "/armo_test/node") == 0 && strcmp(s + 16, "/key") == 0 &&
-                    strcmp(s + 21, "/flux2.v") == 0;
+                    strcmp(s + 21, "/flux.v") == 0;
   }
 }
 
-#define FLUX2_ROUNDS 200
+#define FLUX_ROUNDS 200
 
-static void check_flux2(const char * mode, const char * stub)
+static void check_flux(const char * mode, const char * stub)
 {
   void * lib =
-    dlopen(stub, RTLD_NOW | (strcmp(mode, "flux2-global") == 0 ? RTLD_GLOBAL : RTLD_LOCAL));
+    dlopen(stub, RTLD_NOW | (strcmp(mode, "flux-global") == 0 ? RTLD_GLOBAL : RTLD_LOCAL));
   CHECK(lib != NULL);
   void (*stub_run)(int) = (void (*)(int))dlsym(lib, "stub_run");
   uint64_t (*stub_calls)(void) = (uint64_t(*)(void))dlsym(lib, "stub_calls");
@@ -457,23 +457,23 @@ static void check_flux2(const char * mode, const char * stub)
   __atomic_store_n(&header->armed, 0, __ATOMIC_RELAXED);
   stub_wedge(700);
   __atomic_store_n(&header->armed, 1, __ATOMIC_RELAXED);
-  stub_run(FLUX2_ROUNDS);
-  CHECK(stub_calls() == 11 + 10 * FLUX2_ROUNDS);
+  stub_run(FLUX_ROUNDS);
+  CHECK(stub_calls() == 11 + 10 * FLUX_ROUNDS);
 
-  struct flux2_tally t = {0};
-  each_record(slot_of((uint32_t)gettid()), flux2_one, &t);
-  if (strcmp(mode, "flux2-none") == 0) {
-    CHECK(t.events == 0 && flux2_count(ARMO_AGG_CALLBACK, 1, 0xE0) == 0);
+  struct flux_tally t = {0};
+  each_record(slot_of((uint32_t)gettid()), flux_one, &t);
+  if (strcmp(mode, "flux-none") == 0) {
+    CHECK(t.events == 0 && flux_count(ARMO_AGG_CALLBACK, 1, 0xE0) == 0);
     return;
   }
-  CHECK(t.events == 11 + 10 * FLUX2_ROUNDS && t.commits == FLUX2_ROUNDS && t.strings_ok);
+  CHECK(t.events == 11 + 10 * FLUX_ROUNDS && t.commits == FLUX_ROUNDS && t.strings_ok);
   CHECK(t.wedged == 700);
-  CHECK(t.last_stamp == 0x5000000000u + FLUX2_ROUNDS);
-  CHECK(flux2_count(ARMO_AGG_CALLBACK, 1, 0xE0) == FLUX2_ROUNDS);
-  CHECK(flux2_count(ARMO_AGG_CALLBACK, 3, 0xE2) == FLUX2_ROUNDS);
-  CHECK(flux2_count(ARMO_AGG_DISPATCH, 1, 0xE0) == FLUX2_ROUNDS);
-  CHECK(flux2_count(ARMO_AGG_DISPATCH, 3, 0xE2) == 0);
-  CHECK(flux2_count(ARMO_AGG_WAIT, 0, 0xE0) == FLUX2_ROUNDS);
+  CHECK(t.last_stamp == 0x5000000000u + FLUX_ROUNDS);
+  CHECK(flux_count(ARMO_AGG_CALLBACK, 1, 0xE0) == FLUX_ROUNDS);
+  CHECK(flux_count(ARMO_AGG_CALLBACK, 3, 0xE2) == FLUX_ROUNDS);
+  CHECK(flux_count(ARMO_AGG_DISPATCH, 1, 0xE0) == FLUX_ROUNDS);
+  CHECK(flux_count(ARMO_AGG_DISPATCH, 3, 0xE2) == 0);
+  CHECK(flux_count(ARMO_AGG_WAIT, 0, 0xE0) == FLUX_ROUNDS);
 }
 
 // Whether `f` is a function this process's libarmo_preload.so defines, named `name` if given.
@@ -712,7 +712,7 @@ int main(int argc, char ** argv)
   if (argc == 4 && strcmp(argv[1], "collect") == 0) {
     check_collect(argv[2], argv[3]);
   } else if (argc == 3) {
-    check_flux2(argv[1], argv[2]);
+    check_flux(argv[1], argv[2]);
   } else {
     asan = argc == 2 && strcmp(argv[1], "asan") == 0;
     check_workers();

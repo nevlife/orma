@@ -78,25 +78,25 @@ pub const ARMO_EV_CUDA_CALL: u16 = 96;
 pub const ARMO_EV_SPAN_BEGIN: u16 = 104;
 pub const ARMO_EV_SPAN_END: u16 = 105;
 
-// flux2_trace_* of flux2_trace_contract_2 (design 11.2).
-pub const ARMO_EV_FLUX2_CHANNEL_INIT: u16 = 128;
-pub const ARMO_EV_FLUX2_CLAIM: u16 = 129;
-pub const ARMO_EV_FLUX2_LOAN: u16 = 130;
-pub const ARMO_EV_FLUX2_LOAN_END: u16 = 131;
-pub const ARMO_EV_FLUX2_COMMIT: u16 = 132;
-pub const ARMO_EV_FLUX2_TAKE: u16 = 133;
-pub const ARMO_EV_FLUX2_RELEASE: u16 = 134;
-pub const ARMO_EV_FLUX2_REFUSED: u16 = 135;
-pub const ARMO_EV_FLUX2_WAIT: u16 = 136;
-pub const ARMO_EV_FLUX2_WAKE: u16 = 137;
-pub const ARMO_EV_FLUX2_CALLBACK_START: u16 = 138;
-pub const ARMO_EV_FLUX2_CALLBACK_END: u16 = 139;
-pub const ARMO_EV_FLUX2_ENDPOINT_INIT: u16 = 140;
-pub const ARMO_EV_FLUX2_PY_GIL: u16 = 141;
-pub const ARMO_EV_FLUX2_PY_READY: u16 = 142;
-pub const ARMO_EV_FLUX2_RECORD_DROP: u16 = 143;
-/// Once per process, when a sticky CUDA error wedges its GPU; a flux2 build before it has none.
-pub const ARMO_EV_FLUX2_GPU_WEDGED: u16 = 144;
+// flux_trace_* of flux_trace_contract_2 (design 11.2).
+pub const ARMO_EV_FLUX_CHANNEL_INIT: u16 = 128;
+pub const ARMO_EV_FLUX_CLAIM: u16 = 129;
+pub const ARMO_EV_FLUX_LOAN: u16 = 130;
+pub const ARMO_EV_FLUX_LOAN_END: u16 = 131;
+pub const ARMO_EV_FLUX_COMMIT: u16 = 132;
+pub const ARMO_EV_FLUX_TAKE: u16 = 133;
+pub const ARMO_EV_FLUX_RELEASE: u16 = 134;
+pub const ARMO_EV_FLUX_REFUSED: u16 = 135;
+pub const ARMO_EV_FLUX_WAIT: u16 = 136;
+pub const ARMO_EV_FLUX_WAKE: u16 = 137;
+pub const ARMO_EV_FLUX_CALLBACK_START: u16 = 138;
+pub const ARMO_EV_FLUX_CALLBACK_END: u16 = 139;
+pub const ARMO_EV_FLUX_ENDPOINT_INIT: u16 = 140;
+pub const ARMO_EV_FLUX_PY_GIL: u16 = 141;
+pub const ARMO_EV_FLUX_PY_READY: u16 = 142;
+pub const ARMO_EV_FLUX_RECORD_DROP: u16 = 143;
+/// Once per process, when a sticky CUDA error wedges its GPU; a flux build before it has none.
+pub const ARMO_EV_FLUX_GPU_WEDGED: u16 = 144;
 
 // Kernel scheduler (design 2.3).
 pub const ARMO_EV_SCHED_SWITCH: u16 = 192;
@@ -115,42 +115,42 @@ pub const ARMO_RECORD_TRUNCATED: u32 = 1;
 pub const ARMO_EVFILE_MAGIC: u64 = 0x0031_5645_4F4D_5241;
 pub const ARMO_GID_MAX: usize = 24;
 
-// Values of flux2's arguments (design 11.3).
-pub const ARMO_FLUX2_CLAIM_OK: i32 = 0;
-pub const ARMO_FLUX2_CLAIM_RECLAIMED: i32 = 1;
-pub const ARMO_FLUX2_CLAIM_BACKPRESSURE: i32 = 2;
-pub const ARMO_FLUX2_CLAIM_NOT_PUBLISHER: i32 = 3;
-pub const ARMO_FLUX2_CLAIM_WRONG_DEVICE: i32 = 4;
-pub const ARMO_FLUX2_CLAIM_TOO_LARGE: i32 = 5;
-pub const ARMO_FLUX2_CLAIM_FENCE_FAILED: i32 = 6;
-pub const ARMO_FLUX2_CLAIM_GPU_WEDGED: i32 = 7;
-pub const ARMO_FLUX2_LOAN_COMMITTED: i32 = 0;
-pub const ARMO_FLUX2_LOAN_ABORTED: i32 = 1;
-pub const ARMO_FLUX2_LOAN_TOO_LARGE: i32 = 2;
-pub const ARMO_FLUX2_LOAN_FENCE_FAILED: i32 = 3;
-pub const ARMO_FLUX2_LOAN_NOT_PUBLISHER: i32 = 4;
-pub const ARMO_FLUX2_LOAN_GPU_WEDGED: i32 = 5;
-pub const ARMO_FLUX2_WAKE_TIMEOUT: i32 = 0;
-pub const ARMO_FLUX2_WAKE_SOURCE: i32 = 1;
-pub const ARMO_FLUX2_WAKE_CONTROL: i32 = 2;
-pub const ARMO_FLUX2_WAKE_ALREADY: i32 = 3;
-/// Only from flux2 builds before EINTR was retried; later ones keep waiting after a signal.
-pub const ARMO_FLUX2_WAKE_SIGNAL: i32 = 4;
-pub const ARMO_FLUX2_REFUSED_MAX_BORROW: i32 = 0;
-pub const ARMO_FLUX2_REFUSED_NO_READER: i32 = 1;
-pub const ARMO_FLUX2_REFUSED_CONTENDED: i32 = 2;
-pub const ARMO_FLUX2_REFUSED_BAD_FRAME: i32 = 3;
-pub const ARMO_FLUX2_REFUSED_FENCE: i32 = 4;
-pub const ARMO_FLUX2_REFUSED_GPU_WEDGED: i32 = 5;
-pub const ARMO_FLUX2_RECORD_CACHE_FULL: i32 = 0;
-pub const ARMO_FLUX2_RECORD_WRITE_FAILED: i32 = 1;
-pub const ARMO_FLUX2_RECORD_OVERRUN: i32 = 2;
-pub const ARMO_FLUX2_ROLE_PUBLISHER: i32 = 0;
-pub const ARMO_FLUX2_ROLE_SUBSCRIPTION: i32 = 1;
-pub const ARMO_FLUX2_LANG_CPP: i32 = 0;
-pub const ARMO_FLUX2_LANG_PYTHON: i32 = 1;
-pub const ARMO_FLUX2_NO_SLOT: u32 = u32::MAX;
-pub const ARMO_FLUX2_NO_ENTRY: u32 = u32::MAX;
+// Values of flux's arguments (design 11.3).
+pub const ARMO_FLUX_CLAIM_OK: i32 = 0;
+pub const ARMO_FLUX_CLAIM_RECLAIMED: i32 = 1;
+pub const ARMO_FLUX_CLAIM_BACKPRESSURE: i32 = 2;
+pub const ARMO_FLUX_CLAIM_NOT_PUBLISHER: i32 = 3;
+pub const ARMO_FLUX_CLAIM_WRONG_DEVICE: i32 = 4;
+pub const ARMO_FLUX_CLAIM_TOO_LARGE: i32 = 5;
+pub const ARMO_FLUX_CLAIM_FENCE_FAILED: i32 = 6;
+pub const ARMO_FLUX_CLAIM_GPU_WEDGED: i32 = 7;
+pub const ARMO_FLUX_LOAN_COMMITTED: i32 = 0;
+pub const ARMO_FLUX_LOAN_ABORTED: i32 = 1;
+pub const ARMO_FLUX_LOAN_TOO_LARGE: i32 = 2;
+pub const ARMO_FLUX_LOAN_FENCE_FAILED: i32 = 3;
+pub const ARMO_FLUX_LOAN_NOT_PUBLISHER: i32 = 4;
+pub const ARMO_FLUX_LOAN_GPU_WEDGED: i32 = 5;
+pub const ARMO_FLUX_WAKE_TIMEOUT: i32 = 0;
+pub const ARMO_FLUX_WAKE_SOURCE: i32 = 1;
+pub const ARMO_FLUX_WAKE_CONTROL: i32 = 2;
+pub const ARMO_FLUX_WAKE_ALREADY: i32 = 3;
+/// Only from flux builds before EINTR was retried; later ones keep waiting after a signal.
+pub const ARMO_FLUX_WAKE_SIGNAL: i32 = 4;
+pub const ARMO_FLUX_REFUSED_MAX_BORROW: i32 = 0;
+pub const ARMO_FLUX_REFUSED_NO_READER: i32 = 1;
+pub const ARMO_FLUX_REFUSED_CONTENDED: i32 = 2;
+pub const ARMO_FLUX_REFUSED_BAD_FRAME: i32 = 3;
+pub const ARMO_FLUX_REFUSED_FENCE: i32 = 4;
+pub const ARMO_FLUX_REFUSED_GPU_WEDGED: i32 = 5;
+pub const ARMO_FLUX_RECORD_CACHE_FULL: i32 = 0;
+pub const ARMO_FLUX_RECORD_WRITE_FAILED: i32 = 1;
+pub const ARMO_FLUX_RECORD_OVERRUN: i32 = 2;
+pub const ARMO_FLUX_ROLE_PUBLISHER: i32 = 0;
+pub const ARMO_FLUX_ROLE_SUBSCRIPTION: i32 = 1;
+pub const ARMO_FLUX_LANG_CPP: i32 = 0;
+pub const ARMO_FLUX_LANG_PYTHON: i32 = 1;
+pub const ARMO_FLUX_NO_SLOT: u32 = u32::MAX;
+pub const ARMO_FLUX_NO_ENTRY: u32 = u32::MAX;
 
 // Values of `armo_ev_cuda_call.api` (design 20.1).
 pub const ARMO_CUDA_LAUNCH: u32 = 0;
@@ -457,7 +457,7 @@ pub struct armo_ev_dds_serialized_size {
 /// Strings: segment.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct armo_ev_flux2_channel_init {
+pub struct armo_ev_flux_channel_init {
     pub channel: u64,
     pub dev: u64,
     pub ino: u64,
@@ -469,7 +469,7 @@ pub struct armo_ev_flux2_channel_init {
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct armo_ev_flux2_claim {
+pub struct armo_ev_flux_claim {
     pub channel: u64,
     pub slot: u32,
     pub result: i32,
@@ -479,7 +479,7 @@ pub struct armo_ev_flux2_claim {
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct armo_ev_flux2_loan {
+pub struct armo_ev_flux_loan {
     pub channel: u64,
     pub slot: u32,
     pub pad: u32,
@@ -487,7 +487,7 @@ pub struct armo_ev_flux2_loan {
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct armo_ev_flux2_loan_end {
+pub struct armo_ev_flux_loan_end {
     pub channel: u64,
     pub slot: u32,
     pub result: i32,
@@ -495,7 +495,7 @@ pub struct armo_ev_flux2_loan_end {
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct armo_ev_flux2_commit {
+pub struct armo_ev_flux_commit {
     pub channel: u64,
     pub ticket: u64,
     pub nbytes: u64,
@@ -506,7 +506,7 @@ pub struct armo_ev_flux2_commit {
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct armo_ev_flux2_take {
+pub struct armo_ev_flux_take {
     pub channel: u64,
     pub ticket: u64,
     pub lost: u64,
@@ -517,7 +517,7 @@ pub struct armo_ev_flux2_take {
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct armo_ev_flux2_release {
+pub struct armo_ev_flux_release {
     pub channel: u64,
     pub ticket: u64,
     pub held: i32,
@@ -526,7 +526,7 @@ pub struct armo_ev_flux2_release {
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct armo_ev_flux2_refused {
+pub struct armo_ev_flux_refused {
     pub channel: u64,
     pub reason: i32,
     pub pad: u32,
@@ -534,7 +534,7 @@ pub struct armo_ev_flux2_refused {
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct armo_ev_flux2_wait {
+pub struct armo_ev_flux_wait {
     pub executor: u64,
     pub timeout_ns: i64,
     pub sources: u32,
@@ -543,7 +543,7 @@ pub struct armo_ev_flux2_wait {
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct armo_ev_flux2_wake {
+pub struct armo_ev_flux_wake {
     pub executor: u64,
     pub result: i32,
     pub entry: u32,
@@ -551,7 +551,7 @@ pub struct armo_ev_flux2_wake {
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct armo_ev_flux2_callback_start {
+pub struct armo_ev_flux_callback_start {
     pub executor: u64,
     pub endpoint: u64,
     pub entry: u32,
@@ -561,7 +561,7 @@ pub struct armo_ev_flux2_callback_start {
 /// Strings: segment.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct armo_ev_flux2_callback_end {
+pub struct armo_ev_flux_callback_end {
     pub executor: u64,
     pub channel: u64,
     pub entry: u32,
@@ -571,7 +571,7 @@ pub struct armo_ev_flux2_callback_end {
 /// Strings: node, key, signpost.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct armo_ev_flux2_endpoint_init {
+pub struct armo_ev_flux_endpoint_init {
     pub endpoint: u64,
     pub fingerprint: u64,
     pub role: i32,
@@ -580,21 +580,21 @@ pub struct armo_ev_flux2_endpoint_init {
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct armo_ev_flux2_py_gil {
+pub struct armo_ev_flux_py_gil {
     pub phase: i32,
     pub pad: u32,
 }
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct armo_ev_flux2_py_ready {
+pub struct armo_ev_flux_py_ready {
     pub channel: u64,
     pub ticket: u64,
 }
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct armo_ev_flux2_record_drop {
+pub struct armo_ev_flux_record_drop {
     pub channel: u64,
     pub ticket: u64,
     pub count: u32,
@@ -604,7 +604,7 @@ pub struct armo_ev_flux2_record_drop {
 /// `result` is the `CUresult` that wedged the GPU.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct armo_ev_flux2_gpu_wedged {
+pub struct armo_ev_flux_gpu_wedged {
     pub result: i32,
     pub pad: u32,
 }

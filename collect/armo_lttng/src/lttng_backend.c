@@ -1,5 +1,5 @@
 // The backend of libarmo_lttng.so (design 3, 13.7): each armo_emit_<name> becomes one LTTng event,
-// of provider armo, or of provider flux2 with the flux2 function's arguments as fields. Where
+// of provider armo, or of provider flux with the flux function's arguments as fields. Where
 // libtracetools has no LTTng (Humble), the ROS events also go out as provider ros2 events in
 // tracetools' own layout. The clock and the aggregation are armo-collectd's. The one per-thread
 // state is the current callback, in a backend 2 file whose slots hold no table and no ring, for
@@ -7,7 +7,7 @@
 // The tracepoint definitions of the three providers, once for the library.
 #define LTTNG_UST_TRACEPOINT_DEFINE
 #include "armo_lttng/armo_tp.h"
-#include "armo_lttng/flux2_tp.h"
+#include "armo_lttng/flux_tp.h"
 #include "armo_preload/armo_emit.h"
 #include "armo_preload/slots.h"
 #if ARMO_ROS2_PROVIDER
@@ -229,99 +229,98 @@ void armo_emit_rclcpp_executor_execute(const armo_ev_handle * ev)
   ROS2(rclcpp_executor_execute, PTR(ev->handle));
 }
 
-void armo_emit_flux2_channel_init(const armo_ev_flux2_channel_init * ev, const char * segment)
+void armo_emit_flux_channel_init(const armo_ev_flux_channel_init * ev, const char * segment)
 {
   lttng_ust_tracepoint(
-    flux2, channel_init, PTR(ev->channel), ev->dev, ev->ino, segment, ev->publisher, ev->slot_count,
+    flux, channel_init, PTR(ev->channel), ev->dev, ev->ino, segment, ev->publisher, ev->slot_count,
     ev->slot_size, ev->stamp_offset);
 }
 
-void armo_emit_flux2_claim(const armo_ev_flux2_claim * ev)
+void armo_emit_flux_claim(const armo_ev_flux_claim * ev)
 {
-  lttng_ust_tracepoint(flux2, claim, PTR(ev->channel), ev->slot, ev->result, ev->loan);
+  lttng_ust_tracepoint(flux, claim, PTR(ev->channel), ev->slot, ev->result, ev->loan);
 }
 
-void armo_emit_flux2_loan(const armo_ev_flux2_loan * ev)
+void armo_emit_flux_loan(const armo_ev_flux_loan * ev)
 {
-  lttng_ust_tracepoint(flux2, loan, PTR(ev->channel), ev->slot);
+  lttng_ust_tracepoint(flux, loan, PTR(ev->channel), ev->slot);
 }
 
-void armo_emit_flux2_loan_end(const armo_ev_flux2_loan_end * ev)
+void armo_emit_flux_loan_end(const armo_ev_flux_loan_end * ev)
 {
-  lttng_ust_tracepoint(flux2, loan_end, PTR(ev->channel), ev->slot, ev->result);
+  lttng_ust_tracepoint(flux, loan_end, PTR(ev->channel), ev->slot, ev->result);
 }
 
-void armo_emit_flux2_commit(const armo_ev_flux2_commit * ev)
+void armo_emit_flux_commit(const armo_ev_flux_commit * ev)
 {
   lttng_ust_tracepoint(
-    flux2, commit, PTR(ev->channel), ev->ticket, ev->slot, ev->nbytes, ev->woke, ev->stamp);
+    flux, commit, PTR(ev->channel), ev->ticket, ev->slot, ev->nbytes, ev->woke, ev->stamp);
 }
 
-void armo_emit_flux2_take(const armo_ev_flux2_take * ev)
+void armo_emit_flux_take(const armo_ev_flux_take * ev)
 {
-  lttng_ust_tracepoint(flux2, take, PTR(ev->channel), ev->ticket, ev->slot, ev->lost, ev->stamp);
+  lttng_ust_tracepoint(flux, take, PTR(ev->channel), ev->ticket, ev->slot, ev->lost, ev->stamp);
 }
 
-void armo_emit_flux2_release(const armo_ev_flux2_release * ev)
+void armo_emit_flux_release(const armo_ev_flux_release * ev)
 {
-  lttng_ust_tracepoint(flux2, release, PTR(ev->channel), ev->ticket, ev->held);
+  lttng_ust_tracepoint(flux, release, PTR(ev->channel), ev->ticket, ev->held);
 }
 
-void armo_emit_flux2_refused(const armo_ev_flux2_refused * ev)
+void armo_emit_flux_refused(const armo_ev_flux_refused * ev)
 {
-  lttng_ust_tracepoint(flux2, refused, PTR(ev->channel), ev->reason);
+  lttng_ust_tracepoint(flux, refused, PTR(ev->channel), ev->reason);
 }
 
-void armo_emit_flux2_wait(const armo_ev_flux2_wait * ev)
+void armo_emit_flux_wait(const armo_ev_flux_wait * ev)
 {
-  lttng_ust_tracepoint(flux2, wait, PTR(ev->executor), ev->sources, ev->timeout_ns);
+  lttng_ust_tracepoint(flux, wait, PTR(ev->executor), ev->sources, ev->timeout_ns);
 }
 
-void armo_emit_flux2_wake(const armo_ev_flux2_wake * ev)
+void armo_emit_flux_wake(const armo_ev_flux_wake * ev)
 {
-  lttng_ust_tracepoint(flux2, wake, PTR(ev->executor), ev->result, ev->entry);
+  lttng_ust_tracepoint(flux, wake, PTR(ev->executor), ev->result, ev->entry);
 }
 
-void armo_emit_flux2_callback_start(const armo_ev_flux2_callback_start * ev)
+void armo_emit_flux_callback_start(const armo_ev_flux_callback_start * ev)
 {
-  lttng_ust_tracepoint(flux2, callback_start, PTR(ev->executor), ev->entry, PTR(ev->endpoint));
-  entered(ARMO_SRC_FLUX2, ev->executor, ev->entry);
+  lttng_ust_tracepoint(flux, callback_start, PTR(ev->executor), ev->entry, PTR(ev->endpoint));
+  entered(ARMO_SRC_FLUX, ev->executor, ev->entry);
 }
 
-void armo_emit_flux2_callback_end(const armo_ev_flux2_callback_end * ev, const char * segment)
+void armo_emit_flux_callback_end(const armo_ev_flux_callback_end * ev, const char * segment)
 {
-  leaving(ARMO_SRC_FLUX2, ev->executor, ev->entry);
+  leaving(ARMO_SRC_FLUX, ev->executor, ev->entry);
   lttng_ust_tracepoint(
-    flux2, callback_end, PTR(ev->executor), ev->entry, ev->delivered, PTR(ev->channel), segment);
+    flux, callback_end, PTR(ev->executor), ev->entry, ev->delivered, PTR(ev->channel), segment);
 }
 
-void armo_emit_flux2_endpoint_init(
-  const armo_ev_flux2_endpoint_init * ev, const char * node, const char * key,
-  const char * signpost)
+void armo_emit_flux_endpoint_init(
+  const armo_ev_flux_endpoint_init * ev, const char * node, const char * key, const char * signpost)
 {
   lttng_ust_tracepoint(
-    flux2, endpoint_init, PTR(ev->endpoint), node, key, signpost, ev->fingerprint, ev->role,
+    flux, endpoint_init, PTR(ev->endpoint), node, key, signpost, ev->fingerprint, ev->role,
     ev->lang);
 }
 
-void armo_emit_flux2_py_gil(const armo_ev_flux2_py_gil * ev)
+void armo_emit_flux_py_gil(const armo_ev_flux_py_gil * ev)
 {
-  lttng_ust_tracepoint(flux2, py_gil, ev->phase);
+  lttng_ust_tracepoint(flux, py_gil, ev->phase);
 }
 
-void armo_emit_flux2_py_ready(const armo_ev_flux2_py_ready * ev)
+void armo_emit_flux_py_ready(const armo_ev_flux_py_ready * ev)
 {
-  lttng_ust_tracepoint(flux2, py_ready, PTR(ev->channel), ev->ticket);
+  lttng_ust_tracepoint(flux, py_ready, PTR(ev->channel), ev->ticket);
 }
 
-void armo_emit_flux2_record_drop(const armo_ev_flux2_record_drop * ev)
+void armo_emit_flux_record_drop(const armo_ev_flux_record_drop * ev)
 {
-  lttng_ust_tracepoint(flux2, record_drop, PTR(ev->channel), ev->ticket, ev->count, ev->reason);
+  lttng_ust_tracepoint(flux, record_drop, PTR(ev->channel), ev->ticket, ev->count, ev->reason);
 }
 
-void armo_emit_flux2_gpu_wedged(const armo_ev_flux2_gpu_wedged * ev)
+void armo_emit_flux_gpu_wedged(const armo_ev_flux_gpu_wedged * ev)
 {
-  lttng_ust_tracepoint(flux2, gpu_wedged, ev->result);
+  lttng_ust_tracepoint(flux, gpu_wedged, ev->result);
 }
 
 void armo_backend_missing(uint16_t event)

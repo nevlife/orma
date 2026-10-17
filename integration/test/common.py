@@ -28,7 +28,7 @@ HOT = (
     "ros_trace_callback_end", "ros_trace_rcl_publish", "ros_trace_rmw_publish",
     "ros_trace_rmw_take",
 )  # fmt: skip
-FLUX2 = ("flux2_trace_claim", "flux2_trace_take", "flux2_trace_callback_start")
+FLUX = ("flux_trace_claim", "flux_trace_take", "flux_trace_callback_start")
 # Each run's load stays at or below this share of a core (the machine's power budget).
 CAP_PCT = 70.0
 
@@ -235,7 +235,7 @@ class Waiting:
 
 
 class Caller:
-    """armo_daemon's flux and flux2 callers: print their keys, run on "go", print "done"."""
+    """armo_daemon's flux and flux callers: print their keys, run on "go", print "done"."""
 
     def __init__(self, argv, env):
         self.p = subprocess.Popen(

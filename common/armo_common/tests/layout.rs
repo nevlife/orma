@@ -199,7 +199,7 @@ fn layouts() -> Vec<Layout> {
         layout!(armo_ev_callback_code { callback, words }),
         layout!(armo_ev_rmw_topic { rmw_handle }),
         layout!(armo_ev_dds_serialized_size { size }),
-        layout!(armo_ev_flux2_channel_init {
+        layout!(armo_ev_flux_channel_init {
             channel,
             dev,
             ino,
@@ -208,20 +208,20 @@ fn layouts() -> Vec<Layout> {
             slot_size,
             stamp_offset,
         }),
-        layout!(armo_ev_flux2_claim {
+        layout!(armo_ev_flux_claim {
             channel,
             slot,
             result,
             loan,
             pad
         }),
-        layout!(armo_ev_flux2_loan { channel, slot, pad }),
-        layout!(armo_ev_flux2_loan_end {
+        layout!(armo_ev_flux_loan { channel, slot, pad }),
+        layout!(armo_ev_flux_loan_end {
             channel,
             slot,
             result
         }),
-        layout!(armo_ev_flux2_commit {
+        layout!(armo_ev_flux_commit {
             channel,
             ticket,
             nbytes,
@@ -229,7 +229,7 @@ fn layouts() -> Vec<Layout> {
             slot,
             woke
         }),
-        layout!(armo_ev_flux2_take {
+        layout!(armo_ev_flux_take {
             channel,
             ticket,
             lost,
@@ -237,55 +237,55 @@ fn layouts() -> Vec<Layout> {
             slot,
             pad
         }),
-        layout!(armo_ev_flux2_release {
+        layout!(armo_ev_flux_release {
             channel,
             ticket,
             held,
             pad
         }),
-        layout!(armo_ev_flux2_refused {
+        layout!(armo_ev_flux_refused {
             channel,
             reason,
             pad
         }),
-        layout!(armo_ev_flux2_wait {
+        layout!(armo_ev_flux_wait {
             executor,
             timeout_ns,
             sources,
             pad
         }),
-        layout!(armo_ev_flux2_wake {
+        layout!(armo_ev_flux_wake {
             executor,
             result,
             entry
         }),
-        layout!(armo_ev_flux2_callback_start {
+        layout!(armo_ev_flux_callback_start {
             executor,
             endpoint,
             entry,
             pad
         }),
-        layout!(armo_ev_flux2_callback_end {
+        layout!(armo_ev_flux_callback_end {
             executor,
             channel,
             entry,
             delivered
         }),
-        layout!(armo_ev_flux2_endpoint_init {
+        layout!(armo_ev_flux_endpoint_init {
             endpoint,
             fingerprint,
             role,
             lang
         }),
-        layout!(armo_ev_flux2_py_gil { phase, pad }),
-        layout!(armo_ev_flux2_py_ready { channel, ticket }),
-        layout!(armo_ev_flux2_record_drop {
+        layout!(armo_ev_flux_py_gil { phase, pad }),
+        layout!(armo_ev_flux_py_ready { channel, ticket }),
+        layout!(armo_ev_flux_record_drop {
             channel,
             ticket,
             count,
             reason
         }),
-        layout!(armo_ev_flux2_gpu_wedged { result, pad }),
+        layout!(armo_ev_flux_gpu_wedged { result, pad }),
         layout!(armo_ev_sched_switch {
             prev_state,
             next_tid,

@@ -380,7 +380,7 @@ impl Session {
             let Some(contract) = f.lib.contract() else {
                 continue;
             };
-            let item = format!("flux2 contract {}", f.mapped);
+            let item = format!("flux contract {}", f.mapped);
             out.push(match &f.refused {
                 None => check(item, CheckStatus::Pass, format!("exports {contract}")),
                 Some(why) => check(item, CheckStatus::Fail, why.clone()),

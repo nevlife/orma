@@ -63,7 +63,7 @@ extern const struct armo_next __stop_armo_next[];
 
 // Binds at load what RTLD_NEXT finds now, so that a first call on a real-time thread does not
 // take the loader's lock and allocate in dlsym. What is not loaded yet (Python loads librcl,
-// libtracetools and libflux2_ffi later, RTLD_LOCAL) still resolves on its first call, which
+// libtracetools and libflux_ffi later, RTLD_LOCAL) still resolves on its first call, which
 // also marks what is missing.
 __attribute__((constructor)) static void bind_loaded(void)
 {

@@ -26,7 +26,7 @@ struct armo_frame
   uint16_t src;
 };
 
-// The last wake of a source kind on this thread; a callback at the same depth (and for flux2 of
+// The last wake of a source kind on this thread; a callback at the same depth (and for flux of
 // the same executor) measures its dispatch from it. Backend 1 only.
 struct armo_wake
 {
@@ -38,8 +38,8 @@ struct armo_wake
 struct armo_thread
 {
   armo_thread_slot * slot;
-  struct armo_wake wake[ARMO_SRC_FLUX2 + 1];
-  uint64_t wait_start[ARMO_SRC_FLUX2 + 1];
+  struct armo_wake wake[ARMO_SRC_FLUX + 1];
+  uint64_t wait_start[ARMO_SRC_FLUX + 1];
   uint32_t n;
   uint32_t untracked;
   int busy;

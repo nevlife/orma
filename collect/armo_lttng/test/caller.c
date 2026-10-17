@@ -1,5 +1,5 @@
-// Calls every ros_trace_* this distro's libtracetools exports and, when built with flux2, every
-// flux2_trace_* function ROUNDS times with known arguments, and prints for each armo event the
+// Calls every ros_trace_* this distro's libtracetools exports and, when built with flux, every
+// flux_trace_* function ROUNDS times with known arguments, and prints for each armo event the
 // count it should cause: "<provider:event> <count>". lttng_events.py runs it under
 // LD_PRELOAD=libarmo_lttng.so in an LTTng session and compares.
 //
@@ -24,8 +24,8 @@
 #include <sys/mman.h>
 #include <time.h>
 #include <unistd.h>
-#if ARMO_FLUX2
-#include "flux2/trace.h"
+#if ARMO_FLUX
+#include "flux/trace.h"
 #endif
 
 #define ROUNDS 3
@@ -165,24 +165,24 @@ int main(int argc, char ** argv)
     ros_trace_rclcpp_executor_get_next_ready();
     ros_trace_rclcpp_executor_wait_for_work(100);
     ros_trace_rclcpp_executor_execute(H(i));
-#if ARMO_FLUX2
-    flux2_trace_channel_init(H(i), 1, 2, "/flux2.v1.seg", 1, 4, 64, -1);
-    flux2_trace_claim(H(i), 0, 0, 0);
-    flux2_trace_loan(H(i), 0);
-    flux2_trace_loan_end(H(i), 0, 0);
-    flux2_trace_commit(H(i), 7 + i, 0, 64, 1, 0);
-    flux2_trace_take(H(i), 7 + i, 0, 0, 0);
-    flux2_trace_release(H(i), 7 + i, 0);
-    flux2_trace_refused(H(i), 2);
-    flux2_trace_wait(H(i), 1, -1);
-    flux2_trace_wake(H(i), 1, 1);
-    flux2_trace_callback_start(H(i), 1, H(i + 1));
-    flux2_trace_callback_end(H(i), 1, 1, H(i), "/flux2.v1.seg");
-    flux2_trace_endpoint_init(H(i + 1), "/node", "/key", "/flux2.v1.seg", 0xA4C, 1, 0);
-    flux2_trace_py_gil(0);
-    flux2_trace_py_ready(H(i), 7 + i);
-    flux2_trace_record_drop(H(i), 0, 3, 0);
-    flux2_trace_gpu_wedged(700);
+#if ARMO_FLUX
+    flux_trace_channel_init(H(i), 1, 2, "/flux.v1.seg", 1, 4, 64, -1);
+    flux_trace_claim(H(i), 0, 0, 0);
+    flux_trace_loan(H(i), 0);
+    flux_trace_loan_end(H(i), 0, 0);
+    flux_trace_commit(H(i), 7 + i, 0, 64, 1, 0);
+    flux_trace_take(H(i), 7 + i, 0, 0, 0);
+    flux_trace_release(H(i), 7 + i, 0);
+    flux_trace_refused(H(i), 2);
+    flux_trace_wait(H(i), 1, -1);
+    flux_trace_wake(H(i), 1, 1);
+    flux_trace_callback_start(H(i), 1, H(i + 1));
+    flux_trace_callback_end(H(i), 1, 1, H(i), "/flux.v1.seg");
+    flux_trace_endpoint_init(H(i + 1), "/node", "/key", "/flux.v1.seg", 0xA4C, 1, 0);
+    flux_trace_py_gil(0);
+    flux_trace_py_ready(H(i), 7 + i);
+    flux_trace_record_drop(H(i), 0, 3, 0);
+    flux_trace_gpu_wedged(700);
 #endif
   }
 
@@ -235,15 +235,15 @@ int main(int argc, char ** argv)
     expect("armo:cuda_call", 2);
     expect("armo:dds_write", 2);
   }
-#if ARMO_FLUX2
-  const char * flux2[] = {
+#if ARMO_FLUX
+  const char * flux[] = {
     "channel_init",  "claim",   "loan",     "loan_end",    "commit",         "take",
     "release",       "refused", "wait",     "wake",        "callback_start", "callback_end",
     "endpoint_init", "py_gil",  "py_ready", "record_drop", "gpu_wedged",
   };
-  for (size_t i = 0; i < sizeof flux2 / sizeof flux2[0]; i++) {
+  for (size_t i = 0; i < sizeof flux / sizeof flux[0]; i++) {
     char name[96];
-    snprintf(name, sizeof name, "flux2:%s", flux2[i]);
+    snprintf(name, sizeof name, "flux:%s", flux[i]);
     expect(name, 1);
   }
 #endif

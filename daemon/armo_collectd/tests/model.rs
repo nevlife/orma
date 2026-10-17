@@ -738,12 +738,12 @@ fn per_node_cpu_with_a_thread_per_node() {
 }
 
 #[test]
-fn flux2_channels_of_one_type_on_two_keys_are_two_topics() {
+fn flux_channels_of_one_type_on_two_keys_are_two_topics() {
     let mut h = H::offline();
     h.node(1200, 0x1, "cams", "/");
     for (channel, key, commits) in [(0xa1u64, "cam0", 10u64), (0xa2, "cam1", 5)] {
-        let segment = format!("/flux2.v6..{key}.image.0123456789abcdef.e0");
-        let init = armo_ev_flux2_channel_init {
+        let segment = format!("/flux.v6..{key}.image.0123456789abcdef.e0");
+        let init = armo_ev_flux_channel_init {
             channel,
             dev: 7,
             ino: channel,
@@ -756,13 +756,13 @@ fn flux2_channels_of_one_type_on_two_keys_are_two_topics() {
             1200,
             1200,
             INIT + 2,
-            ARMO_EV_FLUX2_CHANNEL_INIT,
+            ARMO_EV_FLUX_CHANNEL_INIT,
             init,
             &[segment.as_bytes()],
         );
         for i in 1..=commits {
             let t = T0 + i * 10 * MS;
-            let p = armo_ev_flux2_commit {
+            let p = armo_ev_flux_commit {
                 channel,
                 ticket: i,
                 nbytes: 1000,
@@ -770,27 +770,27 @@ fn flux2_channels_of_one_type_on_two_keys_are_two_topics() {
                 slot: 0,
                 woke: 0,
             };
-            h.ev(1200, 1200, t, ARMO_EV_FLUX2_COMMIT, p, &[]);
+            h.ev(1200, 1200, t, ARMO_EV_FLUX_COMMIT, p, &[]);
         }
     }
     let w = h.window(T0 + W);
     assert_eq!(
-        topic(&w, "topic:flux2:/cam0/image:0123456789abcdef").pub_hz,
+        topic(&w, "topic:flux:/cam0/image:0123456789abcdef").pub_hz,
         Some(10.0)
     );
     assert_eq!(
-        topic(&w, "topic:flux2:/cam1/image:0123456789abcdef").pub_hz,
+        topic(&w, "topic:flux:/cam1/image:0123456789abcdef").pub_hz,
         Some(5.0)
     );
 }
 
 #[test]
-fn flux2_pairs_by_segment_and_ticket_and_counts_its_own_losses() {
+fn flux_pairs_by_segment_and_ticket_and_counts_its_own_losses() {
     let mut h = H::offline();
-    let signpost = "/flux2.v6..image.0123456789abcdef";
+    let signpost = "/flux.v6..image.0123456789abcdef";
     let segment = format!("{signpost}.e0");
     h.node(1200, 0x1, "cam", "/");
-    let ch = |channel, publisher| armo_ev_flux2_channel_init {
+    let ch = |channel, publisher| armo_ev_flux_channel_init {
         channel,
         dev: 7,
         ino: 9,
@@ -803,11 +803,11 @@ fn flux2_pairs_by_segment_and_ticket_and_counts_its_own_losses() {
         1200,
         1200,
         INIT + 2,
-        ARMO_EV_FLUX2_CHANNEL_INIT,
+        ARMO_EV_FLUX_CHANNEL_INIT,
         ch(0xa1, 1),
         &[segment.as_bytes()],
     );
-    let ep = |endpoint, role| armo_ev_flux2_endpoint_init {
+    let ep = |endpoint, role| armo_ev_flux_endpoint_init {
         endpoint,
         fingerprint: 0x0123_4567_89ab_cdef,
         role,
@@ -818,7 +818,7 @@ fn flux2_pairs_by_segment_and_ticket_and_counts_its_own_losses() {
         1200,
         1200,
         INIT + 3,
-        ARMO_EV_FLUX2_ENDPOINT_INIT,
+        ARMO_EV_FLUX_ENDPOINT_INIT,
         ep(0xe1, 0),
         &strs("/cam"),
     );
@@ -828,7 +828,7 @@ fn flux2_pairs_by_segment_and_ticket_and_counts_its_own_losses() {
             pid,
             pid,
             INIT + 2,
-            ARMO_EV_FLUX2_CHANNEL_INIT,
+            ARMO_EV_FLUX_CHANNEL_INIT,
             ch(0xb1, 0),
             &[segment.as_bytes()],
         );
@@ -836,14 +836,14 @@ fn flux2_pairs_by_segment_and_ticket_and_counts_its_own_losses() {
             pid,
             pid,
             INIT + 3,
-            ARMO_EV_FLUX2_ENDPOINT_INIT,
+            ARMO_EV_FLUX_ENDPOINT_INIT,
             ep(0xe2, 1),
             &strs("/viewer"),
         );
     }
     for i in 1..=20u64 {
         let t = T0 + i * 10 * MS;
-        let p = armo_ev_flux2_commit {
+        let p = armo_ev_flux_commit {
             channel: 0xa1,
             ticket: i,
             nbytes: 1000,
@@ -851,26 +851,26 @@ fn flux2_pairs_by_segment_and_ticket_and_counts_its_own_losses() {
             slot: 0,
             woke: 1,
         };
-        h.ev(1200, 1200, t, ARMO_EV_FLUX2_COMMIT, p, &[]);
+        h.ev(1200, 1200, t, ARMO_EV_FLUX_COMMIT, p, &[]);
         for (k, pid) in [1300u32, 1400].into_iter().enumerate() {
             if pid == 1400 && (i == 5 || i == 6) {
                 continue;
             }
             let at = t + (20 + 10 * k as u64) * US;
-            let p = armo_ev_flux2_wake {
+            let p = armo_ev_flux_wake {
                 executor: 0xee,
                 result: 1,
                 entry: 1,
             };
-            h.ev(pid, pid, at - 5 * US, ARMO_EV_FLUX2_WAKE, p, &[]);
-            let p = armo_ev_flux2_callback_start {
+            h.ev(pid, pid, at - 5 * US, ARMO_EV_FLUX_WAKE, p, &[]);
+            let p = armo_ev_flux_callback_start {
                 executor: 0xee,
                 endpoint: 0xe2,
                 entry: 1,
                 pad: 0,
             };
-            h.ev(pid, pid, at - 2 * US, ARMO_EV_FLUX2_CALLBACK_START, p, &[]);
-            let p = armo_ev_flux2_take {
+            h.ev(pid, pid, at - 2 * US, ARMO_EV_FLUX_CALLBACK_START, p, &[]);
+            let p = armo_ev_flux_take {
                 channel: 0xb1,
                 ticket: i,
                 lost: u64::from(pid == 1400 && i >= 7) * 2,
@@ -878,8 +878,8 @@ fn flux2_pairs_by_segment_and_ticket_and_counts_its_own_losses() {
                 slot: 0,
                 pad: 0,
             };
-            h.ev(pid, pid, at, ARMO_EV_FLUX2_TAKE, p, &[]);
-            let p = armo_ev_flux2_callback_end {
+            h.ev(pid, pid, at, ARMO_EV_FLUX_TAKE, p, &[]);
+            let p = armo_ev_flux_callback_end {
                 executor: 0xee,
                 channel: 0xb1,
                 entry: 1,
@@ -889,55 +889,55 @@ fn flux2_pairs_by_segment_and_ticket_and_counts_its_own_losses() {
                 pid,
                 pid,
                 at + 50 * US,
-                ARMO_EV_FLUX2_CALLBACK_END,
+                ARMO_EV_FLUX_CALLBACK_END,
                 p,
                 &[segment.as_bytes()],
             );
         }
     }
-    let claim = armo_ev_flux2_claim {
+    let claim = armo_ev_flux_claim {
         channel: 0xa1,
-        slot: ARMO_FLUX2_NO_SLOT,
-        result: ARMO_FLUX2_CLAIM_BACKPRESSURE,
+        slot: ARMO_FLUX_NO_SLOT,
+        result: ARMO_FLUX_CLAIM_BACKPRESSURE,
         loan: 0,
         pad: 0,
     };
-    h.ev(1200, 1200, T0 + 500 * MS, ARMO_EV_FLUX2_CLAIM, claim, &[]);
-    let drop = armo_ev_flux2_record_drop {
+    h.ev(1200, 1200, T0 + 500 * MS, ARMO_EV_FLUX_CLAIM, claim, &[]);
+    let drop = armo_ev_flux_record_drop {
         channel: 0xa1,
         ticket: 0,
         count: 3,
-        reason: ARMO_FLUX2_RECORD_CACHE_FULL,
+        reason: ARMO_FLUX_RECORD_CACHE_FULL,
     };
     h.ev(
         1200,
         1200,
         T0 + 600 * MS,
-        ARMO_EV_FLUX2_RECORD_DROP,
+        ARMO_EV_FLUX_RECORD_DROP,
         drop,
         &[],
     );
     // A wedged GPU: the claim and the loan fail with their GPU_WEDGED results, counted as
     // publish drops, and the process carries the CUresult.
-    let claim = armo_ev_flux2_claim {
-        result: ARMO_FLUX2_CLAIM_GPU_WEDGED,
+    let claim = armo_ev_flux_claim {
+        result: ARMO_FLUX_CLAIM_GPU_WEDGED,
         ..claim
     };
-    h.ev(1200, 1200, T0 + 700 * MS, ARMO_EV_FLUX2_CLAIM, claim, &[]);
-    let loan_end = armo_ev_flux2_loan_end {
+    h.ev(1200, 1200, T0 + 700 * MS, ARMO_EV_FLUX_CLAIM, claim, &[]);
+    let loan_end = armo_ev_flux_loan_end {
         channel: 0xa1,
         slot: 0,
-        result: ARMO_FLUX2_LOAN_GPU_WEDGED,
+        result: ARMO_FLUX_LOAN_GPU_WEDGED,
     };
     h.ev(
         1200,
         1200,
         T0 + 710 * MS,
-        ARMO_EV_FLUX2_LOAN_END,
+        ARMO_EV_FLUX_LOAN_END,
         loan_end,
         &[],
     );
-    let wedged = armo_ev_flux2_gpu_wedged {
+    let wedged = armo_ev_flux_gpu_wedged {
         result: 700,
         pad: 0,
     };
@@ -945,14 +945,14 @@ fn flux2_pairs_by_segment_and_ticket_and_counts_its_own_losses() {
         1200,
         1200,
         T0 + 720 * MS,
-        ARMO_EV_FLUX2_GPU_WEDGED,
+        ARMO_EV_FLUX_GPU_WEDGED,
         wedged,
         &[],
     );
     let w = h.window(T0 + W);
     let p = w.processes.iter().find(|p| p.pid == 1200).unwrap();
-    assert_eq!(p.flux2_gpu_wedged, Some(700));
-    let id = "topic:flux2:/image:0123456789abcdef";
+    assert_eq!(p.flux_gpu_wedged, Some(700));
+    let id = "topic:flux:/image:0123456789abcdef";
     let t = topic(&w, id);
     assert_eq!(t.pub_hz, Some(20.0));
     assert_eq!(t.bw_bps, Some(20_000.0));
@@ -970,11 +970,11 @@ fn flux2_pairs_by_segment_and_ticket_and_counts_its_own_losses() {
     let c = w
         .callbacks
         .iter()
-        .find(|c| c.id == "c:1300:0:flux2:ee:1")
+        .find(|c| c.id == "c:1300:0:flux:ee:1")
         .unwrap();
     assert_eq!(
         (c.kind, c.node.as_deref()),
-        (CallbackKind::Flux2, Some("n:1300:0:1"))
+        (CallbackKind::Flux, Some("n:1300:0:1"))
     );
     assert_eq!(c.topic.as_deref(), Some(id));
     assert_eq!(c.dispatch.as_ref().unwrap().max_ns, 3 * US);

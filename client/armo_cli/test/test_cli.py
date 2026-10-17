@@ -134,7 +134,7 @@ def test_node_cpu_shows_rss_and_warns_of_overflow(fake, env):
     )
     assert [line for line in lines if line.startswith("warning:")] == [
         "warning: pid 4021 (camera_node): 3 samples not aggregated (thread table full)\n",
-        "warning: pid 5100 (listener): flux2 GPU wedged (CUresult 700); its GPU channels refuse "
+        "warning: pid 5100 (listener): flux GPU wedged (CUresult 700); its GPU channels refuse "
         "claims, loans and takes\n",
     ]
 

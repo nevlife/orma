@@ -18,7 +18,7 @@ pub enum PairKey {
     /// `(topic, source_timestamp)`: the timestamp alone would join different topics.
     Ros(TopicIx, i64),
     /// `(SegmentId(dev, ino), ticket)`.
-    Flux2(u64, u64, u64),
+    Flux(u64, u64, u64),
 }
 
 pub struct Sent {

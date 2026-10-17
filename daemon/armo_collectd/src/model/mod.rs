@@ -18,7 +18,7 @@ pub mod symbols;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 
-use armo_common::shm::{ARMO_SRC_FLUX2, ARMO_SRC_ROS};
+use armo_common::shm::{ARMO_SRC_FLUX, ARMO_SRC_ROS};
 use armo_proto::Ingest;
 use armo_proto::msg::{
     Aggregate, CallbackKind, ChainMode, ChainSpec, FlowKind, Method, PublishAbi, Ros, Transport,
@@ -54,17 +54,17 @@ impl CbKey {
             entry: 0,
         }
     }
-    fn flux2(pid: u32, executor: u64, entry: u32) -> Self {
+    fn flux(pid: u32, executor: u64, entry: u32) -> Self {
         CbKey {
             pid,
-            src: ARMO_SRC_FLUX2,
+            src: ARMO_SRC_FLUX,
             key: executor,
             entry,
         }
     }
 }
 
-/// A ROS executor by the wait set its threads wait on, a flux2 executor by its control block.
+/// A ROS executor by the wait set its threads wait on, a flux executor by its control block.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 struct ExecKey {
     pid: u32,
@@ -118,8 +118,7 @@ impl TopicInfo {
     fn id(&self) -> String {
         match self.transport {
             Transport::Ros => format!("topic:ros:{}", self.name),
-            Transport::Flux => format!("topic:flux:{}", self.name),
-            Transport::Flux2 => format!("topic:flux2:{}:{:016x}", self.name, self.fingerprint),
+            Transport::Flux => format!("topic:flux:{}:{:016x}", self.name, self.fingerprint),
         }
     }
 }
@@ -190,7 +189,7 @@ struct Channel {
     publisher: bool,
     topic: TopicIx,
     endpoint: Option<u64>,
-    /// flux2's `lost` at this subscriber's last take: it counts from the channel's start.
+    /// flux's `lost` at this subscriber's last take: it counts from the channel's start.
     lost: u64,
 }
 
@@ -311,7 +310,7 @@ struct SpanWin {
 
 #[derive(Default)]
 struct TopicWin {
-    /// Per publisher: publishes that went to rmw or flux2, and intra-process ones.
+    /// Per publisher: publishes that went to rmw or flux, and intra-process ones.
     pubs: BTreeMap<PubKey, [u64; 2]>,
     /// By publishing process, so that each scales by its own source.
     bytes: Option<BTreeMap<u32, u64>>,
@@ -329,7 +328,7 @@ struct TopicWin {
 struct SubWin {
     takes: u64,
     lost: u64,
-    flux2_lost: Option<u64>,
+    flux_lost: Option<u64>,
     callbacks: u64,
     intra: u64,
     hop: LatAcc,
@@ -737,7 +736,7 @@ impl Model {
         ix
     }
 
-    /// A node known by name only (a flux2 endpoint): the ROS node of that name in the process
+    /// A node known by name only (a flux endpoint): the ROS node of that name in the process
     /// when there is exactly one, else a node of its own.
     fn node_by_fqn(&mut self, pid: u32, fqn: &str) -> Option<NodeIx> {
         match self
@@ -772,8 +771,8 @@ impl Model {
             Some(CbOwner::Sub(_)) => CallbackKind::Sub,
             Some(CbOwner::Timer(_)) => CallbackKind::Timer,
             Some(CbOwner::Service(_)) => CallbackKind::Service,
-            Some(CbOwner::Endpoint(_)) => CallbackKind::Flux2,
-            None if key.src == ARMO_SRC_FLUX2 => CallbackKind::Flux2,
+            Some(CbOwner::Endpoint(_)) => CallbackKind::Flux,
+            None if key.src == ARMO_SRC_FLUX => CallbackKind::Flux,
             None if cb.is_some_and(|c| c.late_topic.is_some()) => CallbackKind::Sub,
             None => CallbackKind::Unknown,
         }

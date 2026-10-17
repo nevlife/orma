@@ -132,7 +132,7 @@ pub fn thread() -> Option<*mut ThreadState> {
 }
 
 /// A callback starts: push it, and time the dispatch from this thread's last wake at the same
-/// depth (design 2.5). A flux2 callback's wake must also be its executor's.
+/// depth (design 2.5). A flux callback's wake must also be its executor's.
 #[inline(always)]
 pub fn callback_start(src: u16, key: u64, entry: u32, ns: u64) {
     let Some(t) = thread() else {

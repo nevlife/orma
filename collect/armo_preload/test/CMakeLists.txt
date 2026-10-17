@@ -10,9 +10,9 @@ add_dependencies(armo_preload_caller armo_preload_symbols)
 target_link_libraries(armo_preload_caller PRIVATE tracetools::tracetools rcl::rcl
   armo_span::armo_span ${CMAKE_DL_LIBS} -pthread)
 
-add_library(flux2_stub SHARED flux2_stub.c)
-target_compile_definitions(flux2_stub PRIVATE STUB_CONTRACT)
-add_library(flux2_stub_none SHARED flux2_stub.c)
+add_library(flux_stub SHARED flux_stub.c)
+target_compile_definitions(flux_stub PRIVATE STUB_CONTRACT)
+add_library(flux_stub_none SHARED flux_stub.c)
 
 ament_add_test(preload_caller
   COMMAND $<TARGET_FILE:armo_preload_caller>
@@ -41,12 +41,12 @@ ament_add_test(preload_collect
 
 foreach(mode global local none)
   if(mode STREQUAL "none")
-    set(stub $<TARGET_FILE:flux2_stub_none>)
+    set(stub $<TARGET_FILE:flux_stub_none>)
   else()
-    set(stub $<TARGET_FILE:flux2_stub>)
+    set(stub $<TARGET_FILE:flux_stub>)
   endif()
-  ament_add_test(preload_flux2_${mode}
-    COMMAND $<TARGET_FILE:armo_preload_caller> flux2-${mode} ${stub}
+  ament_add_test(preload_flux_${mode}
+    COMMAND $<TARGET_FILE:armo_preload_caller> flux-${mode} ${stub}
     ENV ${preload} ARMO_THREADS=8
     GENERATE_RESULT_FOR_RETURN_CODE_ZERO TIMEOUT 60)
 endforeach()
@@ -72,10 +72,10 @@ ament_add_test(preload_node_py_bare
   COMMAND ${nodes} py ${CMAKE_CURRENT_SOURCE_DIR}/node.py --without-armo-rclpy
   GENERATE_RESULT_FOR_RETURN_CODE_ZERO TIMEOUT 120)
 
-# Runs when a libflux2_ffi is in the workspace; it must carry trace contract 2 (WP1).
-find_path(flux2_h flux2.h)
-if(flux2_h)
-  ament_add_test(preload_flux2_real COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/flux2_real.py
+# Runs when a libflux_ffi is in the workspace; it must carry trace contract 2 (WP1).
+find_path(flux_h flux.h)
+if(flux_h)
+  ament_add_test(preload_flux_real COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/flux_real.py
     $<TARGET_FILE:shm_reader> $<TARGET_FILE:armo_preload>
     ${CMAKE_CURRENT_SOURCE_DIR}/../include/armo_preload/armo_events.h
     GENERATE_RESULT_FOR_RETURN_CODE_ZERO TIMEOUT 120)

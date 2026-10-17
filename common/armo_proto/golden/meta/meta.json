@@ -25,13 +25,13 @@
           "build_id": "8f1d2c3b4a5e6f708192a3b4c5d6e7f8091a2b3c"
         },
         {
-          "path": "/home/u/ws/install/flux2_ffi/lib/libflux2_ffi.so.3",
+          "path": "/home/u/ws/install/flux_ffi/lib/libflux_ffi.so.3",
           "build_id": null
         }
       ]
     }
   ],
-  "flux2_contract": "flux2_trace_contract_2",
+  "flux_contract": "flux_trace_contract_2",
   "options": {
     "method": "auto",
     "targets": {

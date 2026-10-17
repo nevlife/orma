@@ -11,7 +11,7 @@ PATH, the one colcon installs.
 
     daemon/armo_daemon/test/accuracy.py [--armod PATH] [--only CASE]... [--humble]
 
-Cases: ros_calls, flux2_calls, flux2_real, cpp_node, cpp_fastdds, py_node, sched, select,
+Cases: ros_calls, flux_calls, flux_real, cpp_node, cpp_fastdds, py_node, sched, select,
 gpu_calls, spans, futex, dds_cyclone, dds_fastdds, selfcheck, and with --humble humble_cpp,
 humble_py (docker image flux-humble).
 """
@@ -82,26 +82,26 @@ PAYLOAD = {
     "dds_serialized_size": ("<Q", "size"),
     "sched_switch": ("<qII", "prev_state next_tid cpu"),
     "sched_wakeup": ("<II", "tid target_cpu"),
-    "flux2_channel_init": (
+    "flux_channel_init": (
         "<QQQiIIi",
         "channel dev ino publisher slot_count slot_size stamp_offset",
     ),
-    "flux2_claim": ("<QIiiI", "channel slot result loan pad"),
-    "flux2_loan": ("<QII", "channel slot pad"),
-    "flux2_loan_end": ("<QIi", "channel slot result"),
-    "flux2_commit": ("<QQQQIi", "channel ticket nbytes stamp slot woke"),
-    "flux2_take": ("<QQQQII", "channel ticket lost stamp slot pad"),
-    "flux2_release": ("<QQiI", "channel ticket held pad"),
-    "flux2_refused": ("<QiI", "channel reason pad"),
-    "flux2_wait": ("<QqII", "executor timeout_ns sources pad"),
-    "flux2_wake": ("<QiI", "executor result entry"),
-    "flux2_callback_start": ("<QQII", "executor endpoint entry pad"),
-    "flux2_callback_end": ("<QQIi", "executor channel entry delivered"),
-    "flux2_endpoint_init": ("<QQii", "endpoint fingerprint role lang"),
-    "flux2_py_gil": ("<iI", "phase pad"),
-    "flux2_py_ready": ("<QQ", "channel ticket"),
-    "flux2_record_drop": ("<QQIi", "channel ticket count reason"),
-    "flux2_gpu_wedged": ("<iI", "result pad"),
+    "flux_claim": ("<QIiiI", "channel slot result loan pad"),
+    "flux_loan": ("<QII", "channel slot pad"),
+    "flux_loan_end": ("<QIi", "channel slot result"),
+    "flux_commit": ("<QQQQIi", "channel ticket nbytes stamp slot woke"),
+    "flux_take": ("<QQQQII", "channel ticket lost stamp slot pad"),
+    "flux_release": ("<QQiI", "channel ticket held pad"),
+    "flux_refused": ("<QiI", "channel reason pad"),
+    "flux_wait": ("<QqII", "executor timeout_ns sources pad"),
+    "flux_wake": ("<QiI", "executor result entry"),
+    "flux_callback_start": ("<QQII", "executor endpoint entry pad"),
+    "flux_callback_end": ("<QQIi", "executor channel entry delivered"),
+    "flux_endpoint_init": ("<QQii", "endpoint fingerprint role lang"),
+    "flux_py_gil": ("<iI", "phase pad"),
+    "flux_py_ready": ("<QQ", "channel ticket"),
+    "flux_record_drop": ("<QQIi", "channel ticket count reason"),
+    "flux_gpu_wedged": ("<iI", "result pad"),
     "dds_write": ("<QQ", "writer duration_ns"),
     "cuda_call": ("<QQIi", "duration_ns bytes api result"),
     "span_begin": ("<Q", "key"),
@@ -112,7 +112,7 @@ PAYLOAD = {
 AGG_CALLBACK, AGG_DISPATCH, AGG_WAIT, AGG_OFFCPU, AGG_CPU_WAIT = 1, 2, 3, 4, 5
 CUDA_SYNC = (4, 5, 6)
 FUTEX_WAITV = 0xFFFFFFFF
-SRC_ROS, SRC_FLUX2 = 1, 2
+SRC_ROS, SRC_FLUX = 1, 2
 
 
 class Record:
@@ -390,22 +390,22 @@ def ros_calls(sock, tmp, f):
     return f"{sum(got.values())} records, {sum(v[0] for v in callbacks.values())} callbacks"
 
 
-def flux2_lib():
+def flux_lib():
     for var in ("CMAKE_PREFIX_PATH", "AMENT_PREFIX_PATH"):
         for prefix in os.environ.get(var, "").split(":"):
             p = Path(prefix)
-            if prefix and (p / "include/flux2.h").is_file():
+            if prefix and (p / "include/flux.h").is_file():
                 return p
     return None
 
 
-def flux2_calls(sock, tmp, f):
-    prefix = flux2_lib()
-    real = (prefix / "lib/libflux2_ffi.so").resolve()
+def flux_calls(sock, tmp, f):
+    prefix = flux_lib()
+    real = (prefix / "lib/libflux_ffi.so").resolve()
     copy = Path(tmp) / real.name
     shutil.copy(real, copy)
     c = Conn(sock)
-    p = Proc([sys.executable, HERE / "flux2_trace_caller.py", copy])
+    p = Proc([sys.executable, HERE / "flux_trace_caller.py", copy])
     c.watch(p.pid)
     p.go()
     want = json.loads(p.line())
@@ -414,7 +414,7 @@ def flux2_calls(sock, tmp, f):
     by = collections.defaultdict(list)
     for r in recs:
         by[r.name].append(r)
-    f.eq(set(by), set(want["records"]), "flux2 events")
+    f.eq(set(by), set(want["records"]), "flux events")
     for name, w in want["records"].items():
         f.eq(len(by[name]), w["n"], f"{name} records")
         fields = dict(w["fields"])
@@ -426,29 +426,29 @@ def flux2_calls(sock, tmp, f):
     a = c.aggs(p.pid)
     for key, n in want["callbacks"].items():
         ex, entry = key.split(":")
-        f.eq(a[(AGG_CALLBACK, SRC_FLUX2, int(ex, 16), int(entry))][0], n, f"flux2 callbacks {key}")
+        f.eq(a[(AGG_CALLBACK, SRC_FLUX, int(ex, 16), int(entry))][0], n, f"flux callbacks {key}")
     for key, n in want["dispatch"].items():
         ex, entry = key.split(":")
-        f.eq(a[(AGG_DISPATCH, SRC_FLUX2, int(ex, 16), int(entry))][0], n, f"flux2 dispatch {key}")
+        f.eq(a[(AGG_DISPATCH, SRC_FLUX, int(ex, 16), int(entry))][0], n, f"flux dispatch {key}")
     for ex, n in want["waits"].items():
-        f.eq(a[(AGG_WAIT, SRC_FLUX2, int(ex, 16), 0)][0], n, f"flux2 waits {ex}")
+        f.eq(a[(AGG_WAIT, SRC_FLUX, int(ex, 16), 0)][0], n, f"flux waits {ex}")
     p.end()
     c.close()
     return f"{len(recs)} records over {len(by)} functions"
 
 
-def flux2_real(sock, tmp, f):
-    """The C caller on the real libflux2_ffi (contract 2): 300 early callbacks, each with a late
+def flux_real(sock, tmp, f):
+    """The C caller on the real libflux_ffi (contract 2): 300 early callbacks, each with a late
     one inside on another executor."""
-    prefix = flux2_lib()
-    real = (prefix / "lib/libflux2_ffi.so").resolve()
+    prefix = flux_lib()
+    real = (prefix / "lib/libflux_ffi.so").resolve()
     copy = Path(tmp) / real.name
     shutil.copy(real, copy)
-    (Path(tmp) / "libflux2_ffi.so").symlink_to(copy.name)
-    exe = Path(tmp) / "flux2_caller"
+    (Path(tmp) / "libflux_ffi.so").symlink_to(copy.name)
+    exe = Path(tmp) / "flux_caller"
     subprocess.run(
-        ["cc", "-O2", "-I", prefix / "include", HERE / "flux2_caller.c"]
-        + ["-L", tmp, "-lflux2_ffi", "-o", exe],
+        ["cc", "-O2", "-I", prefix / "include", HERE / "flux_caller.c"]
+        + ["-L", tmp, "-lflux_ffi", "-o", exe],
         check=True,
     )
     env = dict(os.environ, LD_LIBRARY_PATH=f"{tmp}:{os.environ.get('LD_LIBRARY_PATH', '')}")
@@ -465,12 +465,12 @@ def flux2_real(sock, tmp, f):
     recs = c.of(p.pid)
     got = counts(recs)
     for name in ("claim", "commit", "take", "release", "callback_start", "callback_end"):
-        f.eq(got.get("flux2_" + name, 0), 600, f"flux2_{name} records")
-    f.eq(got.get("flux2_channel_init", 0), 2, "channel_init of the late pair")
+        f.eq(got.get("flux_" + name, 0), 600, f"flux_{name} records")
+    f.eq(got.get("flux_channel_init", 0), 2, "channel_init of the late pair")
     a = c.aggs(p.pid)
-    rows = sorted(v[0] for k, v in a.items() if k[0] == AGG_CALLBACK and k[1] == SRC_FLUX2)
-    f.eq(rows, [300, 300], "flux2 callbacks per executor")
-    segments = {r.strings[0] for r in recs if r.name == "flux2_callback_end" and r.strings}
+    rows = sorted(v[0] for k, v in a.items() if k[0] == AGG_CALLBACK and k[1] == SRC_FLUX)
+    f.eq(rows, [300, 300], "flux callbacks per executor")
+    segments = {r.strings[0] for r in recs if r.name == "flux_callback_end" and r.strings}
     f.check(any(s.startswith(late_name) for s in segments), f"late segment in {segments}")
     p.stdin.close()
     p.wait(timeout=10)
@@ -1121,8 +1121,8 @@ ARMOD_BIN = [""]
 CASES = {
     "select": select,
     "ros_calls": ros_calls,
-    "flux2_calls": flux2_calls,
-    "flux2_real": flux2_real,
+    "flux_calls": flux_calls,
+    "flux_real": flux_real,
     "cpp_node": cpp_node,
     "cpp_fastdds": cpp_fastdds,
     "py_node": py_node,
@@ -1155,8 +1155,8 @@ def main():
         armod = Armod(args.armod, sock, f"{tmp}/armod.log")
         try:
             for name, case in cases.items():
-                if name.startswith("flux2") and not flux2_lib():
-                    failed.append(f"{name}: flux2_ffi not under CMAKE_PREFIX_PATH")
+                if name.startswith("flux") and not flux_lib():
+                    failed.append(f"{name}: flux_ffi not under CMAKE_PREFIX_PATH")
                     continue
                 f = Fail(name)
                 with tempfile.TemporaryDirectory(prefix=f"armo_{name}_") as ctmp:

@@ -25,10 +25,10 @@ elseif(tracetools_VERSION_MAJOR LESS 8)
 else()
   set(ros2_provider 0)
   message(WARNING "libtracetools ${tracetools_VERSION} has no LTTng and no ros2 layout here: "
-    "LTTng sessions get armo and flux2 events but no ros2 events")
+    "LTTng sessions get armo and flux events but no ros2 events")
 endif()
 
-set(sources src/lttng_backend.c src/tp_armo.c src/tp_flux2.c)
+set(sources src/lttng_backend.c src/tp_armo.c src/tp_flux.c)
 if(ros2_provider)
   list(APPEND sources src/tp_ros2.c)
 endif()
@@ -47,7 +47,7 @@ install(TARGETS armo_lttng LIBRARY DESTINATION lib)
 
 if(BUILD_TESTING)
   find_package(ament_cmake_test REQUIRED)
-  find_package(flux2_ffi QUIET)
+  find_package(flux_ffi QUIET)
 
   add_executable(lttng_caller test/caller.c)
   # armo_tracepoints.h only: linking the interception code would define ros_trace_* here.
@@ -65,9 +65,9 @@ if(BUILD_TESTING)
   target_link_options(lttng_cuda_stub PRIVATE -Wl,-Bsymbolic-functions)
   add_library(lttng_dds_stub SHARED ${stubs}/dds_stub.c)
   target_compile_definitions(lttng_caller PRIVATE
-    ARMO_TRACETOOLS_MAJOR=${tracetools_VERSION_MAJOR} ARMO_FLUX2=$<BOOL:${flux2_ffi_FOUND}>)
-  if(flux2_ffi_FOUND)
-    target_link_libraries(lttng_caller PRIVATE flux2::ffi)
+    ARMO_TRACETOOLS_MAJOR=${tracetools_VERSION_MAJOR} ARMO_FLUX=$<BOOL:${flux_ffi_FOUND}>)
+  if(flux_ffi_FOUND)
+    target_link_libraries(lttng_caller PRIVATE flux::ffi)
   endif()
   # The workload of agreement.py and humble_agreement.py.
   find_package(rclcpp REQUIRED)
@@ -86,10 +86,10 @@ if(BUILD_TESTING)
     GENERATE_RESULT_FOR_RETURN_CODE_ZERO
     TIMEOUT 300)
 
-  # The real flux2: a workspace with flux2_ffi (trace contract 2).
-  if(flux2_ffi_FOUND)
-    ament_add_test(lttng_flux2
-      COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/test/lttng_flux2.py $<TARGET_FILE:armo_lttng>
+  # The real flux: a workspace with flux_ffi (trace contract 2).
+  if(flux_ffi_FOUND)
+    ament_add_test(lttng_flux
+      COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/test/lttng_flux.py $<TARGET_FILE:armo_lttng>
       GENERATE_RESULT_FOR_RETURN_CODE_ZERO
       TIMEOUT 120)
 

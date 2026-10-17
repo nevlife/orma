@@ -4,7 +4,7 @@
 Processes that wait before they create any ROS entity are selected first, so the check attaches
 only to them; `armo check` then runs and they start inside its window: two node.cpp on one
 topic (one under libarmo_preload.so), node.py with armo_rclpy and, when the workspace has
-flux2_ffi, armo_daemon's flux2 caller. Each row of 6.7 must come out as an item that passes;
+flux_ffi, armo_daemon's flux caller. Each row of 6.7 must come out as an item that passes;
 the Cyclone m_size offset may stay unknown with its reason (it needs Cyclone's debug symbols).
 
     selfcheck.py [--duration S] [--humble IMAGE WS]
@@ -45,11 +45,11 @@ def host_procs(prefix, tmp):
             dict(env, PYTHONPATH=f"{autoload}:{env.get('PYTHONPATH', '')}"),
         ),
     }
-    if A.flux2_lib():
+    if A.flux_lib():
         sys.path.insert(0, str(common.ARMO / "collect/armo_lttng/test"))
         import session
 
-        out["flux2"] = common.Caller([session.flux2_caller(tmp)], env)
+        out["flux"] = common.Caller([session.flux_caller(tmp)], env)
     return out
 
 
@@ -76,7 +76,7 @@ ROWS = [
      [r"rmw_publish timestamp = rmw_take source_timestamp|source_timestamp after rmw_publish"]),
     ("header.stamp", [r"header\.stamp {prefix}/out"]),
     ("rclpy handle", [r"rclpy handle"]),
-    ("flux2 contract", [r"flux2 contract .*libflux2_ffi"]),
+    ("flux contract", [r"flux contract .*libflux_ffi"]),
     ("tracepoint argument layout", [r"tracepoint layout"]),
     ("distro", [r"distro pid {cpp} ", r"distro pid {py} "]),
     ("container pid", [r"container pid|nspid"]),
@@ -163,11 +163,7 @@ def main():
         # No container on the host; the Humble image has no Cyclone DDS.
         if (row == "container pid" and not docker) or (row.startswith("Cyclone") and docker):
             continue
-        patterns = [
-            p
-            for p in patterns
-            if not (p.startswith("flux2") and "flux2" not in procs)
-        ]
+        patterns = [p for p in patterns if not (p.startswith("flux") and "flux" not in procs)]
         for pat in patterns:
             rx = re.compile(pat.format(**fill))
             hits = {k: v for k, v in rows.items() if rx.search(k)}

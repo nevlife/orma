@@ -648,7 +648,7 @@ fn live(pid: u32, fqn: &str) -> (Process, Node) {
         exited: false,
         cold: false,
         overflow: None,
-        flux2_gpu_wedged: None,
+        flux_gpu_wedged: None,
         cuda: None,
         gpu_mem_bytes: None,
     };

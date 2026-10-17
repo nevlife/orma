@@ -67,5 +67,5 @@
 | `missing <지점>` | 그 라이브러리가 함수를 내보내지 않는다. Jazzy의 rmw 서비스 트레이스포인트, uprobe의 `rclcpp_callback_register`(게이트 때문)는 늘 `unknown`이다 |
 | `distro pid N` | `fail`이면 publish ABI 판정이 틀렸다. `unknown`(no publish after a publisher init)은 armod가 그 프로세스보다 늦게 떠 비교할 init이 없다는 뜻이다 |
 | `cyclone serdata_rmw::m_size offset` | `unknown`이면 Cyclone의 dbgsym 패키지가 없다. Cyclone 대역폭만 빠진다 |
-| `flux contract`, `flux2 contract` | `fail`이면 라이브러리의 트레이스 계약 버전이 armo와 다르다. armo는 그 라이브러리에 붙지 않는다. 같은 커밋의 flux, flux2로 다시 빌드한다 |
+| `flux contract`, `flux contract` | `fail`이면 라이브러리의 트레이스 계약 버전이 armo와 다르다. armo는 그 라이브러리에 붙지 않는다. 같은 커밋의 flux, flux로 다시 빌드한다 |
 | `container pid N` | 컨테이너 안 pid와 호스트 pid의 대응을 본다. `fail`이면 armo가 그 컨테이너의 스레드를 다른 프로세스로 셌다는 뜻이다 |

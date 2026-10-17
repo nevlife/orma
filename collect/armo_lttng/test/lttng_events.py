@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Runs the caller under LD_PRELOAD=libarmo_lttng.so in a private LTTng session and fails unless
-every armo and flux2 event the caller expects arrives exactly as often, the stamps and handles
+every armo and flux event the caller expects arrives exactly as often, the stamps and handles
 come through, and each ROS event also arrives as a ros2 event as often: from libtracetools where it
 has LTTng (Jazzy), from libarmo_lttng.so where it has not (Humble). Given the stubs, also spans
 (each end keyed as its begin, the name on the begin) and the timed CUDA and DDS calls.
@@ -32,7 +32,7 @@ def main():
     failed = []
     with session.daemon() as env, tempfile.TemporaryDirectory() as tmp:
         trace = Path(tmp) / "trace"
-        with session.session(env, trace, "armo:*,flux2:*,ros2:*"):
+        with session.session(env, trace, "armo:*,flux:*,ros2:*"):
             run = session.subprocess.run(
                 [caller, *stubs], env=dict(env, LD_PRELOAD=lib), capture_output=True, text=True
             )
@@ -49,7 +49,7 @@ def main():
             twin = "ros2:rmw_publish" if name == "rmw_publish_rcl" else f"ros2:{name}"
             if kinds[twin] != n:
                 failed.append(f"{twin}: {kinds[twin]} events, want {n}")
-    unexpected = {k for k in kinds if k.split(":")[0] in ("armo", "flux2")} - set(want)
+    unexpected = {k for k in kinds if k.split(":")[0] in ("armo", "flux")} - set(want)
     if unexpected:
         failed.append(f"unexpected events {sorted(unexpected)}")
 

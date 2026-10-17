@@ -5,7 +5,7 @@
   <version>0.0.0</version>
   <description>
     libarmo_preload.so, loaded with LD_PRELOAD: catches ros_trace_*, rcl_wait, rcl_timer_fini,
-    rclcpp construction functions, flux2_trace_*, armo_span markers and, on request, CUDA driver
+    rclcpp construction functions, flux_trace_*, armo_span markers and, on request, CUDA driver
     and DDS write calls, and writes armo's shared memory file. Also the static interception
     library armo_intercept that the LTTng backend links.
   </description>

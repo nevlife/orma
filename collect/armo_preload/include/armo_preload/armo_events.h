@@ -127,40 +127,40 @@
 
 #define ARMO_EV_SPAN_END 105
 
-#define ARMO_EV_FLUX2_CHANNEL_INIT 128
+#define ARMO_EV_FLUX_CHANNEL_INIT 128
 
-#define ARMO_EV_FLUX2_CLAIM 129
+#define ARMO_EV_FLUX_CLAIM 129
 
-#define ARMO_EV_FLUX2_LOAN 130
+#define ARMO_EV_FLUX_LOAN 130
 
-#define ARMO_EV_FLUX2_LOAN_END 131
+#define ARMO_EV_FLUX_LOAN_END 131
 
-#define ARMO_EV_FLUX2_COMMIT 132
+#define ARMO_EV_FLUX_COMMIT 132
 
-#define ARMO_EV_FLUX2_TAKE 133
+#define ARMO_EV_FLUX_TAKE 133
 
-#define ARMO_EV_FLUX2_RELEASE 134
+#define ARMO_EV_FLUX_RELEASE 134
 
-#define ARMO_EV_FLUX2_REFUSED 135
+#define ARMO_EV_FLUX_REFUSED 135
 
-#define ARMO_EV_FLUX2_WAIT 136
+#define ARMO_EV_FLUX_WAIT 136
 
-#define ARMO_EV_FLUX2_WAKE 137
+#define ARMO_EV_FLUX_WAKE 137
 
-#define ARMO_EV_FLUX2_CALLBACK_START 138
+#define ARMO_EV_FLUX_CALLBACK_START 138
 
-#define ARMO_EV_FLUX2_CALLBACK_END 139
+#define ARMO_EV_FLUX_CALLBACK_END 139
 
-#define ARMO_EV_FLUX2_ENDPOINT_INIT 140
+#define ARMO_EV_FLUX_ENDPOINT_INIT 140
 
-#define ARMO_EV_FLUX2_PY_GIL 141
+#define ARMO_EV_FLUX_PY_GIL 141
 
-#define ARMO_EV_FLUX2_PY_READY 142
+#define ARMO_EV_FLUX_PY_READY 142
 
-#define ARMO_EV_FLUX2_RECORD_DROP 143
+#define ARMO_EV_FLUX_RECORD_DROP 143
 
-// Once per process, when a sticky CUDA error wedges its GPU; a flux2 build before it has none.
-#define ARMO_EV_FLUX2_GPU_WEDGED 144
+// Once per process, when a sticky CUDA error wedges its GPU; a flux build before it has none.
+#define ARMO_EV_FLUX_GPU_WEDGED 144
 
 #define ARMO_EV_SCHED_SWITCH 192
 
@@ -184,74 +184,74 @@
 
 #define ARMO_GID_MAX 24
 
-#define ARMO_FLUX2_CLAIM_OK 0
+#define ARMO_FLUX_CLAIM_OK 0
 
-#define ARMO_FLUX2_CLAIM_RECLAIMED 1
+#define ARMO_FLUX_CLAIM_RECLAIMED 1
 
-#define ARMO_FLUX2_CLAIM_BACKPRESSURE 2
+#define ARMO_FLUX_CLAIM_BACKPRESSURE 2
 
-#define ARMO_FLUX2_CLAIM_NOT_PUBLISHER 3
+#define ARMO_FLUX_CLAIM_NOT_PUBLISHER 3
 
-#define ARMO_FLUX2_CLAIM_WRONG_DEVICE 4
+#define ARMO_FLUX_CLAIM_WRONG_DEVICE 4
 
-#define ARMO_FLUX2_CLAIM_TOO_LARGE 5
+#define ARMO_FLUX_CLAIM_TOO_LARGE 5
 
-#define ARMO_FLUX2_CLAIM_FENCE_FAILED 6
+#define ARMO_FLUX_CLAIM_FENCE_FAILED 6
 
-#define ARMO_FLUX2_CLAIM_GPU_WEDGED 7
+#define ARMO_FLUX_CLAIM_GPU_WEDGED 7
 
-#define ARMO_FLUX2_LOAN_COMMITTED 0
+#define ARMO_FLUX_LOAN_COMMITTED 0
 
-#define ARMO_FLUX2_LOAN_ABORTED 1
+#define ARMO_FLUX_LOAN_ABORTED 1
 
-#define ARMO_FLUX2_LOAN_TOO_LARGE 2
+#define ARMO_FLUX_LOAN_TOO_LARGE 2
 
-#define ARMO_FLUX2_LOAN_FENCE_FAILED 3
+#define ARMO_FLUX_LOAN_FENCE_FAILED 3
 
-#define ARMO_FLUX2_LOAN_NOT_PUBLISHER 4
+#define ARMO_FLUX_LOAN_NOT_PUBLISHER 4
 
-#define ARMO_FLUX2_LOAN_GPU_WEDGED 5
+#define ARMO_FLUX_LOAN_GPU_WEDGED 5
 
-#define ARMO_FLUX2_WAKE_TIMEOUT 0
+#define ARMO_FLUX_WAKE_TIMEOUT 0
 
-#define ARMO_FLUX2_WAKE_SOURCE 1
+#define ARMO_FLUX_WAKE_SOURCE 1
 
-#define ARMO_FLUX2_WAKE_CONTROL 2
+#define ARMO_FLUX_WAKE_CONTROL 2
 
-#define ARMO_FLUX2_WAKE_ALREADY 3
+#define ARMO_FLUX_WAKE_ALREADY 3
 
-// Only from flux2 builds before EINTR was retried; later ones keep waiting after a signal.
-#define ARMO_FLUX2_WAKE_SIGNAL 4
+// Only from flux builds before EINTR was retried; later ones keep waiting after a signal.
+#define ARMO_FLUX_WAKE_SIGNAL 4
 
-#define ARMO_FLUX2_REFUSED_MAX_BORROW 0
+#define ARMO_FLUX_REFUSED_MAX_BORROW 0
 
-#define ARMO_FLUX2_REFUSED_NO_READER 1
+#define ARMO_FLUX_REFUSED_NO_READER 1
 
-#define ARMO_FLUX2_REFUSED_CONTENDED 2
+#define ARMO_FLUX_REFUSED_CONTENDED 2
 
-#define ARMO_FLUX2_REFUSED_BAD_FRAME 3
+#define ARMO_FLUX_REFUSED_BAD_FRAME 3
 
-#define ARMO_FLUX2_REFUSED_FENCE 4
+#define ARMO_FLUX_REFUSED_FENCE 4
 
-#define ARMO_FLUX2_REFUSED_GPU_WEDGED 5
+#define ARMO_FLUX_REFUSED_GPU_WEDGED 5
 
-#define ARMO_FLUX2_RECORD_CACHE_FULL 0
+#define ARMO_FLUX_RECORD_CACHE_FULL 0
 
-#define ARMO_FLUX2_RECORD_WRITE_FAILED 1
+#define ARMO_FLUX_RECORD_WRITE_FAILED 1
 
-#define ARMO_FLUX2_RECORD_OVERRUN 2
+#define ARMO_FLUX_RECORD_OVERRUN 2
 
-#define ARMO_FLUX2_ROLE_PUBLISHER 0
+#define ARMO_FLUX_ROLE_PUBLISHER 0
 
-#define ARMO_FLUX2_ROLE_SUBSCRIPTION 1
+#define ARMO_FLUX_ROLE_SUBSCRIPTION 1
 
-#define ARMO_FLUX2_LANG_CPP 0
+#define ARMO_FLUX_LANG_CPP 0
 
-#define ARMO_FLUX2_LANG_PYTHON 1
+#define ARMO_FLUX_LANG_PYTHON 1
 
-#define ARMO_FLUX2_NO_SLOT UINT32_MAX
+#define ARMO_FLUX_NO_SLOT UINT32_MAX
 
-#define ARMO_FLUX2_NO_ENTRY UINT32_MAX
+#define ARMO_FLUX_NO_ENTRY UINT32_MAX
 
 #define ARMO_CUDA_LAUNCH 0
 
@@ -500,7 +500,7 @@ typedef struct armo_ev_dds_serialized_size {
 } armo_ev_dds_serialized_size;
 
 // Strings: segment.
-typedef struct armo_ev_flux2_channel_init {
+typedef struct armo_ev_flux_channel_init {
   uint64_t channel;
   uint64_t dev;
   uint64_t ino;
@@ -508,117 +508,117 @@ typedef struct armo_ev_flux2_channel_init {
   uint32_t slot_count;
   uint32_t slot_size;
   int32_t stamp_offset;
-} armo_ev_flux2_channel_init;
+} armo_ev_flux_channel_init;
 
-typedef struct armo_ev_flux2_claim {
+typedef struct armo_ev_flux_claim {
   uint64_t channel;
   uint32_t slot;
   int32_t result;
   int32_t loan;
   uint32_t pad;
-} armo_ev_flux2_claim;
+} armo_ev_flux_claim;
 
-typedef struct armo_ev_flux2_loan {
+typedef struct armo_ev_flux_loan {
   uint64_t channel;
   uint32_t slot;
   uint32_t pad;
-} armo_ev_flux2_loan;
+} armo_ev_flux_loan;
 
-typedef struct armo_ev_flux2_loan_end {
+typedef struct armo_ev_flux_loan_end {
   uint64_t channel;
   uint32_t slot;
   int32_t result;
-} armo_ev_flux2_loan_end;
+} armo_ev_flux_loan_end;
 
-typedef struct armo_ev_flux2_commit {
+typedef struct armo_ev_flux_commit {
   uint64_t channel;
   uint64_t ticket;
   uint64_t nbytes;
   uint64_t stamp;
   uint32_t slot;
   int32_t woke;
-} armo_ev_flux2_commit;
+} armo_ev_flux_commit;
 
-typedef struct armo_ev_flux2_take {
+typedef struct armo_ev_flux_take {
   uint64_t channel;
   uint64_t ticket;
   uint64_t lost;
   uint64_t stamp;
   uint32_t slot;
   uint32_t pad;
-} armo_ev_flux2_take;
+} armo_ev_flux_take;
 
-typedef struct armo_ev_flux2_release {
+typedef struct armo_ev_flux_release {
   uint64_t channel;
   uint64_t ticket;
   int32_t held;
   uint32_t pad;
-} armo_ev_flux2_release;
+} armo_ev_flux_release;
 
-typedef struct armo_ev_flux2_refused {
+typedef struct armo_ev_flux_refused {
   uint64_t channel;
   int32_t reason;
   uint32_t pad;
-} armo_ev_flux2_refused;
+} armo_ev_flux_refused;
 
-typedef struct armo_ev_flux2_wait {
+typedef struct armo_ev_flux_wait {
   uint64_t executor;
   int64_t timeout_ns;
   uint32_t sources;
   uint32_t pad;
-} armo_ev_flux2_wait;
+} armo_ev_flux_wait;
 
-typedef struct armo_ev_flux2_wake {
+typedef struct armo_ev_flux_wake {
   uint64_t executor;
   int32_t result;
   uint32_t entry;
-} armo_ev_flux2_wake;
+} armo_ev_flux_wake;
 
-typedef struct armo_ev_flux2_callback_start {
+typedef struct armo_ev_flux_callback_start {
   uint64_t executor;
   uint64_t endpoint;
   uint32_t entry;
   uint32_t pad;
-} armo_ev_flux2_callback_start;
+} armo_ev_flux_callback_start;
 
 // Strings: segment.
-typedef struct armo_ev_flux2_callback_end {
+typedef struct armo_ev_flux_callback_end {
   uint64_t executor;
   uint64_t channel;
   uint32_t entry;
   int32_t delivered;
-} armo_ev_flux2_callback_end;
+} armo_ev_flux_callback_end;
 
 // Strings: node, key, signpost.
-typedef struct armo_ev_flux2_endpoint_init {
+typedef struct armo_ev_flux_endpoint_init {
   uint64_t endpoint;
   uint64_t fingerprint;
   int32_t role;
   int32_t lang;
-} armo_ev_flux2_endpoint_init;
+} armo_ev_flux_endpoint_init;
 
-typedef struct armo_ev_flux2_py_gil {
+typedef struct armo_ev_flux_py_gil {
   int32_t phase;
   uint32_t pad;
-} armo_ev_flux2_py_gil;
+} armo_ev_flux_py_gil;
 
-typedef struct armo_ev_flux2_py_ready {
+typedef struct armo_ev_flux_py_ready {
   uint64_t channel;
   uint64_t ticket;
-} armo_ev_flux2_py_ready;
+} armo_ev_flux_py_ready;
 
-typedef struct armo_ev_flux2_record_drop {
+typedef struct armo_ev_flux_record_drop {
   uint64_t channel;
   uint64_t ticket;
   uint32_t count;
   int32_t reason;
-} armo_ev_flux2_record_drop;
+} armo_ev_flux_record_drop;
 
 // `result` is the `CUresult` that wedged the GPU.
-typedef struct armo_ev_flux2_gpu_wedged {
+typedef struct armo_ev_flux_gpu_wedged {
   int32_t result;
   uint32_t pad;
-} armo_ev_flux2_gpu_wedged;
+} armo_ev_flux_gpu_wedged;
 
 // `writer` is the DDS writer handle or object the call took.
 typedef struct armo_ev_dds_write {

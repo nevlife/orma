@@ -50,10 +50,10 @@
 
 #define ARMO_THREAD_EXITED 2
 
-// What a callback key belongs to: a ROS callback handle, or a flux2 executor with its entry.
+// What a callback key belongs to: a ROS callback handle, or a flux executor with its entry.
 #define ARMO_SRC_ROS 1
 
-#define ARMO_SRC_FLUX2 2
+#define ARMO_SRC_FLUX 2
 
 // Table rows. Intervals sum nanoseconds; `ARMO_AGG_ALLOC` and `ARMO_AGG_FREE` sum bytes.
 #define ARMO_AGG_CALLBACK 1

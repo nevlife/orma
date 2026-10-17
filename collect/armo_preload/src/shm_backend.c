@@ -160,9 +160,9 @@ static bool init_event(uint16_t event)
     case ARMO_EV_RCLCPP_EXECUTOR_ADD_GROUP:
     case ARMO_EV_RCLCPP_CALLBACK_OWNER:
     case ARMO_EV_CALLBACK_CODE:
-    case ARMO_EV_FLUX2_CHANNEL_INIT:
-    case ARMO_EV_FLUX2_ENDPOINT_INIT:
-    case ARMO_EV_FLUX2_GPU_WEDGED:
+    case ARMO_EV_FLUX_CHANNEL_INIT:
+    case ARMO_EV_FLUX_ENDPOINT_INIT:
+    case ARMO_EV_FLUX_GPU_WEDGED:
       return true;
     default:
       return false;
@@ -193,7 +193,7 @@ static inline __attribute__((always_inline)) void callback_start(
   if (armed()) ring_put(t, event, ts, ev, size, NULL, 0);
 }
 
-// A flux2 pass that delivered nothing is not counted as a callback.
+// A flux pass that delivered nothing is not counted as a callback.
 static inline __attribute__((always_inline)) void callback_end(
   uint16_t event, const void * ev, uint32_t size, const char * const * strs, uint32_t n_strs,
   uint16_t src, uint64_t key, uint32_t entry, bool counted)
@@ -240,18 +240,18 @@ void armo_emit_callback_end(const armo_ev_handle * ev)
   callback_end(ARMO_EV_CALLBACK_END, ev, sizeof *ev, NULL, 0, ARMO_SRC_ROS, ev->handle, 0, true);
 }
 
-void armo_emit_flux2_callback_start(const armo_ev_flux2_callback_start * ev)
+void armo_emit_flux_callback_start(const armo_ev_flux_callback_start * ev)
 {
   callback_start(
-    ARMO_EV_FLUX2_CALLBACK_START, ev, sizeof *ev, ARMO_SRC_FLUX2, ev->executor, ev->entry,
+    ARMO_EV_FLUX_CALLBACK_START, ev, sizeof *ev, ARMO_SRC_FLUX, ev->executor, ev->entry,
     ev->executor);
 }
 
-void armo_emit_flux2_callback_end(const armo_ev_flux2_callback_end * ev, const char * segment)
+void armo_emit_flux_callback_end(const armo_ev_flux_callback_end * ev, const char * segment)
 {
   const char * strs[] = {segment};
   callback_end(
-    ARMO_EV_FLUX2_CALLBACK_END, ev, sizeof *ev, strs, 1, ARMO_SRC_FLUX2, ev->executor, ev->entry,
+    ARMO_EV_FLUX_CALLBACK_END, ev, sizeof *ev, strs, 1, ARMO_SRC_FLUX, ev->executor, ev->entry,
     ev->delivered > 0);
 }
 
@@ -265,14 +265,14 @@ void armo_emit_rcl_wait_exit(const armo_ev_rcl_wait_exit * ev)
   wait_exit(ARMO_EV_RCL_WAIT_EXIT, ev, sizeof *ev, ARMO_SRC_ROS, ev->wait_set, 0);
 }
 
-void armo_emit_flux2_wait(const armo_ev_flux2_wait * ev)
+void armo_emit_flux_wait(const armo_ev_flux_wait * ev)
 {
-  wait_enter(ARMO_EV_FLUX2_WAIT, ev, sizeof *ev, ARMO_SRC_FLUX2);
+  wait_enter(ARMO_EV_FLUX_WAIT, ev, sizeof *ev, ARMO_SRC_FLUX);
 }
 
-void armo_emit_flux2_wake(const armo_ev_flux2_wake * ev)
+void armo_emit_flux_wake(const armo_ev_flux_wake * ev)
 {
-  wait_exit(ARMO_EV_FLUX2_WAKE, ev, sizeof *ev, ARMO_SRC_FLUX2, ev->executor, ev->executor);
+  wait_exit(ARMO_EV_FLUX_WAKE, ev, sizeof *ev, ARMO_SRC_FLUX, ev->executor, ev->executor);
 }
 
 #define PLAIN(name, event, type)            \
@@ -347,22 +347,21 @@ PLAIN(
 PLAIN(rclcpp_collector_add_group, ARMO_EV_RCLCPP_COLLECTOR_ADD_GROUP, armo_ev_rclcpp_object)
 PLAIN(rclcpp_executor_add_group, ARMO_EV_RCLCPP_EXECUTOR_ADD_GROUP, armo_ev_rclcpp_object)
 PLAIN(callback_code, ARMO_EV_CALLBACK_CODE, armo_ev_callback_code)
+STRINGS(flux_channel_init, ARMO_EV_FLUX_CHANNEL_INIT, armo_ev_flux_channel_init, 1, const char * s0)
+PLAIN(flux_claim, ARMO_EV_FLUX_CLAIM, armo_ev_flux_claim)
+PLAIN(flux_loan, ARMO_EV_FLUX_LOAN, armo_ev_flux_loan)
+PLAIN(flux_loan_end, ARMO_EV_FLUX_LOAN_END, armo_ev_flux_loan_end)
+PLAIN(flux_commit, ARMO_EV_FLUX_COMMIT, armo_ev_flux_commit)
+PLAIN(flux_take, ARMO_EV_FLUX_TAKE, armo_ev_flux_take)
+PLAIN(flux_release, ARMO_EV_FLUX_RELEASE, armo_ev_flux_release)
+PLAIN(flux_refused, ARMO_EV_FLUX_REFUSED, armo_ev_flux_refused)
 STRINGS(
-  flux2_channel_init, ARMO_EV_FLUX2_CHANNEL_INIT, armo_ev_flux2_channel_init, 1, const char * s0)
-PLAIN(flux2_claim, ARMO_EV_FLUX2_CLAIM, armo_ev_flux2_claim)
-PLAIN(flux2_loan, ARMO_EV_FLUX2_LOAN, armo_ev_flux2_loan)
-PLAIN(flux2_loan_end, ARMO_EV_FLUX2_LOAN_END, armo_ev_flux2_loan_end)
-PLAIN(flux2_commit, ARMO_EV_FLUX2_COMMIT, armo_ev_flux2_commit)
-PLAIN(flux2_take, ARMO_EV_FLUX2_TAKE, armo_ev_flux2_take)
-PLAIN(flux2_release, ARMO_EV_FLUX2_RELEASE, armo_ev_flux2_release)
-PLAIN(flux2_refused, ARMO_EV_FLUX2_REFUSED, armo_ev_flux2_refused)
-STRINGS(
-  flux2_endpoint_init, ARMO_EV_FLUX2_ENDPOINT_INIT, armo_ev_flux2_endpoint_init, 3, const char * s0,
+  flux_endpoint_init, ARMO_EV_FLUX_ENDPOINT_INIT, armo_ev_flux_endpoint_init, 3, const char * s0,
   const char * s1, const char * s2)
-PLAIN(flux2_py_gil, ARMO_EV_FLUX2_PY_GIL, armo_ev_flux2_py_gil)
-PLAIN(flux2_py_ready, ARMO_EV_FLUX2_PY_READY, armo_ev_flux2_py_ready)
-PLAIN(flux2_record_drop, ARMO_EV_FLUX2_RECORD_DROP, armo_ev_flux2_record_drop)
-PLAIN(flux2_gpu_wedged, ARMO_EV_FLUX2_GPU_WEDGED, armo_ev_flux2_gpu_wedged)
+PLAIN(flux_py_gil, ARMO_EV_FLUX_PY_GIL, armo_ev_flux_py_gil)
+PLAIN(flux_py_ready, ARMO_EV_FLUX_PY_READY, armo_ev_flux_py_ready)
+PLAIN(flux_record_drop, ARMO_EV_FLUX_RECORD_DROP, armo_ev_flux_record_drop)
+PLAIN(flux_gpu_wedged, ARMO_EV_FLUX_GPU_WEDGED, armo_ev_flux_gpu_wedged)
 PLAIN(dds_write, ARMO_EV_DDS_WRITE, armo_ev_dds_write)
 PLAIN(cuda_call, ARMO_EV_CUDA_CALL, armo_ev_cuda_call)
 STRINGS(span_begin, ARMO_EV_SPAN_BEGIN, armo_ev_span, 1, const char * s0)

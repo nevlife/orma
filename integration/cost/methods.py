@@ -215,10 +215,8 @@ class Uprobe(Component):
         sh("sudo", "-n", "sysctl", "-q", f"kernel.bpf_stats_enabled={self.stats_was}")
         lost = 0
         for path in glob.glob(os.path.join(ctx.rundir, "armod_*.log")):
-            for line in re.findall(
-                r"^-- window .* lost: (.*) flux (\d+)$", open(path).read(), re.M
-            ):
-                lost += sum(int(n) for n in re.findall(r"\d+", line[0])) + int(line[1])
+            for line in re.findall(r"^-- window .* lost: (.*)$", open(path).read(), re.M):
+                lost += sum(int(n) for n in re.findall(r"\d+", line))
         return {"armod_lost": lost}
 
 
@@ -279,10 +277,10 @@ class Lttng(Component):
 
 
 class ArmoLttng(Lttng):
-    """libarmo_lttng.so in the workload, its armo and flux2 providers enabled as well."""
+    """libarmo_lttng.so in the workload, its armo and flux providers enabled as well."""
 
     name = "armo_lttng"
-    events = ["ros2:*", "armo:*", "flux2:*"]
+    events = ["ros2:*", "armo:*", "flux:*"]
 
     def prepare(self, ctx):
         return dict(super().prepare(ctx), LD_PRELOAD_APPEND=BIN["libarmo_lttng.so"])

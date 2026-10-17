@@ -235,22 +235,22 @@ pub const PROGS: &[Prog] = &[
         Sym::Name("rcl_timer_fini"),
     ),
     p(
-        "flux2_channel_init",
-        Lib::Flux2,
+        "flux_channel_init",
+        Lib::Flux,
         Discovery,
-        Sym::Name("flux2_trace_channel_init"),
+        Sym::Name("flux_trace_channel_init"),
     ),
     p(
-        "flux2_endpoint_init",
-        Lib::Flux2,
+        "flux_endpoint_init",
+        Lib::Flux,
         Discovery,
-        Sym::Name("flux2_trace_endpoint_init"),
+        Sym::Name("flux_trace_endpoint_init"),
     ),
     p(
-        "flux2_gpu_wedged",
-        Lib::Flux2,
+        "flux_gpu_wedged",
+        Lib::Flux,
         Discovery,
-        Sym::Name("flux2_trace_gpu_wedged"),
+        Sym::Name("flux_trace_gpu_wedged"),
     ),
     // Hot: per message and per callback, the selected processes only.
     tp("rclcpp_publish", Hot),
@@ -287,69 +287,64 @@ pub const PROGS: &[Prog] = &[
         ret: true,
         ..p("rcl_wait_ret", Lib::Rcl, Hot, Sym::Name("rcl_wait"))
     },
+    p("flux_claim", Lib::Flux, Hot, Sym::Name("flux_trace_claim")),
+    p("flux_loan", Lib::Flux, Hot, Sym::Name("flux_trace_loan")),
     p(
-        "flux2_claim",
-        Lib::Flux2,
+        "flux_loan_end",
+        Lib::Flux,
         Hot,
-        Sym::Name("flux2_trace_claim"),
-    ),
-    p("flux2_loan", Lib::Flux2, Hot, Sym::Name("flux2_trace_loan")),
-    p(
-        "flux2_loan_end",
-        Lib::Flux2,
-        Hot,
-        Sym::Name("flux2_trace_loan_end"),
+        Sym::Name("flux_trace_loan_end"),
     ),
     p(
-        "flux2_commit",
-        Lib::Flux2,
+        "flux_commit",
+        Lib::Flux,
         Hot,
-        Sym::Name("flux2_trace_commit"),
+        Sym::Name("flux_trace_commit"),
     ),
-    p("flux2_take", Lib::Flux2, Hot, Sym::Name("flux2_trace_take")),
+    p("flux_take", Lib::Flux, Hot, Sym::Name("flux_trace_take")),
     p(
-        "flux2_release",
-        Lib::Flux2,
+        "flux_release",
+        Lib::Flux,
         Hot,
-        Sym::Name("flux2_trace_release"),
-    ),
-    p(
-        "flux2_refused",
-        Lib::Flux2,
-        Hot,
-        Sym::Name("flux2_trace_refused"),
-    ),
-    p("flux2_wait", Lib::Flux2, Hot, Sym::Name("flux2_trace_wait")),
-    p("flux2_wake", Lib::Flux2, Hot, Sym::Name("flux2_trace_wake")),
-    p(
-        "flux2_callback_start",
-        Lib::Flux2,
-        Hot,
-        Sym::Name("flux2_trace_callback_start"),
+        Sym::Name("flux_trace_release"),
     ),
     p(
-        "flux2_callback_end",
-        Lib::Flux2,
+        "flux_refused",
+        Lib::Flux,
         Hot,
-        Sym::Name("flux2_trace_callback_end"),
+        Sym::Name("flux_trace_refused"),
+    ),
+    p("flux_wait", Lib::Flux, Hot, Sym::Name("flux_trace_wait")),
+    p("flux_wake", Lib::Flux, Hot, Sym::Name("flux_trace_wake")),
+    p(
+        "flux_callback_start",
+        Lib::Flux,
+        Hot,
+        Sym::Name("flux_trace_callback_start"),
     ),
     p(
-        "flux2_py_gil",
-        Lib::Flux2,
+        "flux_callback_end",
+        Lib::Flux,
         Hot,
-        Sym::Name("flux2_trace_py_gil"),
+        Sym::Name("flux_trace_callback_end"),
     ),
     p(
-        "flux2_py_ready",
-        Lib::Flux2,
+        "flux_py_gil",
+        Lib::Flux,
         Hot,
-        Sym::Name("flux2_trace_py_ready"),
+        Sym::Name("flux_trace_py_gil"),
     ),
     p(
-        "flux2_record_drop",
-        Lib::Flux2,
+        "flux_py_ready",
+        Lib::Flux,
         Hot,
-        Sym::Name("flux2_trace_record_drop"),
+        Sym::Name("flux_trace_py_ready"),
+    ),
+    p(
+        "flux_record_drop",
+        Lib::Flux,
+        Hot,
+        Sym::Name("flux_trace_record_drop"),
     ),
     p("span_begin", Lib::Span, Hot, Sym::Name("armo_span_begin")),
     p("span_end", Lib::Span, Hot, Sym::Name("armo_span_end")),
@@ -574,8 +569,8 @@ pub fn naming(event: u16) -> bool {
             ..=ARMO_EV_RMW_PUBLISHER_TOPIC
                 | ARMO_EV_RCLCPP_EXECUTOR_ADD_GROUP
                 | ARMO_EV_RCLCPP_CALLBACK_OWNER
-                | ARMO_EV_FLUX2_CHANNEL_INIT
-                | ARMO_EV_FLUX2_ENDPOINT_INIT
+                | ARMO_EV_FLUX_CHANNEL_INIT
+                | ARMO_EV_FLUX_ENDPOINT_INIT
     )
 }
 
@@ -644,7 +639,7 @@ mod tests {
         assert!(!naming(ARMO_EV_RMW_TAKE));
         assert!(!naming(ARMO_EV_CALLBACK_START));
         assert!(!naming(ARMO_EV_DDS_SERIALIZED_SIZE));
-        assert!(!naming(ARMO_EV_FLUX2_COMMIT));
+        assert!(!naming(ARMO_EV_FLUX_COMMIT));
         assert!(!naming(ARMO_EV_DDS_WRITE));
         assert!(!naming(ARMO_EV_CUDA_CALL));
         assert!(!naming(ARMO_EV_SPAN_BEGIN));

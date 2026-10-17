@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Runs the flux2 caller under LD_PRELOAD=libarmo_lttng.so in a private LTTng session and fails
+"""Runs the flux caller under LD_PRELOAD=libarmo_lttng.so in a private LTTng session and fails
 unless every event the caller makes arrives with its fields: four channel_init (a publisher and a
 subscriber per channel), 600 claim, commit, take and release, 600 delivered callback_end pairs
 named by the segment of a subscribing channel_init, each after a callback_start naming its
 endpoint.
 
-    lttng_flux2.py LIBRARY
+    lttng_flux.py LIBRARY
 """
 
 import subprocess
@@ -21,9 +21,9 @@ CALLBACKS = 600
 def main():
     lib = Path(sys.argv[1]).resolve()
     with tempfile.TemporaryDirectory() as tmp:
-        exe = session.flux2_caller(tmp)
+        exe = session.flux_caller(tmp)
         trace = Path(tmp) / "trace"
-        with session.daemon() as env, session.session(env, trace, "flux2:*"):
+        with session.daemon() as env, session.session(env, trace, "flux:*"):
             run = subprocess.run(
                 [exe],
                 input="go\n",
@@ -34,7 +34,7 @@ def main():
             )
         if run.returncode != 0:
             sys.exit(f"the caller failed: {run.stderr}")
-        got = [(k.split(":")[1], f) for k, f in session.events(trace) if k.startswith("flux2:")]
+        got = [(k.split(":")[1], f) for k, f in session.events(trace) if k.startswith("flux:")]
 
     failed = []
     kinds = session.count(got)

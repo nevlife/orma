@@ -2,7 +2,7 @@
 """Method agreement (design 8): one run, both libraries in each process
 (LD_PRELOAD=libarmo_preload.so:libarmo_lttng.so), and a real armo-collectd recording the same
 processes twice, by method preload into event files and by method lttng into CTF. A C++ publisher
-and subscriber, an rclpy pair with armo_rclpy, and the flux2 caller run; in a window that starts
+and subscriber, an rclpy pair with armo_rclpy, and the flux caller run; in a window that starts
 after the shared memory files are armed, every event of every workload process must be counted
 the same by both recordings.
 
@@ -35,7 +35,7 @@ def main():
         targets = {"all": False, "pids": sorted(pids)}
         pre.update(client.request("record_start", method="preload", targets=targets))
 
-    caller = session.flux2_caller(tmp)
+    caller = session.flux_caller(tmp)
     with session.workload(node, env, collectd.lttng_home, started, caller) as (pids, window):
         shown = {}
         for name, r in (("preload", pre), ("lttng", ltt)):
@@ -53,7 +53,7 @@ def main():
     failed = []
     if a != b:
         failed.append("the two methods counted differently")
-    for event in ("armo:callback_start", "armo:rmw_take", "flux2:take"):
+    for event in ("armo:callback_start", "armo:rmw_take", "flux:take"):
         if a[event] == 0:
             failed.append(f"no {event} in the window")
     if any(t["totals"]["lost"] for t in shown.values()):

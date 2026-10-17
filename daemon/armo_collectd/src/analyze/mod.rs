@@ -516,7 +516,7 @@ fn render(t: &Tables, csv: &mut fs::File) -> Result<String, String> {
     if !t.topic_drops.is_empty() {
         let _ = writeln!(
             s,
-            "\nflux2 drops\n{:>10} {:>10}  entity",
+            "\nflux drops\n{:>10} {:>10}  entity",
             "publish", "record"
         );
         for (id, (p, r)) in &t.topic_drops {

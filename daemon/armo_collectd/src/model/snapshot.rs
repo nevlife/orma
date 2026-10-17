@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use armo_common::shm::ARMO_SRC_FLUX2;
+use armo_common::shm::ARMO_SRC_FLUX;
 use armo_proto::msg::{
     self, Agent, Callback, CpuSource, CudaUse, Drops, Executor, ExecutorKind, Flow, FlowKind, Hist,
     Node, ProcCuda, ProcUse, Process, ShmUse, Span, Subscription, Topic, Window,
@@ -48,8 +48,8 @@ impl Model {
     }
 
     pub(super) fn exec_id(&self, e: &ExecKey) -> String {
-        let kind = if e.src == ARMO_SRC_FLUX2 {
-            "flux2"
+        let kind = if e.src == ARMO_SRC_FLUX {
+            "flux"
         } else if self.exec_rclcpp.contains(e) {
             "rclcpp"
         } else {
@@ -65,8 +65,8 @@ impl Model {
 
     pub(super) fn cb_id(&self, k: &CbKey) -> String {
         let st = self.starttime(k.pid);
-        if k.src == ARMO_SRC_FLUX2 {
-            format!("c:{}:{st}:flux2:{:x}:{}", k.pid, k.key, k.entry)
+        if k.src == ARMO_SRC_FLUX {
+            format!("c:{}:{st}:flux:{:x}:{}", k.pid, k.key, k.entry)
         } else {
             format!("c:{}:{st}:ros:{:x}", k.pid, k.key)
         }
@@ -406,7 +406,7 @@ impl Model {
                 cpu_pct: cpu.map(|c| pct(c, window_ns)),
                 rss_bytes: p.rss,
                 pss_bytes: p.pss,
-                flux2_gpu_wedged: p.gpu_wedged,
+                flux_gpu_wedged: p.gpu_wedged,
                 cuda: (self.gpu && p.cuda && self.hot.contains(pid)).then(|| {
                     let empty = CudaWin::default();
                     let c = self.win.cuda.get(&pid).unwrap_or(&empty);
@@ -463,8 +463,8 @@ impl Model {
             keep(&id, "wait", &ew.wait);
             keep(&id, "dispatch", &ew.dispatch);
             executors.push(Executor {
-                kind: if e.src == ARMO_SRC_FLUX2 {
-                    ExecutorKind::Flux2
+                kind: if e.src == ARMO_SRC_FLUX {
+                    ExecutorKind::Flux
                 } else if self.exec_rclcpp.contains(e) {
                     ExecutorKind::Rclcpp
                 } else {
@@ -545,8 +545,8 @@ impl Model {
             let topic = &self.topics[s.topic];
             let measured = self.hot.contains(self.owner_pid(s.owner));
             let connected = self.pair.connected.values().any(|c| c.contains_key(s));
-            let lost = if topic.transport == Transport::Flux2 {
-                sw.flux2_lost
+            let lost = if topic.transport == Transport::Flux {
+                sw.flux_lost
             } else if topic.rcl_abi {
                 let pubs: u64 = self
                     .win

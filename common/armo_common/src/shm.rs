@@ -35,9 +35,9 @@ pub const ARMO_THREAD_FREE: u32 = 0;
 pub const ARMO_THREAD_LIVE: u32 = 1;
 pub const ARMO_THREAD_EXITED: u32 = 2;
 
-/// What a callback key belongs to: a ROS callback handle, or a flux2 executor with its entry.
+/// What a callback key belongs to: a ROS callback handle, or a flux executor with its entry.
 pub const ARMO_SRC_ROS: u16 = 1;
-pub const ARMO_SRC_FLUX2: u16 = 2;
+pub const ARMO_SRC_FLUX: u16 = 2;
 
 /// Table rows. Intervals sum nanoseconds; `ARMO_AGG_ALLOC` and `ARMO_AGG_FREE` sum bytes.
 pub const ARMO_AGG_CALLBACK: u16 = 1;

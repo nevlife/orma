@@ -30,7 +30,7 @@ INSIDE = """
 import json, sys
 sys.path.insert(0, "/w/src/armo/collect/armo_lttng/test")
 import session
-with session.daemon() as env, session.session(env, "/t/ctf", "armo:*,flux2:*,ros2:*"):
+with session.daemon() as env, session.session(env, "/t/ctf", "armo:*,flux:*,ros2:*"):
     def started(pids):
         json.dump(sorted(pids), open("/t/pids.json", "w"))
 

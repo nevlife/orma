@@ -10,7 +10,7 @@
 #define ARMO_U64(p) ((uint64_t)(uintptr_t)(p))
 
 // The next definition of `name`: RTLD_NEXT, else in the loaded `lib`, else (`lib` NULL) in any
-// loaded object, since Python loads librcl, libtracetools and libflux2_ffi RTLD_LOCAL. Cached in
+// loaded object, since Python loads librcl, libtracetools and libflux_ffi RTLD_LOCAL. Cached in
 // `cache`; ARMO_MISSING after marking `event` missing.
 void * armo_resolve(void ** cache, const char * name, const char * lib, uint16_t event);
 void * armo_find(const char * name);

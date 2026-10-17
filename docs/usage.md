@@ -127,7 +127,7 @@ armo topic list|info|hz|bw|delay ...  # 아래 armo topic
 | 명령 | 열 |
 | --- | --- |
 | `armo top` | CPU 클럭(최소, 평균, 최대 MHz와 CPU 수), thermal zone 온도, 제한 카운터 증가분(x86), 인터페이스별 받기와 보내기 바이트율, 패킷율, 버림, 오류, UDP 오류 카운터 증가분, `gpus` 표(번호, 이름, 사용률, 메모리(사용/전체), SM 클럭, 온도, 전력, 클럭 제한 이유) |
-| `armo node cpu` | 노드 이름, pid, CPU%, CPU 출처, busy%(벽시계), 콜백 Hz, RSS. RSS는 프로세스 값이라, 한 프로세스에 노드가 여럿이면 `(shared)`가 붙는다. 아래에 프로세스 경고(표 넘침, flux2 GPU wedged). wedged인 프로세스의 GPU 채널 claim, loan, take는 실패하고 토픽의 발행 버림으로 센다 |
+| `armo node cpu` | 노드 이름, pid, CPU%, CPU 출처, busy%(벽시계), 콜백 Hz, RSS. RSS는 프로세스 값이라, 한 프로세스에 노드가 여럿이면 `(shared)`가 붙는다. 아래에 프로세스 경고(표 넘침, flux GPU wedged). wedged인 프로세스의 GPU 채널 claim, loan, take는 실패하고 토픽의 발행 버림으로 센다 |
 | `armo node cb` | 콜백, 노드, pid, Hz, 기대 Hz, 실행 시간 p50, p90, p99, max, dispatch 대기 p99. `--gpu`로 CUDA 값이 생기면 `cuda api`(한 번 실행당 CUDA 호출 시간), `cuda sync`(그중 synchronize 시간), `--futex`로 futex 값이 생기면 `futex`(한 번 실행당 대기 시간) 열이 붙는다. CB를 주면 이름에 CB가 들어간 콜백만 보인다 |
 | `armo node sub` | (토픽, 구독 노드)마다 한 행: 토픽, 노드, pid, 받음 Hz, 손실%, 손실 수, 깨움 지연(발행에서 구독 쪽 깨움까지) p50, p90, p99, max. TOPIC을 주면 그 토픽만 |
 | `armo span` | span 이름, 감싼 span, 감싼 콜백, 노드, pid, Hz, 길이 p50, p90, p99, max. NAME을 주면 그 이름만(8절) |
@@ -166,7 +166,7 @@ callbacks
 | `timer cb_fn` | 타이머 콜백. 대상이 없어 콜백을 정의한 함수 이름을 붙인다. 인자 목록, 템플릿 인자, 네임스페이스, 람다 표시는 뺀다 |
 | `timer Talker` | `Talker` 클래스 생성자 안의 람다. rclpy의 `Talker.__init__.<locals>.<lambda>`도 같다 |
 | `timer Talker.on_timer` | rclpy 메서드. Python의 `__qualname__`이다 |
-| `flux2(/image)` | flux2 채널 콜백 |
+| `flux(/image)` | flux 채널 콜백 |
 | `<timer 0xaaaacbc8a330>` | 함수 이름을 찾지 못했다. 콜백 객체의 주소다 |
 | `... #a7e448` | 한 노드 안에 같은 이름이 둘 이상이다. 주소의 끝 여섯 자리로 구분한다 |
 
@@ -226,7 +226,7 @@ window 381  1s
 | 명령 | 값 |
 | --- | --- |
 | `list` | 관측 중인 프로세스의 토픽 이름. 창 하나를 받고 끝난다 |
-| `info` | 전송(`ros`, `flux`, `flux2`), 발행 노드와 구독 노드. 창 하나를 받고 끝난다 |
+| `info` | 전송(`ros`, `flux`, `flux`), 발행 노드와 구독 노드. 창 하나를 받고 끝난다 |
 | `hz` | 발행 Hz, 기대 Hz, 발행 버림 수 |
 | `bw` | 발행 바이트율 |
 | `delay` | 홉 지연(발행에서 take까지) p50, p90, p99, max. `--dds`를 주면 `pub to dds p99`(`rclcpp_publish`에서 DDS write 시작까지), `dds write p99`(write 호출 시간) 열이 붙는다 |

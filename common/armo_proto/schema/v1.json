@@ -687,7 +687,6 @@
         "timer",
         "service",
         "flux",
-        "flux2",
         "unknown"
       ],
       "type": "string"
@@ -1516,8 +1515,7 @@
       "enum": [
         "rclcpp",
         "rclpy",
-        "flux",
-        "flux2"
+        "flux"
       ],
       "type": "string"
     },
@@ -2486,8 +2484,8 @@
         "exited": {
           "type": "boolean"
         },
-        "flux2_gpu_wedged": {
-          "description": "The `CUresult` that wedged the process's GPU (`flux2_trace_gpu_wedged`); its GPU\nchannels refuse claims, loans and takes from then on. Proto 1.7.",
+        "flux_gpu_wedged": {
+          "description": "The `CUresult` that wedged the process's GPU (`flux_trace_gpu_wedged`); its GPU\nchannels refuse claims, loans and takes from then on. Proto 1.7.",
           "format": "int32",
           "type": [
             "integer",
@@ -2730,7 +2728,7 @@
           },
           "type": "array"
         },
-        "flux2_contract": {
+        "flux_contract": {
           "type": [
             "string",
             "null"
@@ -3897,8 +3895,7 @@
     "Transport": {
       "enum": [
         "ros",
-        "flux",
-        "flux2"
+        "flux"
       ],
       "type": "string"
     },

@@ -1,6 +1,6 @@
 //! CTF from libarmo_lttng.so back into armo records: babeltrace 1.5
 //! prints the trace as text and this module parses the lines. Provider armo carries a record's
-//! payload as words and its strings, provider flux2 the flux2 function's arguments by name; ros2
+//! payload as words and its strings, provider flux the flux function's arguments by name; ros2
 //! events are for ros2_tracing's tools and skipped, as armo has each of them as an armo event.
 
 use std::io::{self, BufRead, BufReader, Read};
@@ -14,9 +14,9 @@ use armo_common::events::{
     ARMO_RECORD_ALIGN, ARMO_RECORD_TRUNCATED, ARMO_STRING_MAX, armo_position, armo_record,
 };
 
-/// The payload of each flux2 event as its fields in payload order, with their byte widths.
+/// The payload of each flux event as its fields in payload order, with their byte widths.
 /// `pad` is not a field of the LTTng event.
-const FLUX2: &[(&str, &[(&str, usize)])] = &[
+const FLUX: &[(&str, &[(&str, usize)])] = &[
     (
         "channel_init",
         &[
@@ -109,15 +109,15 @@ const FLUX2: &[(&str, &[(&str, usize)])] = &[
     ("gpu_wedged", &[("result", 4), ("pad", 4)]),
 ];
 
-/// The string fields of each flux2 event with strings, in record order.
-const FLUX2_STRINGS: &[(&str, &[&str])] = &[
+/// The string fields of each flux event with strings, in record order.
+const FLUX_STRINGS: &[(&str, &[&str])] = &[
     ("channel_init", &["segment"]),
     ("callback_end", &["segment"]),
     ("endpoint_init", &["node", "key", "signpost"]),
 ];
 
-pub fn flux2_fields(event: &str) -> Option<&'static [(&'static str, usize)]> {
-    FLUX2.iter().find(|(n, _)| *n == event).map(|(_, f)| *f)
+pub fn flux_fields(event: &str) -> Option<&'static [(&'static str, usize)]> {
+    FLUX.iter().find(|(n, _)| *n == event).map(|(_, f)| *f)
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -272,7 +272,7 @@ pub fn line(text: &str, trace: &mut Trace) -> Result<(), String> {
     };
     let (provider, event) = name.split_once(':').expect("checked");
     trace.events += 1;
-    if provider != "armo" && provider != "flux2" {
+    if provider != "armo" && provider != "flux" {
         trace.skipped += 1;
         return Ok(());
     }
@@ -283,8 +283,8 @@ pub fn line(text: &str, trace: &mut Trace) -> Result<(), String> {
         trace.missing.push((pid, int(&f, "event")? as u16));
         return Ok(());
     }
-    let full = if provider == "flux2" {
-        format!("flux2_{event}")
+    let full = if provider == "flux" {
+        format!("flux_{event}")
     } else {
         event.to_string()
     };
@@ -314,11 +314,11 @@ pub fn line(text: &str, trace: &mut Trace) -> Result<(), String> {
             strings.push(string(&f, &format!("s{i}"))?);
         }
     } else {
-        for (field, width) in flux2_fields(event).ok_or_else(|| format!("{name}: no table"))? {
+        for (field, width) in flux_fields(event).ok_or_else(|| format!("{name}: no table"))? {
             let v = if *field == "pad" { 0 } else { int(&f, field)? };
             payload.extend_from_slice(&v.to_le_bytes()[..*width]);
         }
-        let names = FLUX2_STRINGS
+        let names = FLUX_STRINGS
             .iter()
             .find(|(n, _)| *n == event)
             .map_or(&[][..], |(_, s)| *s);
@@ -381,25 +381,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn flux2_tables_fill_their_payloads() {
-        for (event, fields) in FLUX2 {
+    fn flux_tables_fill_their_payloads() {
+        for (event, fields) in FLUX {
             let info = catalog::CATALOG
                 .iter()
-                .find(|i| i.name == format!("flux2_{event}"))
+                .find(|i| i.name == format!("flux_{event}"))
                 .unwrap();
             let size: usize = fields.iter().map(|(_, w)| w).sum();
             assert_eq!(size, info.size, "{event}");
-            let strings = FLUX2_STRINGS
+            let strings = FLUX_STRINGS
                 .iter()
                 .find(|(n, _)| n == event)
                 .map_or(0, |(_, s)| s.len());
             assert_eq!(strings, info.strings as usize, "{event}");
         }
-        let flux2 = catalog::CATALOG
+        let flux = catalog::CATALOG
             .iter()
-            .filter(|i| i.name.starts_with("flux2_"))
+            .filter(|i| i.name.starts_with("flux_"))
             .count();
-        assert_eq!(flux2, FLUX2.len());
+        assert_eq!(flux, FLUX.len());
     }
 
     #[test]
@@ -433,7 +433,7 @@ mod tests {
         let mut t = Trace::default();
         let lines = [
             "[00000881243177375715] localhost.localdomain armo:rcl_node_init: { cpu_id = 9 }, { vpid = 7, vtid = 8 }, { _p_length = 2, p = [ [0] = 0xAAAB0910A830, [1] = 0x2 ], s0 = \"talker\", s1 = \"/\" }",
-            "[5] h flux2:commit: { cpu_id = 1 }, { vpid = 7, vtid = 9 }, { channel = 0x10, ticket = 3, slot = 1, nbytes = 64, woke = -1, stamp = 0 }",
+            "[5] h flux:commit: { cpu_id = 1 }, { vpid = 7, vtid = 9 }, { channel = 0x10, ticket = 3, slot = 1, nbytes = 64, woke = -1, stamp = 0 }",
             "[6] h ros2:callback_end: { cpu_id = 1 }, { vpid = 7, vtid = 9 }, { callback = 0x10 }",
             "[7] h armo:rclcpp_executor_get_next_ready: { cpu_id = 1 }, { vpid = 7, vtid = 9 }, { _p_length = 0, p = [ ] }",
             "[8] h armo:missing: { cpu_id = 1 }, { vpid = 7, vtid = 9 }, { event = 34 }",
@@ -455,7 +455,7 @@ mod tests {
         assert_eq!((node.node, node.rmw_node), (0xAAAB0910A830, 2));
         let names: Vec<&[u8]> = records[0].strings().collect();
         assert_eq!(names, [&b"talker"[..], b"/"]);
-        let c: armo_common::events::armo_ev_flux2_commit = records[1].payload();
+        let c: armo_common::events::armo_ev_flux_commit = records[1].payload();
         assert_eq!(
             (c.channel, c.ticket, c.slot, c.nbytes, c.woke),
             (0x10, 3, 1, 64, -1)

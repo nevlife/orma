@@ -146,21 +146,21 @@ fn golden_batch() -> Vec<u8> {
         &(),
         &[],
     );
-    let ep = armo_ev_flux2_endpoint_init {
+    let ep = armo_ev_flux_endpoint_init {
         endpoint: 0x55b0_0000,
         fingerprint: 0x9f3a_0c11_d2e4_b5a6,
-        role: ARMO_FLUX2_ROLE_SUBSCRIPTION,
-        lang: ARMO_FLUX2_LANG_CPP,
+        role: ARMO_FLUX_ROLE_SUBSCRIPTION,
+        lang: ARMO_FLUX_LANG_CPP,
     };
     let long = [b'k'; 300];
     records::encode_positioned(
         &mut b,
         4022,
         4030,
-        ARMO_EV_FLUX2_ENDPOINT_INIT,
+        ARMO_EV_FLUX_ENDPOINT_INIT,
         300,
         &ep,
-        &[b"/camera/driver", &long, b"/flux2.v6.image"],
+        &[b"/camera/driver", &long, b"/flux.v6.image"],
     );
     b
 }

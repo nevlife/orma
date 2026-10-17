@@ -1,6 +1,6 @@
 //! One record at a time, in time order.
 
-use armo_common::events::{ARMO_FLUX2_CLAIM_BACKPRESSURE, ARMO_FLUX2_LOAN_TOO_LARGE};
+use armo_common::events::{ARMO_FLUX_CLAIM_BACKPRESSURE, ARMO_FLUX_LOAN_TOO_LARGE};
 use armo_common::shm::*;
 use armo_proto::msg::{Aggregate, FlowKind, Method, PublishAbi, Transport};
 
@@ -13,21 +13,21 @@ use super::*;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Via {
-    /// rmw (or rcl under the rcl ABI) and flux2.
+    /// rmw (or rcl under the rcl ABI) and flux.
     Main,
     Intra,
 }
 
 const NO_SYMBOL: &str = "DISABLED__demangle_symbol";
 
-/// `/flux2.v<layout>.<flattened key>.<fingerprint>[.e<epoch>]` as key and fingerprint. The key
+/// `/flux.v<layout>.<flattened key>.<fingerprint>[.e<epoch>]` as key and fingerprint. The key
 /// flattens only '/' to '.', so this restores it.
 fn parse_signpost(name: &str) -> Option<(String, String, u64)> {
     let signpost = match name.rsplit_once(".e") {
         Some((s, epoch)) if !epoch.is_empty() && epoch.bytes().all(|b| b.is_ascii_digit()) => s,
         _ => name,
     };
-    let rest = signpost.strip_prefix("/flux2.v")?;
+    let rest = signpost.strip_prefix("/flux.v")?;
     let (_, rest) = rest.split_once('.')?;
     let (flat, fp) = rest.rsplit_once('.')?;
     let fp = u64::from_str_radix(fp, 16).ok()?;
@@ -40,15 +40,15 @@ impl Model {
     }
 
     /// Channels of one message type on different keys are different topics.
-    fn flux2_topic(&mut self, key: &str, fp: u64) -> TopicIx {
-        let ix = self.topic(Transport::Flux2, &format!("{key}:{fp:016x}"));
+    fn flux_topic(&mut self, key: &str, fp: u64) -> TopicIx {
+        let ix = self.topic(Transport::Flux, &format!("{key}:{fp:016x}"));
         let t = &mut self.topics[ix];
         t.name = key.to_string();
         t.fingerprint = fp;
         ix
     }
 
-    fn flux2_win(&mut self, topic: TopicIx) -> &mut TopicWin {
+    fn flux_win(&mut self, topic: TopicIx) -> &mut TopicWin {
         let w = self.win.topics.entry(topic).or_default();
         w.drop_publish.get_or_insert(0);
         w.drop_record.get_or_insert(0);
@@ -264,16 +264,16 @@ impl Model {
                 }
             }
             E::WaitExit { wait_set } => self.wake(pid, tid, t, ARMO_SRC_ROS, wait_set, iv),
-            E::Flux2Wait { executor } => {
+            E::FluxWait { executor } => {
                 let th = self.thread(pid, tid);
                 th.wait_enter = Some(t);
                 th.exec = Some(ExecKey {
                     pid,
-                    src: ARMO_SRC_FLUX2,
+                    src: ARMO_SRC_FLUX,
                     handle: executor,
                 });
             }
-            E::Flux2Wake { executor } => self.wake(pid, tid, t, ARMO_SRC_FLUX2, executor, iv),
+            E::FluxWake { executor } => self.wake(pid, tid, t, ARMO_SRC_FLUX, executor, iv),
             E::ChannelInit {
                 channel,
                 dev,
@@ -283,7 +283,7 @@ impl Model {
             } => {
                 let (signpost, key, fp) =
                     parse_signpost(&segment).unwrap_or((segment.clone(), segment.clone(), 0));
-                let topic = self.flux2_topic(&key, fp);
+                let topic = self.flux_topic(&key, fp);
                 let endpoint = self
                     .endpoint_signposts
                     .get(&(pid, signpost.clone(), publisher))
@@ -311,16 +311,16 @@ impl Model {
             } => self.endpoint_init(pid, endpoint, fingerprint, publisher, node, key, signpost),
             E::Claim { channel, result } => {
                 if let Some(topic) = self.channels.get(&(pid, channel)).map(|c| c.topic) {
-                    let w = self.flux2_win(topic);
-                    if result >= ARMO_FLUX2_CLAIM_BACKPRESSURE {
+                    let w = self.flux_win(topic);
+                    if result >= ARMO_FLUX_CLAIM_BACKPRESSURE {
                         *w.drop_publish.get_or_insert(0) += 1;
                     }
                 }
             }
             E::LoanEnd { channel, result } => {
                 if let Some(topic) = self.channels.get(&(pid, channel)).map(|c| c.topic) {
-                    let w = self.flux2_win(topic);
-                    if result >= ARMO_FLUX2_LOAN_TOO_LARGE {
+                    let w = self.flux_win(topic);
+                    if result >= ARMO_FLUX_LOAN_TOO_LARGE {
                         *w.drop_publish.get_or_insert(0) += 1;
                     }
                 }
@@ -328,7 +328,7 @@ impl Model {
             E::GpuWedged { result } => self.proc_mut(pid).gpu_wedged = Some(result),
             E::RecordDrop { channel, count } => {
                 if let Some(topic) = self.channels.get(&(pid, channel)).map(|c| c.topic) {
-                    *self.flux2_win(topic).drop_record.get_or_insert(0) += u64::from(count);
+                    *self.flux_win(topic).drop_record.get_or_insert(0) += u64::from(count);
                 }
             }
             E::Commit {
@@ -342,38 +342,38 @@ impl Model {
                 ticket,
                 lost,
                 stamp,
-            } => self.flux2_take(pid, tid, t, channel, ticket, lost, stamp),
-            E::Flux2Start {
+            } => self.flux_take(pid, tid, t, channel, ticket, lost, stamp),
+            E::FluxStart {
                 executor,
                 entry,
                 endpoint,
             } => {
-                let key = CbKey::flux2(pid, executor, entry);
+                let key = CbKey::flux(pid, executor, entry);
                 let cb = self.cbs.entry(key).or_default();
                 if endpoint != 0 {
                     cb.owner = Some(CbOwner::Endpoint(endpoint));
                 }
                 cb.executor = Some(ExecKey {
                     pid,
-                    src: ARMO_SRC_FLUX2,
+                    src: ARMO_SRC_FLUX,
                     handle: executor,
                 });
                 self.callback_start(pid, tid, t, key, false, iv);
             }
-            E::Flux2End {
+            E::FluxEnd {
                 executor,
                 entry,
                 delivered,
                 channel,
                 segment,
             } => {
-                let key = CbKey::flux2(pid, executor, entry);
+                let key = CbKey::flux(pid, executor, entry);
                 let owner = self.cbs.get(&key).and_then(|c| c.owner);
                 match (owner, self.channels.get_mut(&(pid, channel))) {
                     (Some(CbOwner::Endpoint(ep)), Some(ch)) => ch.endpoint = Some(ep),
                     (None, None) => {
                         if let Some((_, k, fp)) = parse_signpost(&segment) {
-                            let topic = self.flux2_topic(&k, fp);
+                            let topic = self.flux_topic(&k, fp);
                             self.cbs.entry(key).or_default().late_topic = Some(topic);
                             self.proc_mut(pid).cold = true;
                         }
@@ -507,7 +507,7 @@ impl Model {
         key: String,
         signpost: String,
     ) {
-        let topic = self.flux2_topic(&key, fingerprint);
+        let topic = self.flux_topic(&key, fingerprint);
         let same = self
             .endpoint_signposts
             .entry((pid, signpost.clone(), publisher))
@@ -586,7 +586,7 @@ impl Model {
         let th = self.threads.entry((pid, tid)).or_default();
         let nested = !th.stack.is_empty();
         let mut input = th.last_take.filter(|tk| tk.t >= th.last_cb_end && !nested);
-        if input.is_some() && key.src == ARMO_SRC_FLUX2 {
+        if input.is_some() && key.src == ARMO_SRC_FLUX {
             input = None;
         }
         let dispatch = th.last_wake.filter(|_| iv).map(|w| t.saturating_sub(w));
@@ -826,7 +826,7 @@ impl Model {
         let (topic, dev, ino, endpoint) = (ch.topic, ch.dev, ch.ino, ch.endpoint);
         let owner = self.endpoint_owner(pid, endpoint);
         *self
-            .flux2_win(topic)
+            .flux_win(topic)
             .bytes
             .get_or_insert_default()
             .entry(pid)
@@ -837,7 +837,7 @@ impl Model {
         };
         let origins = self.publish(pid, tid, t, topic, owner, key, stamp, Via::Main);
         self.pair
-            .publish(PairKey::Flux2(dev, ino, ticket), t, key, topic, origins);
+            .publish(PairKey::Flux(dev, ino, ticket), t, key, topic, origins);
     }
 
     /// The origins the message carries for the lineage chains of its topic.
@@ -1078,7 +1078,7 @@ impl Model {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn flux2_take(
+    fn flux_take(
         &mut self,
         pid: u32,
         tid: u32,
@@ -1108,13 +1108,13 @@ impl Model {
         let owner = self.endpoint_owner(pid, endpoint);
         let sub = SubKey { topic, owner };
         self.topics[topic].subscribers.insert(owner);
-        self.flux2_win(topic);
+        self.flux_win(topic);
         *self
             .win
             .subs
             .entry(sub)
             .or_default()
-            .flux2_lost
+            .flux_lost
             .get_or_insert(0) += new_lost;
         self.take(
             pid,
@@ -1122,7 +1122,7 @@ impl Model {
             t,
             sub,
             stamp,
-            Some(PairKey::Flux2(dev, ino, ticket)),
+            Some(PairKey::Flux(dev, ino, ticket)),
             None,
         );
     }
@@ -1173,14 +1173,14 @@ impl Model {
         let th = self.threads.entry((pid, tid)).or_default();
         th.last_take = Some(input);
         let wake = th.last_wake;
-        let mut in_flux2 = false;
+        let mut in_flux = false;
         if let Some(f) = th
             .stack
             .last_mut()
-            .filter(|f| f.cb.src == ARMO_SRC_FLUX2 && f.input.is_none())
+            .filter(|f| f.cb.src == ARMO_SRC_FLUX && f.input.is_none())
         {
             f.input = Some(input);
-            in_flux2 = true;
+            in_flux = true;
             if let Some(age) = input.stamp.and_then(|s| clock.age(s, f.t)) {
                 let cb = f.cb;
                 self.win.cbs.entry(cb).or_default().age.add(age);
@@ -1211,7 +1211,7 @@ impl Model {
         });
         let th = self.threads.entry((pid, tid)).or_default();
         if let Some(d) = delivery {
-            if in_flux2 {
+            if in_flux {
                 if let Some(f) = th.stack.last_mut() {
                     f.delivery = Some(d);
                 }
@@ -1307,7 +1307,7 @@ impl Model {
     }
 
     /// Publishes past the horizon: a subscription connected to their publisher that did not take
-    /// one lost it (ROS; flux2 counts its own losses).
+    /// one lost it (ROS; flux counts its own losses).
     pub(super) fn evict(&mut self, now: u64) {
         for s in self.pair.evict(now.saturating_sub(pair::HORIZON_NS)) {
             if s.ambiguous || self.topics[s.topic].transport != Transport::Ros {

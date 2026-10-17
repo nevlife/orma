@@ -62,7 +62,7 @@ def test_initial_state(gui, fake):
         "  /camera/driver",
         "    sub(/scan)",
         "  unlinked",
-        "    flux2(/image)",
+        "    flux(/image)",
         "listener (5100/12)",
     ]
     callback = tree.topLevelItem(0).child(0).child(0)

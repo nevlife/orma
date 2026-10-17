@@ -314,7 +314,7 @@ fn process(id: &str, pid: u32) -> Process {
         exited: false,
         cold: false,
         overflow: None,
-        flux2_gpu_wedged: None,
+        flux_gpu_wedged: None,
         cuda: None,
         gpu_mem_bytes: None,
     }

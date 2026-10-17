@@ -3,7 +3,7 @@
 
 Every workload process carries both libraries (LD_PRELOAD=libarmo_preload.so:libarmo_lttng.so)
 and waits before it creates any ROS entity: two node.cpp on one topic, node.py with armo_rclpy
-and, when the workspace has flux2_ffi, armo_daemon's flux2 caller. A real armo-collectd records
+and, when the workspace has flux_ffi, armo_daemon's flux caller. A real armo-collectd records
 them three times, by uprobe (the host's armod), by preload and by lttng. Once armod's probes are
 on, the processes run. In a window that starts after every method is on, each event of each
 process must be counted the same by all three; the LTTng recording's ros2 events, which
@@ -97,8 +97,8 @@ def main():
             procs["py"] = common.Waiting(
                 [sys.executable, TEST / "node.py", prefix + "_py", TICKS], env
             )
-            if A.flux2_lib():
-                procs["flux2"] = common.Caller([session.flux2_caller(tmp)], env)
+            if A.flux_lib():
+                procs["flux"] = common.Caller([session.flux_caller(tmp)], env)
             pids = {k: p.pid for k, p in procs.items()}
             targets = armo_client.targets(pids=sorted(pids.values()))
             for method in ("uprobe", "preload"):
@@ -106,10 +106,10 @@ def main():
                     "record_start", **armo_client.record_start(method, targets, sched=False)
                 )
             for role, pid in pids.items():
-                if role == "flux2":
+                if role == "flux":
                     common.wait_for(
-                        lambda: common.uprobes_on(pid, *common.FLUX2, lib="libflux2_ffi.so"),
-                        "armod's uprobes on the flux2 caller",
+                        lambda: common.uprobes_on(pid, *common.FLUX, lib="libflux_ffi.so"),
+                        "armod's uprobes on the flux caller",
                         seconds=600,
                     )
                     continue
@@ -128,16 +128,16 @@ def main():
                 "the workload to register with the session daemon",
             )
             for role, p in procs.items():
-                if role != "flux2":
+                if role != "flux":
                     p.go()
             # The preload recording takes a new process once armo-collectd has armed its file.
             t0 = time.monotonic_ns() + 1_500_000_000
             time.sleep(2.0)
-            if "flux2" in procs:
-                procs["flux2"].go()
+            if "flux" in procs:
+                procs["flux"].go()
             time.sleep(2.5)
             t1 = time.monotonic_ns()
-            said = {k: p.line() for k, p in procs.items() if k != "flux2"}
+            said = {k: p.line() for k, p in procs.items() if k != "flux"}
             for r in rec.values():
                 client.request("record_stop", record_id=r["record_id"])
             shown = {
@@ -177,8 +177,8 @@ def main():
     for event in ("armo:callback_start", "armo:rmw_take", "armo:rcl_wait_exit"):
         if counts["uprobe"][event] == 0:
             failed.append(f"no {event} in the window")
-    if "flux2" in procs and counts["uprobe"]["flux2:take"] == 0:
-        failed.append("no flux2:take in the window")
+    if "flux" in procs and counts["uprobe"]["flux:take"] == 0:
+        failed.append("no flux:take in the window")
     for m, t in shown.items():
         print(f"{m}: {t['totals']['events']} events, {t['totals']['lost']} lost")
         if t["totals"]["lost"]:

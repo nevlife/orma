@@ -1,5 +1,5 @@
-// The events of provider armo: every armo_emit_<name> of armo_emit.h but the flux2 ones, which
-// provider flux2 carries with their arguments as fields, and rclcpp_executor_get_next_ready, which
+// The events of provider armo: every armo_emit_<name> of armo_emit.h but the flux ones, which
+// provider flux carries with their arguments as fields, and rclcpp_executor_get_next_ready, which
 // has no payload. X<strings>(name, payload type, strings...) in catalog order; R marks the events
 // that also have a provider ros2 event where libtracetools has no LTTng (ros2_tp.h).
 #ifndef ARMO_LTTNG_EVENTS_H

@@ -76,9 +76,9 @@ pub const fn init(event: u16) -> bool {
             | ARMO_EV_RCLCPP_EXECUTOR_ADD_GROUP
             | ARMO_EV_RCLCPP_CALLBACK_OWNER
             | ARMO_EV_CALLBACK_CODE
-            | ARMO_EV_FLUX2_CHANNEL_INIT
-            | ARMO_EV_FLUX2_ENDPOINT_INIT
-            | ARMO_EV_FLUX2_GPU_WEDGED
+            | ARMO_EV_FLUX_CHANNEL_INIT
+            | ARMO_EV_FLUX_ENDPOINT_INIT
+            | ARMO_EV_FLUX_GPU_WEDGED
     )
 }
 
@@ -422,121 +422,97 @@ pub const CATALOG: &[EventInfo] = &[
     ev!(ARMO_EV_SPAN_BEGIN, "span_begin", armo_ev_span, 1, true),
     ev!(ARMO_EV_SPAN_END, "span_end", armo_ev_span, 0, true),
     ev!(
-        ARMO_EV_FLUX2_CHANNEL_INIT,
-        "flux2_channel_init",
-        armo_ev_flux2_channel_init,
+        ARMO_EV_FLUX_CHANNEL_INIT,
+        "flux_channel_init",
+        armo_ev_flux_channel_init,
         1,
         true
     ),
     ev!(
-        ARMO_EV_FLUX2_CLAIM,
-        "flux2_claim",
-        armo_ev_flux2_claim,
+        ARMO_EV_FLUX_CLAIM,
+        "flux_claim",
+        armo_ev_flux_claim,
+        0,
+        true
+    ),
+    ev!(ARMO_EV_FLUX_LOAN, "flux_loan", armo_ev_flux_loan, 0, true),
+    ev!(
+        ARMO_EV_FLUX_LOAN_END,
+        "flux_loan_end",
+        armo_ev_flux_loan_end,
         0,
         true
     ),
     ev!(
-        ARMO_EV_FLUX2_LOAN,
-        "flux2_loan",
-        armo_ev_flux2_loan,
+        ARMO_EV_FLUX_COMMIT,
+        "flux_commit",
+        armo_ev_flux_commit,
+        0,
+        true
+    ),
+    ev!(ARMO_EV_FLUX_TAKE, "flux_take", armo_ev_flux_take, 0, true),
+    ev!(
+        ARMO_EV_FLUX_RELEASE,
+        "flux_release",
+        armo_ev_flux_release,
         0,
         true
     ),
     ev!(
-        ARMO_EV_FLUX2_LOAN_END,
-        "flux2_loan_end",
-        armo_ev_flux2_loan_end,
+        ARMO_EV_FLUX_REFUSED,
+        "flux_refused",
+        armo_ev_flux_refused,
+        0,
+        true
+    ),
+    ev!(ARMO_EV_FLUX_WAIT, "flux_wait", armo_ev_flux_wait, 0, true),
+    ev!(ARMO_EV_FLUX_WAKE, "flux_wake", armo_ev_flux_wake, 0, true),
+    ev!(
+        ARMO_EV_FLUX_CALLBACK_START,
+        "flux_callback_start",
+        armo_ev_flux_callback_start,
         0,
         true
     ),
     ev!(
-        ARMO_EV_FLUX2_COMMIT,
-        "flux2_commit",
-        armo_ev_flux2_commit,
-        0,
-        true
-    ),
-    ev!(
-        ARMO_EV_FLUX2_TAKE,
-        "flux2_take",
-        armo_ev_flux2_take,
-        0,
-        true
-    ),
-    ev!(
-        ARMO_EV_FLUX2_RELEASE,
-        "flux2_release",
-        armo_ev_flux2_release,
-        0,
-        true
-    ),
-    ev!(
-        ARMO_EV_FLUX2_REFUSED,
-        "flux2_refused",
-        armo_ev_flux2_refused,
-        0,
-        true
-    ),
-    ev!(
-        ARMO_EV_FLUX2_WAIT,
-        "flux2_wait",
-        armo_ev_flux2_wait,
-        0,
-        true
-    ),
-    ev!(
-        ARMO_EV_FLUX2_WAKE,
-        "flux2_wake",
-        armo_ev_flux2_wake,
-        0,
-        true
-    ),
-    ev!(
-        ARMO_EV_FLUX2_CALLBACK_START,
-        "flux2_callback_start",
-        armo_ev_flux2_callback_start,
-        0,
-        true
-    ),
-    ev!(
-        ARMO_EV_FLUX2_CALLBACK_END,
-        "flux2_callback_end",
-        armo_ev_flux2_callback_end,
+        ARMO_EV_FLUX_CALLBACK_END,
+        "flux_callback_end",
+        armo_ev_flux_callback_end,
         1,
         true
     ),
     ev!(
-        ARMO_EV_FLUX2_ENDPOINT_INIT,
-        "flux2_endpoint_init",
-        armo_ev_flux2_endpoint_init,
+        ARMO_EV_FLUX_ENDPOINT_INIT,
+        "flux_endpoint_init",
+        armo_ev_flux_endpoint_init,
         3,
         true
     ),
     ev!(
-        ARMO_EV_FLUX2_PY_GIL,
-        "flux2_py_gil",
-        armo_ev_flux2_py_gil,
+        ARMO_EV_FLUX_PY_GIL,
+        "flux_py_gil",
+        armo_ev_flux_py_gil,
         0,
         true
     ),
     ev!(
-        ARMO_EV_FLUX2_PY_READY,
-        "flux2_py_ready",
-        armo_ev_flux2_py_ready,
+        ARMO_EV_FLUX_PY_READY,
+        "flux_py_ready",
+        armo_ev_flux_py_ready,
         0,
         true
     ),
     ev!(
-        ARMO_EV_FLUX2_RECORD_DROP,
-        "flux2_record_drop",
-        armo_ev_flux2_record_drop,
+        ARMO_EV_FLUX_RECORD_DROP,
+        "flux_record_drop",
+        armo_ev_flux_record_drop,
         0,
         true
     ),
     ev!(
-        ARMO_EV_FLUX2_GPU_WEDGED,
-        "flux2_gpu_wedged",
-        armo_ev_flux2_gpu_wedged,
+        ARMO_EV_FLUX_GPU_WEDGED,
+        "flux_gpu_wedged",
+        armo_ev_flux_gpu_wedged,
         0,
         true
     ),

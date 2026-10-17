@@ -10,16 +10,16 @@ use std::{
 
 use object::{Object as _, ObjectSection as _, ObjectSymbol as _};
 
-/// The event names and arguments the flux2 programs read. libflux2_ffi.so exports a symbol of this
+/// The event names and arguments the flux programs read. libflux_ffi.so exports a symbol of this
 /// name for exactly that set (design 11.1).
-pub const FLUX2_CONTRACT: &str = "flux2_trace_contract_2";
+pub const FLUX_CONTRACT: &str = "flux_trace_contract_2";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Lib {
     Tracetools,
     Rcl,
     Rclcpp,
-    Flux2,
+    Flux,
     Fastdds,
     Cyclone,
     /// Fast DDS itself: libfastrtps.so (2.x) or libfastdds.so (3.x).
@@ -39,8 +39,8 @@ impl Lib {
             "librclcpp.so" => Lib::Rclcpp,
             "librmw_fastrtps_shared_cpp.so" => Lib::Fastdds,
             "librmw_cyclonedds_cpp.so" => Lib::Cyclone,
-            // A process maps the file its soname names, libflux2_ffi.so.<abi>.
-            n if n.strip_prefix("libflux2_ffi.so").is_some_and(abi) => Lib::Flux2,
+            // A process maps the file its soname names, libflux_ffi.so.<abi>.
+            n if n.strip_prefix("libflux_ffi.so").is_some_and(abi) => Lib::Flux,
             n if versioned(n, "libfastrtps.so") || versioned(n, "libfastdds.so") => Lib::Fastrtps,
             n if versioned(n, "libddsc.so") => Lib::Ddsc,
             // libcuda.so.<driver version>; libcuda.so.1.1 under nvidia/ or tegra/ on Jetson.
@@ -54,7 +54,7 @@ impl Lib {
     /// arguments they misread, so one without this symbol is refused.
     pub fn contract(self) -> Option<&'static str> {
         match self {
-            Lib::Flux2 => Some(FLUX2_CONTRACT),
+            Lib::Flux => Some(FLUX_CONTRACT),
             _ => None,
         }
     }
@@ -275,9 +275,9 @@ mod tests {
             Lib::of("/opt/ros/jazzy/lib/libtracetools.so"),
             Some(Lib::Tracetools)
         );
-        assert_eq!(Lib::of("/x/libflux2_ffi.so.3"), Some(Lib::Flux2));
-        assert_eq!(Lib::of("/x/libflux2_ffi.so.3.1"), None);
-        assert_eq!(Lib::of("/x/libflux2_ffi.so"), Some(Lib::Flux2));
+        assert_eq!(Lib::of("/x/libflux_ffi.so.3"), Some(Lib::Flux));
+        assert_eq!(Lib::of("/x/libflux_ffi.so.3.1"), None);
+        assert_eq!(Lib::of("/x/libflux_ffi.so"), Some(Lib::Flux));
         assert_eq!(Lib::of("/x/librclcpp_action.so"), None);
         assert_eq!(
             Lib::of("/usr/lib/x86_64-linux-gnu/libcuda.so.580.178.04"),
