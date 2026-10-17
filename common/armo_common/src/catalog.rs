@@ -417,6 +417,10 @@ pub const CATALOG: &[EventInfo] = &[
         1,
         false
     ),
+    ev!(ARMO_EV_DDS_WRITE, "dds_write", armo_ev_dds_write, 0, true),
+    ev!(ARMO_EV_CUDA_CALL, "cuda_call", armo_ev_cuda_call, 0, true),
+    ev!(ARMO_EV_SPAN_BEGIN, "span_begin", armo_ev_span, 1, true),
+    ev!(ARMO_EV_SPAN_END, "span_end", armo_ev_span, 0, true),
     ev!(
         ARMO_EV_FLUX2_CHANNEL_INIT,
         "flux2_channel_init",
@@ -547,6 +551,13 @@ pub const CATALOG: &[EventInfo] = &[
         ARMO_EV_SCHED_WAKEUP,
         "sched_wakeup",
         armo_ev_sched_wakeup,
+        0,
+        false
+    ),
+    ev!(
+        ARMO_EV_FUTEX_WAIT,
+        "futex_wait",
+        armo_ev_futex_wait,
         0,
         false
     ),

@@ -141,5 +141,42 @@ pub fn shorten(name: &str) -> String {
         };
         out.replace_range(open..=close, "");
     }
-    out
+    brief(&out)
+}
+
+/// The function a callback was written in, without argument and template lists, namespaces and
+/// lambdas: `ns::Talker::Talker(Opts const&)::{lambda#1}` and rclpy's
+/// `Talker.__init__.<locals>.<lambda>` both become `Talker`, a lambda in Talker's constructor.
+/// Names that collide then differ by the address suffix the view adds.
+fn brief(name: &str) -> String {
+    if let Some((outer, _)) = name.split_once(".<locals>.") {
+        return outer.trim_end_matches(".__init__").to_string();
+    }
+    if !name.contains("::") && !name.contains('(') {
+        return name.to_string();
+    }
+    let name = name.replace("operator()", "operator\u{1}");
+    let mut bare = String::new();
+    let mut depth = 0i32;
+    for c in name.chars() {
+        match c {
+            '<' | '(' => depth += 1,
+            '>' | ')' => depth -= 1,
+            _ if depth == 0 => bare.push(c),
+            _ => {}
+        }
+    }
+    let bare = bare.replace(" const", "").replace('\u{1}', "()");
+    let parts: Vec<&str> = bare.split("::").collect();
+    let lambdas = parts
+        .iter()
+        .rev()
+        .take_while(|p| p.starts_with('{'))
+        .count();
+    let (scope, _) = parts.split_at(parts.len() - lambdas);
+    let mut kept = scope[scope.len().saturating_sub(2)..].to_vec();
+    if kept.len() == 2 && kept[0] == kept[1] {
+        kept.pop();
+    }
+    kept.join("::")
 }

@@ -52,6 +52,10 @@
   X0(rclcpp_collector_add_group_to_collection, armo_ev_rclcpp_object)            \
   X0(rclcpp_collector_add_group, armo_ev_rclcpp_object)                          \
   X0(callback_code, armo_ev_callback_code)                                       \
-  X0(rclcpp_executor_add_group, armo_ev_rclcpp_object)
+  X0(rclcpp_executor_add_group, armo_ev_rclcpp_object)                           \
+  X0(dds_write, armo_ev_dds_write)                                               \
+  X0(cuda_call, armo_ev_cuda_call)                                               \
+  X1(span_begin, armo_ev_span, name)                                             \
+  X0(span_end, armo_ev_span)
 
 #endif  // ARMO_LTTNG_EVENTS_H

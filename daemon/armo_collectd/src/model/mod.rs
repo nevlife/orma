@@ -5,6 +5,8 @@
 //! Records are buffered and handled in time order when a window closes, so sources may deliver
 //! out of order up to one window. Pairing and flows hold their tables across windows.
 
+mod calls;
+pub mod chain;
 mod decode;
 mod handle;
 pub mod lat;
@@ -19,9 +21,11 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use armo_common::shm::{ARMO_SRC_FLUX2, ARMO_SRC_ROS};
 use armo_proto::Ingest;
 use armo_proto::msg::{
-    Aggregate, CallbackKind, FlowKind, Method, PublishAbi, Ros, Transport, Window,
+    Aggregate, CallbackKind, ChainMode, ChainSpec, FlowKind, Method, PublishAbi, Ros, Transport,
+    Window,
 };
 use armo_proto::records::Record;
+use regex::Regex;
 
 use crate::sources::armod::Sel;
 
@@ -110,6 +114,16 @@ struct TopicInfo {
     rcl_abi: bool,
 }
 
+impl TopicInfo {
+    fn id(&self) -> String {
+        match self.transport {
+            Transport::Ros => format!("topic:ros:{}", self.name),
+            Transport::Flux => format!("topic:flux:{}", self.name),
+            Transport::Flux2 => format!("topic:flux2:{}:{:016x}", self.name, self.fingerprint),
+        }
+    }
+}
+
 struct NodeInfo {
     pid: u32,
     handle: Option<u64>,
@@ -132,6 +146,8 @@ struct Proc {
     pss: Option<u64>,
     pss_at: u64,
     gpu_wedged: Option<i32>,
+    /// It made a CUDA driver call: only such processes have a CUDA row.
+    cuda: bool,
     nodes: BTreeSet<NodeIx>,
 }
 
@@ -189,6 +205,8 @@ struct Input {
     sub: SubKey,
     t: u64,
     stamp: Option<u64>,
+    /// Numbers the takes, for the chain origins of the message taken.
+    take: u64,
 }
 
 struct Out {
@@ -205,6 +223,9 @@ struct Frame {
     dispatch: Option<u64>,
     off: u64,
     delivery: Option<u64>,
+    cuda_ns: u64,
+    cuda_sync_ns: u64,
+    futex_ns: u64,
 }
 
 #[derive(Default)]
@@ -226,6 +247,23 @@ struct Thread {
     history: VecDeque<BTreeSet<Option<NodeIx>>>,
     delivery: Option<u64>,
     rclcpp: bool,
+    /// The last `rclcpp_publish` not yet followed by its `rcl_publish`.
+    rclcpp_pub: Option<u64>,
+    /// Where the current publish began: its `rclcpp_publish`, else its `rcl_publish`.
+    pub_from: Option<u64>,
+    /// Inside one `rcl_publish`: a DDS write not yet paired (its time and duration), or the topic
+    /// of an `rmw_publish` not yet paired.
+    dds_write: Option<(u64, u64)>,
+    dds_topic: Option<TopicIx>,
+    spans: Vec<OpenSpan>,
+}
+
+struct OpenSpan {
+    key: u64,
+    id: String,
+    name: String,
+    cb: Option<CbKey>,
+    t: u64,
 }
 
 #[derive(Default)]
@@ -240,6 +278,35 @@ struct CbWin {
     nested: bool,
     /// Wall time per thread from the per-thread aggregate tables.
     wall_by_tid: BTreeMap<u32, u64>,
+    cuda: CbCuda,
+    futex: u64,
+}
+
+#[derive(Default)]
+struct CbCuda {
+    calls: u64,
+    launches: u64,
+    memcpy_bytes: u64,
+    ns: u64,
+    sync_ns: u64,
+}
+
+#[derive(Default)]
+struct CudaWin {
+    calls: u64,
+    launches: u64,
+    memcpy_bytes: u64,
+    allocs: u64,
+    errors: u64,
+    sync: LatAcc,
+}
+
+struct SpanWin {
+    pid: u32,
+    name: String,
+    cb: Option<CbKey>,
+    parent: Option<String>,
+    dur: LatAcc,
 }
 
 #[derive(Default)]
@@ -254,6 +321,8 @@ struct TopicWin {
     drop_publish: Option<u64>,
     drop_record: Option<u64>,
     ambiguous: u64,
+    dds_write: LatAcc,
+    pub_to_dds: LatAcc,
 }
 
 #[derive(Default)]
@@ -280,6 +349,7 @@ struct ThreadWin {
     in_cb_wall: u64,
     in_cb_off: u64,
     cpu_wait: LatAcc,
+    futex: LatAcc,
     oncpu: Option<u64>,
     cpu_ns: Option<u64>,
     cpus: BTreeSet<u32>,
@@ -309,6 +379,8 @@ struct Win {
     threads: HashMap<(u32, u32), ThreadWin>,
     flows: BTreeMap<FlowKey, FlowWin>,
     malloc: HashMap<Owner, Malloc>,
+    cuda: HashMap<u32, CudaWin>,
+    spans: BTreeMap<String, SpanWin>,
 }
 
 /// Exact per-event values for `armo analyze`; the model keeps them only offline.
@@ -324,6 +396,19 @@ pub enum Sample {
         duration_ns: u64,
         oncpu_ns: Option<u64>,
         dispatch_ns: Option<u64>,
+        /// Time in CUDA driver calls during the run, and the synchronize calls' share of it.
+        cuda_ns: Option<u64>,
+        cuda_sync_ns: Option<u64>,
+        futex_ns: Option<u64>,
+    },
+    /// A DDS write paired with its publish (design 20.2); `t_ns` is the write's end.
+    Publish {
+        topic: String,
+        pid: u32,
+        tid: u32,
+        t_ns: u64,
+        pub_to_dds_ns: Option<u64>,
+        dds_write_ns: u64,
     },
     Wait {
         executor: String,
@@ -336,6 +421,19 @@ pub enum Sample {
     Flow {
         id: String,
         dwell_ns: u64,
+    },
+    Span {
+        id: String,
+        duration_ns: u64,
+    },
+    /// A publish on `topics[step]` of a chain, `latency_ns` after its source's publish.
+    Chain {
+        name: String,
+        mode: ChainMode,
+        step: usize,
+        topic: String,
+        t_source_ns: u64,
+        latency_ns: u64,
     },
 }
 
@@ -416,6 +514,16 @@ pub struct Model {
     next_delivery: u64,
     samples: Option<Vec<Sample>>,
     win: Win,
+    /// CUDA driver calls are measured (`configure.gpu`, or a recording's).
+    gpu: bool,
+    /// The processes whose futex waits armod delivers.
+    futex: Sel,
+    chains: chain::Chains,
+    latest_nodes: Vec<Regex>,
+    latest_match: HashMap<NodeIx, bool>,
+    /// Per node of `latest_nodes`, the time and number of the last take of each input topic.
+    latest: HashMap<NodeIx, BTreeMap<TopicIx, (u64, u64)>>,
+    next_take: u64,
 }
 
 impl Model {
@@ -465,6 +573,13 @@ impl Model {
             next_delivery: 0,
             samples: (!live).then(Vec::new),
             win: Win::default(),
+            gpu: false,
+            futex: Sel::None,
+            chains: chain::Chains::default(),
+            latest_nodes: Vec::new(),
+            latest_match: HashMap::new(),
+            latest: HashMap::new(),
+            next_take: 0,
         }
     }
 
@@ -491,6 +606,31 @@ impl Model {
 
     pub fn set_pss(&mut self, on: bool) {
         self.pss = on;
+    }
+
+    pub fn set_probes(&mut self, gpu: bool, futex: Sel) {
+        self.gpu = gpu;
+        self.futex = futex;
+    }
+
+    /// A change starts the chains over; `latest_nodes` match whole node names.
+    pub fn set_flows(&mut self, chains: Vec<ChainSpec>, latest_nodes: Vec<Regex>) {
+        if chains != self.chains.specs {
+            self.chains = chain::Chains::new(chains);
+            for s in self.pair.sent.values_mut() {
+                s.origins.clear();
+            }
+        }
+        let same = latest_nodes.len() == self.latest_nodes.len()
+            && latest_nodes
+                .iter()
+                .zip(&self.latest_nodes)
+                .all(|(a, b)| a.as_str() == b.as_str());
+        if !same {
+            self.latest_nodes = latest_nodes;
+            self.latest_match.clear();
+            self.latest.clear();
+        }
     }
 
     /// Processes with a ROS callback no event has named the entity of, first run in the last

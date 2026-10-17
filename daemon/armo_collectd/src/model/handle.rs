@@ -4,6 +4,7 @@ use armo_common::events::{ARMO_FLUX2_CLAIM_BACKPRESSURE, ARMO_FLUX2_LOAN_TOO_LAR
 use armo_common::shm::*;
 use armo_proto::msg::{Aggregate, FlowKind, Method, PublishAbi, Transport};
 
+use super::chain::Origins;
 use super::decode::{Added, E, Ev};
 use super::pair::{PairKey, Pending};
 use super::stamp::decode as decode_stamp;
@@ -34,7 +35,7 @@ fn parse_signpost(name: &str) -> Option<(String, String, u64)> {
 }
 
 impl Model {
-    fn thread(&mut self, pid: u32, tid: u32) -> &mut Thread {
+    pub(super) fn thread(&mut self, pid: u32, tid: u32) -> &mut Thread {
         self.threads.entry((pid, tid)).or_default()
     }
 
@@ -62,8 +63,12 @@ impl Model {
             method,
             e,
         } = ev;
-        let sched = matches!(e, E::SchedSwitch { .. } | E::SchedWakeup { .. });
-        if !sched {
+        // Kernel records come from armod whatever method takes the process.
+        let kernel = matches!(
+            e,
+            E::SchedSwitch { .. } | E::SchedWakeup { .. } | E::FutexWait { .. }
+        );
+        if !kernel {
             self.tid_pid.insert(tid, pid);
             let p = self.proc_mut(pid);
             p.methods.insert(method);
@@ -71,7 +76,7 @@ impl Model {
         }
         if !matches!(
             e,
-            E::RmwPublish { .. } | E::RmwPublishRcl | E::DdsSize { .. }
+            E::RmwPublish { .. } | E::RmwPublishRcl | E::DdsSize { .. } | E::DdsWrite { .. }
         ) && let Some((h, stamp, t0)) = self.thread(pid, tid).pending_rcl.take()
         {
             self.publish_rcl(pid, tid, t0, h, stamp);
@@ -176,8 +181,13 @@ impl Model {
                     self.exec_rclcpp.insert(e);
                 }
             }
+            E::RclcppPublish => self.thread(pid, tid).rclcpp_pub = Some(t),
             E::RclPublish { publisher, stamp } => {
-                self.thread(pid, tid).pending_rcl = Some((publisher, stamp, t));
+                let th = self.thread(pid, tid);
+                th.pending_rcl = Some((publisher, stamp, t));
+                th.pub_from = Some(th.rclcpp_pub.take().unwrap_or(t));
+                th.dds_write = None;
+                th.dds_topic = None;
             }
             E::RmwPublishRcl => {
                 self.proc_mut(pid).abi = Some(PublishAbi::Rcl);
@@ -200,7 +210,10 @@ impl Model {
                     pid,
                     handle: publisher,
                 };
-                self.publish(pid, tid, t, ep.topic, owner, key, stamp, Via::Intra);
+                let origins = self.publish(pid, tid, t, ep.topic, owner, key, stamp, Via::Intra);
+                if !self.chains.is_empty() {
+                    self.chains.intra.insert(ep.topic, origins);
+                }
             }
             E::RmwTake {
                 rmw,
@@ -381,6 +394,16 @@ impl Model {
                     self.thread(wpid, woken).woken_at = Some(t);
                 }
             }
+            E::DdsWrite { duration } => self.dds_write(pid, tid, t, duration),
+            E::CudaCall {
+                duration,
+                bytes,
+                api,
+                error,
+            } => self.cuda_call(pid, tid, duration, bytes, api, error),
+            E::SpanBegin { key, name } => self.span_begin(pid, tid, t, key, name),
+            E::SpanEnd { key } => self.span_end(pid, tid, t, key),
+            E::FutexWait { duration } => self.futex_wait(pid, tid, t, duration),
         }
     }
 
@@ -592,11 +615,17 @@ impl Model {
             && let Some(topic) = topic.filter(|_| matches!(cb.owner, Some(CbOwner::Sub(_))))
         {
             let owner = node.map_or(Owner::Proc(pid), Owner::Node);
+            let take = self.next_take;
+            self.next_take += 1;
+            if let Some(o) = self.chains.intra.get(&topic) {
+                self.chains.took(take, t, o.clone());
+            }
             input = Some(Input {
                 topic,
                 sub: SubKey { topic, owner },
                 t,
                 stamp: None,
+                take,
             });
         }
         if let Some(e) = exec {
@@ -635,6 +664,9 @@ impl Model {
             dispatch,
             off: 0,
             delivery,
+            cuda_ns: 0,
+            cuda_sync_ns: 0,
+            futex_ns: 0,
         });
     }
 
@@ -645,6 +677,8 @@ impl Model {
         };
         th.stack.truncate(pos + 1);
         let frame = th.stack.pop().expect("found above");
+        // A span begun in the callback and not ended there never will be.
+        th.spans.retain(|s| s.cb != Some(key));
         let top = th.stack.is_empty();
         th.last_cb_end = t;
         let exec = th.exec;
@@ -720,6 +754,8 @@ impl Model {
                 o.done = true;
             }
             let sched = self.sched.contains(pid);
+            let cuda = self.gpu && self.procs.get(&pid).is_some_and(|p| p.cuda);
+            let futex = self.futex.contains(pid);
             self.sample(Sample::Callback {
                 id,
                 node: node_id,
@@ -728,6 +764,9 @@ impl Model {
                 duration_ns: dur,
                 oncpu_ns: sched.then(|| dur.saturating_sub(frame.off)),
                 dispatch_ns: frame.dispatch,
+                cuda_ns: cuda.then_some(frame.cuda_ns),
+                cuda_sync_ns: cuda.then_some(frame.cuda_sync_ns),
+                futex_ns: futex.then_some(frame.futex_ns),
             });
         }
     }
@@ -749,10 +788,11 @@ impl Model {
             pid,
             handle: rcl.unwrap_or(rmw),
         };
-        self.publish(pid, tid, t, topic, owner, key, stamp, Via::Main);
+        self.dds_publish(pid, tid, topic);
+        let origins = self.publish(pid, tid, t, topic, owner, key, stamp, Via::Main);
         if timestamp != 0 {
             self.pair
-                .publish(PairKey::Ros(topic, timestamp), t, key, topic);
+                .publish(PairKey::Ros(topic, timestamp), t, key, topic, origins);
         }
     }
 
@@ -764,6 +804,7 @@ impl Model {
         self.topics[ep.topic].rcl_abi = true;
         let owner = self.owner(pid, Some(ep.node));
         let key = PubKey { pid, handle };
+        self.dds_publish(pid, tid, ep.topic);
         self.publish(pid, tid, t, ep.topic, owner, key, stamp, Via::Main);
     }
 
@@ -794,11 +835,12 @@ impl Model {
             pid,
             handle: channel,
         };
-        self.publish(pid, tid, t, topic, owner, key, stamp, Via::Main);
+        let origins = self.publish(pid, tid, t, topic, owner, key, stamp, Via::Main);
         self.pair
-            .publish(PairKey::Flux2(dev, ino, ticket), t, key, topic);
+            .publish(PairKey::Flux2(dev, ino, ticket), t, key, topic, origins);
     }
 
+    /// The origins the message carries for the lineage chains of its topic.
     #[allow(clippy::too_many_arguments)]
     fn publish(
         &mut self,
@@ -810,7 +852,7 @@ impl Model {
         key: PubKey,
         stamp: u64,
         via: Via,
-    ) {
+    ) -> Origins {
         self.topics[topic].publishers.insert(owner);
         if via == Via::Main
             && self.topics[topic].transport == Transport::Ros
@@ -828,7 +870,9 @@ impl Model {
         }
         let th = self.threads.entry((pid, tid)).or_default();
         th.last_pub_topic = Some(topic);
-        let sync_input = th.stack.last().and_then(|f| f.input).map(|i| i.topic);
+        let sync = th.stack.last().and_then(|f| f.input);
+        // A dual (intra and rmw) publish is one message: only its first half counts.
+        let mut fresh = true;
         if let Some(f) = th.stack.last_mut() {
             let dwell = f.input.map_or(0, |i| t.saturating_sub(i.t));
             let pos = match f.outputs.iter().position(|o| o.topic == topic) {
@@ -842,19 +886,82 @@ impl Model {
                     f.outputs.len() - 1
                 }
             };
+            let o = &mut f.outputs[pos];
             match via {
-                Via::Main => f.outputs[pos].main.push(dwell),
-                Via::Intra => f.outputs[pos].intra.push(dwell),
+                Via::Main => o.main.push(dwell),
+                Via::Intra => o.intra.push(dwell),
+            }
+            fresh = match via {
+                Via::Main => o.main.len() > o.intra.len(),
+                Via::Intra => o.intra.len() > o.main.len(),
+            };
+        }
+        let mut unique = None;
+        if let (Owner::Node(node), Some((ns, _))) = (owner, gate) {
+            let dual = self.last_stamp.insert(key, ns) == Some(ns);
+            fresh &= !dual;
+            unique = self.stamp_link(owner, node, ns, topic, t, sync.map(|i| i.topic), dual);
+        }
+        let mut links: Vec<(TopicIx, u64)> = unique.into_iter().collect();
+        links.extend(sync.map(|i| (i.topic, i.take)));
+        if let (None, Owner::Node(node)) = (unique, owner)
+            && self.latest_node(node)
+        {
+            let latest: Vec<(TopicIx, (u64, u64))> = self
+                .latest
+                .get(&node)
+                .map(|m| m.iter().map(|(k, v)| (*k, *v)).collect())
+                .unwrap_or_default();
+            for (input, (t_take, take)) in latest {
+                if sync.is_some_and(|i| i.topic == input) {
+                    continue;
+                }
+                links.push((input, take));
+                if !fresh {
+                    continue;
+                }
+                let fk = FlowKey {
+                    kind: FlowKind::Latest,
+                    node: owner,
+                    input: Some(input),
+                    output: topic,
+                };
+                let fw = self.win.flows.entry(fk).or_default();
+                fw.count += 1;
+                fw.dwell.add(t.saturating_sub(t_take));
+                if self.samples.is_some() {
+                    let id = self.flow_id(&fk);
+                    self.sample(Sample::Flow {
+                        id,
+                        dwell_ns: t.saturating_sub(t_take),
+                    });
+                }
             }
         }
-        let (Owner::Node(node), Some((ns, _))) = (owner, gate) else {
-            return;
-        };
-        if self.last_stamp.insert(key, ns) == Some(ns) {
-            return;
-        }
-        match self.stamps.find(node, ns).map(|s| (s.inputs.clone(), s.t)) {
-            Some((inputs, t_take)) if inputs.len() == 1 => {
+        self.chain_publish(topic, t, fresh, &links)
+    }
+
+    /// The stamp flows of a publish in `node`; the input and take of a unique link.
+    #[allow(clippy::too_many_arguments)]
+    fn stamp_link(
+        &mut self,
+        owner: Owner,
+        node: NodeIx,
+        ns: u64,
+        topic: TopicIx,
+        t: u64,
+        sync_input: Option<TopicIx>,
+        dual: bool,
+    ) -> Option<(TopicIx, u64)> {
+        match self
+            .stamps
+            .find(node, ns)
+            .map(|s| (s.inputs.clone(), s.t, s.take))
+        {
+            Some((inputs, t_take, take)) if inputs.len() == 1 => {
+                if dual {
+                    return Some((inputs[0], take));
+                }
                 let fk = FlowKey {
                     kind: FlowKind::Stamp,
                     node: owner,
@@ -871,8 +978,10 @@ impl Model {
                         dwell_ns: t.saturating_sub(t_take),
                     });
                 }
+                Some((inputs[0], take))
             }
-            Some((inputs, _)) => {
+            Some(_) if dual => None,
+            Some((inputs, _, _)) => {
                 for input in inputs {
                     let fk = FlowKey {
                         kind: FlowKind::Stamp,
@@ -882,8 +991,9 @@ impl Model {
                     };
                     self.win.flows.entry(fk).or_default().ambiguous += 1;
                 }
+                None
             }
-            None if self.stamps.stamped.contains(&node) => {
+            None if !dual && self.stamps.stamped.contains(&node) => {
                 let fk = FlowKey {
                     kind: FlowKind::Blind,
                     node: owner,
@@ -891,9 +1001,80 @@ impl Model {
                     output: topic,
                 };
                 self.win.flows.entry(fk).or_default().count += 1;
+                None
             }
-            None => {}
+            None => None,
         }
+    }
+
+    fn latest_node(&mut self, node: NodeIx) -> bool {
+        if self.latest_nodes.is_empty() {
+            return false;
+        }
+        let (res, nodes) = (&self.latest_nodes, &self.nodes);
+        *self
+            .latest_match
+            .entry(node)
+            .or_insert_with(|| res.iter().any(|r| r.is_match(&nodes[node].fqn)))
+    }
+
+    fn chain_at(&mut self, topic: TopicIx) -> Vec<(usize, usize)> {
+        let t = &self.topics[topic];
+        self.chains.positions(topic, &t.name, || t.id())
+    }
+
+    /// A publish on a chain's topic: the steps it is of, and the origins it carries on. `links`
+    /// are the takes it came from inside its node, in the order to trust them.
+    fn chain_publish(
+        &mut self,
+        topic: TopicIx,
+        t: u64,
+        fresh: bool,
+        links: &[(TopicIx, u64)],
+    ) -> Origins {
+        let mut origins = Vec::new();
+        if self.chains.is_empty() {
+            return origins;
+        }
+        for (c, k) in self.chain_at(topic) {
+            let t0 = if !self.chains.lineage(c) {
+                match fresh {
+                    true => self.chains.first(c, k, t),
+                    false => None,
+                }
+            } else {
+                let origin = match k {
+                    0 => Some(t),
+                    _ => links.iter().find_map(|&(input, take)| {
+                        self.chain_at(input)
+                            .contains(&(c, k - 1))
+                            .then(|| self.chains.origin(take, c))
+                            .flatten()
+                    }),
+                };
+                if let Some(o) = origin {
+                    origins.push((c, o));
+                }
+                if k > 0 && fresh {
+                    self.chains.step(c, k, t, origin);
+                }
+                origin.filter(|_| k > 0 && fresh)
+            };
+            if let Some(t0) = t0.filter(|_| self.samples.is_some()) {
+                let s = &self.chains.specs[c];
+                let (name, mode) = (s.name.clone(), s.mode);
+                let topic = self.topic_id(topic);
+                self.sample(Sample::Chain {
+                    name,
+                    mode,
+                    step: k,
+                    topic,
+                    t_source_ns: t0,
+                    latency_ns: t - t0,
+                });
+            }
+        }
+        origins
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -959,6 +1140,16 @@ impl Model {
     ) {
         self.known_subs.insert(sub);
         self.win.subs.entry(sub).or_default().takes += 1;
+        let take = self.next_take;
+        self.next_take += 1;
+        if let Owner::Node(n) = sub.owner
+            && self.latest_node(n)
+        {
+            self.latest
+                .entry(n)
+                .or_default()
+                .insert(sub.topic, (t, take));
+        }
         let gate = self.clock.gate(stamp, t);
         if let Some((ns, age)) = gate {
             self.win
@@ -968,7 +1159,7 @@ impl Model {
                 .age_take
                 .add(age);
             if let Owner::Node(n) = sub.owner {
-                self.stamps.take(n, ns, sub.topic, t);
+                self.stamps.take(n, ns, sub.topic, t, take);
             }
         }
         let input = Input {
@@ -976,6 +1167,7 @@ impl Model {
             sub,
             t,
             stamp: gate.map(|g| g.0),
+            take,
         };
         let clock = self.clock;
         let th = self.threads.entry((pid, tid)).or_default();
@@ -1034,6 +1226,7 @@ impl Model {
             wake,
             source_ts,
             delivery,
+            take,
             windows: 0,
         };
         if key.is_none() || !self.pair_take(&pending, false) {
@@ -1076,6 +1269,10 @@ impl Model {
         }
         s.takers.push(p.sub);
         let (t_pub, publisher) = (s.t, s.publisher);
+        if !s.origins.is_empty() {
+            let origins = s.origins.clone();
+            self.chains.took(p.take, p.t, origins);
+        }
         self.pair
             .connected
             .entry(publisher)
@@ -1127,6 +1324,7 @@ impl Model {
             }
         }
         self.stamps.evict(now);
+        self.chains.evict(now);
     }
 
     fn sched_switch(&mut self, pid: u32, tid: u32, t: u64, next_tid: u32, cpu: u32) {

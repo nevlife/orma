@@ -3,15 +3,25 @@
 // count it should cause: "<provider:event> <count>". lttng_events.py runs it under
 // LD_PRELOAD=libarmo_lttng.so in an LTTng session and compares.
 //
+//     lttng_caller CUDA DDS    also spans, and calls into the CUDA and DDS stubs of armo_preload's
+//                              tests, timed after the caller turns both on in its .lttng file
 //     lttng_caller burst N     N callback_start, callback_end pairs, busy 6 ms of every 10 ms
 //     (lifecycle.py) lttng_caller tick        a pair every 50 ms until killed
+#define _GNU_SOURCE
+#include "armo_preload/armo_shm.h"
 #include "armo_preload/armo_tracepoints.h"
+#include "armo_preload/cuda_api.h"
+#include "armo_span/span.h"
 #include "tracetools/tracetools.h"
 
+#include <dlfcn.h>
+#include <fcntl.h>
+#include <glob.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <time.h>
 #include <unistd.h>
 #if ARMO_FLUX2
@@ -48,6 +58,61 @@ static void burst(long n)
 static void expect(const char * event, int per_round)
 {
   printf("%s %d\n", event, per_round * ROUNDS);
+}
+
+// The options word of this process's .lttng file, which its first callback made.
+static uint32_t * own_options(void)
+{
+  char pattern[64];
+  snprintf(pattern, sizeof pattern, "/dev/shm/armo.%d.*.lttng", (int)getpid());
+  glob_t g;
+  if (glob(pattern, 0, NULL, &g) != 0) exit(1);
+  int fd = open(g.gl_pathv[0], O_RDWR | O_CLOEXEC);
+  globfree(&g);
+  armo_shm_header * h = mmap(NULL, ARMO_SHM_HEADER_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+  if (h == MAP_FAILED) exit(1);
+  return &h->options;
+}
+
+typedef CUresult (*htod_fn)(CUdeviceptr, const void *, size_t);
+typedef CUresult (*sync_fn)(CUstream);
+typedef uintptr_t (*write_params_fn)(uintptr_t, uintptr_t, uintptr_t);
+
+// A span pair, a host-to-device copy and a per-thread stream sync through cuGetProcAddress as
+// cudart takes it, and a Cyclone and a Fast DDS write each round; one copy and one write before
+// the options are on, which no event follows.
+static void collect(const char * cuda_stub, const char * dds_stub)
+{
+  static const char outer[] = "outer";
+  static const char inner[] = "inner";
+  void * cuda = dlopen(cuda_stub, RTLD_NOW | RTLD_LOCAL);
+  void * dds = dlopen(dds_stub, RTLD_NOW | RTLD_GLOBAL);
+  if (cuda == NULL || dds == NULL) exit(1);
+  armo_cu_get_proc_address gpa_v1 = (armo_cu_get_proc_address)dlsym(cuda, "cuGetProcAddress");
+  armo_cu_get_proc_address_v2 gpa = NULL;
+  gpa_v1("cuGetProcAddress", (void **)&gpa, 12000, 0);
+  htod_fn htod = NULL;
+  sync_fn sync = NULL;
+  gpa("cuMemcpyHtoD", (void **)&htod, 13000, 0, NULL);
+  gpa("cuStreamSynchronize", (void **)&sync, 13000, ARMO_CU_PER_THREAD, NULL);
+  int32_t (*dds_write)(int32_t, const void *) =
+    (int32_t(*)(int32_t, const void *))dlsym(RTLD_DEFAULT, "dds_write");
+  write_params_fn fastdds = (write_params_fn)dlsym(
+    RTLD_DEFAULT, "_ZN8eprosima7fastdds3dds10DataWriter5writeEPvRNS_8fastrtps4rtps11WriteParamsE");
+  char buf[64] = {0};
+  htod(0, buf, sizeof buf);
+  dds_write(0x1234, buf);
+  *own_options() = ARMO_OPTION_GPU | ARMO_OPTION_DDS;
+  for (int i = 0; i < ROUNDS; i++) {
+    armo_span_begin(outer);
+    armo_span_begin(inner);
+    htod(0, buf, sizeof buf);
+    sync(NULL);
+    armo_span_end(inner);
+    dds_write(0x1234, buf);
+    fastdds(0xBEEF, 0, 0);
+    armo_span_end(outer);
+  }
 }
 
 int main(int argc, char ** argv)
@@ -163,6 +228,13 @@ int main(int argc, char ** argv)
   }
   // One callback_code after each callback_added.
   expect("armo:callback_code", 3);
+  if (argc == 3) {
+    collect(argv[1], argv[2]);
+    expect("armo:span_begin", 2);
+    expect("armo:span_end", 2);
+    expect("armo:cuda_call", 2);
+    expect("armo:dds_write", 2);
+  }
 #if ARMO_FLUX2
   const char * flux2[] = {
     "channel_init",  "claim",   "loan",     "loan_end",    "commit",         "take",

@@ -145,6 +145,13 @@ fn serve(mut stream: UnixStream, shared: &Mutex<Shared>) -> io::Result<()> {
                 m.bandwidth = c.bandwidth.unwrap_or(m.bandwidth);
                 m.sched = c.sched.unwrap_or(m.sched);
                 m.malloc = c.malloc.unwrap_or(m.malloc);
+                m.gpu = c.gpu.unwrap_or(m.gpu);
+                m.dds = c.dds.unwrap_or(m.dds);
+                m.futex = c.futex.unwrap_or(m.futex);
+                m.chains = c.chains.unwrap_or(std::mem::take(&mut m.chains));
+                m.latest_nodes = c
+                    .latest_nodes
+                    .unwrap_or(std::mem::take(&mut m.latest_nodes));
                 s.broadcast_state();
                 vec![reply(id, ReplyBody::Empty {})]
             }

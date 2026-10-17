@@ -201,6 +201,10 @@ mod plain {
         armo_ev_flux2_gpu_wedged,
         armo_ev_sched_switch,
         armo_ev_sched_wakeup,
+        armo_ev_dds_write,
+        armo_ev_cuda_call,
+        armo_ev_span,
+        armo_ev_futex_wait,
     );
 }
 

@@ -21,7 +21,7 @@
 | --- | --- |
 | `XDG_RUNTIME_DIR is not set` | 로그인 세션이 아닌 셸이다(`docker exec`, `sudo -u`). 그 셸에서는 armo를 쓰지 못한다 |
 | `armo status`가 "not running" | `armo status`는 armo-collectd를 띄우지 않는다. 다른 `armo` 명령이나 rqt가 띄운다 |
-| PSS가 `-` | PSS를 켜지 않았다(`armo top --pss`, rqt의 `pss`). 켰는데도 `-`이면 armo-collectd가 대상과 다른 주 그룹으로 떴다(`sg armo`로 띄운 경우). 끝내고 다시 띄운다 |
+| PSS가 `-` | PSS를 켜지 않았다(rqt의 `pss`). 켰는데도 `-`이면 armo-collectd가 대상과 다른 주 그룹으로 떴다(`sg armo`로 띄운 경우). 끝내고 다시 띄운다 |
 | `method lttng needs lttng, lttng-sessiond, babeltrace and setpriv on PATH` | LTTng 도구가 없다. `sudo apt install lttng-tools babeltrace` |
 | 노드가 `unlinked`, `unlinked (cold)` | armo가 노드를 만드는 순간을 보지 못했다. rclcpp 프로세스는 `--pid`로 고르면 몇 초 뒤 executor에서 노드를 읽어 채운다. 남으면 [usage.md](usage.md) 4절의 남는 경우다. 클라이언트를 먼저 열어 둔 채 노드를 다시 띄운다 |
 | `--node`, `--topic`으로 골랐는데 아무것도 안 나온다 | 그 노드를 armo가 모른다(위 행). armod를 막 띄웠다면 init 프로브가 붙는 몇 초 뒤에 노드를 띄운다. 정규식은 이름 전체에 맞춘다(`/cam`이 아니라 `/cam.*`) |
@@ -36,9 +36,22 @@
 | `state: truncated` | armo-collectd가 마무리 전에 죽었다(SIGKILL, 전원). 다음 시작이나 `armo record show`가 개수를 다시 세어 고친다 |
 | `record show`의 `lost`가 0이 아니다 | 이벤트를 넘겨받기 전에 버퍼가 넘쳤다. `meta.json`의 `drops`가 출처(공유 메모리 링, armod ring buffer, LTTng)를 알려 준다 |
 
+## 추가 수집과 체인
+
+| 증상 | 원인과 조치 |
+| --- | --- |
+| `armo top`의 `gpus` 표가 비었다 | NVML(`libnvidia-ml.so.1`)이 없거나 GPU가 없다. armo-collectd는 NVML을 링크하지 않고 띄울 때 찾는다. dGPU는 NVIDIA 드라이버의 NVML이 있어야 하고, Jetson은 sysfs에서 사용률과 클럭만 읽는다 |
+| rqt의 CUDA 표와 `cb`의 CUDA 열이 없다 | `--gpu`(rqt의 `gpu`)를 켜지 않았다. cudart를 정적으로 링크한 프로그램(nvcc 기본)도 잡힌다. cudart가 `cuGetProcAddress`로 driver 함수를 얻는 경우는 preload와 LTTng가 그 함수도 가로채 주소를 바꿔 준다. uprobe는 함수 주소에 붙으므로 상관없다 |
+| `cb`의 futex 열이 `-`다 | futex 대기는 방식과 무관하게 armod가 잰다. `armod: connected`인지 본다 |
+| `topic`에 DDS 열이 없다 | `--dds`를 켜지 않았거나 그 토픽의 `rmw_publish`와 DDS write를 같은 스레드에서 짝짓지 못했다. 짝이 없는 write는 버린다 |
+| `span` 보기가 비었다 | 프로세스가 `libarmo_span.so`를 링크하지 않았거나 그 프로세스가 선택에 없다. 이름은 문자열 리터럴로 넘긴다. 주소가 다르면 begin과 end가 이어지지 않는다 |
+| 체인의 broken이 크다 | 체인의 토픽을 발행하는 프로세스 중 관측하지 않은 것이 있다. `first` 방식이면 원천 주기가 체인 지연보다 짧은지 본다 |
+| `armo react`가 `no subscriber on ...`으로 끝난다 | 10초 안에 입력 토픽에 구독자가 붙지 않았다. 토픽 이름과 `ROS_DOMAIN_ID`, QoS(구독이 transient local을 요구하는지)를 본다 |
+| `armo react`가 `armo-collectd does not see the publisher`로 끝난다 | 발행 프로세스가 preload로 올라오지 않았다. `armo env`가 찍는 `LD_PRELOAD`의 파일이 있는지(`armo_preload`를 빌드했는지) 본다. 선택에 `--node`, `--topic`이 있으면 발행 프로세스가 맞지 않을 수 있다. 선택을 pid나 모든 프로세스로 바꾼 뒤 다시 돌린다 |
+
 ## 넘침 경고
 
-`armo top proc` 아래의 `warning: pid N (...)`은 preload 프로세스의 공유 메모리 표가 찼다는 뜻이다. 표 칸과 깊이가 넘친 몫은 창 집계에서만 빠지고 기록의 이벤트는 남는다. 스레드 칸이 넘친 스레드는 이벤트도 기록되지 않는다.
+`armo node cpu` 아래의 `warning: pid N (...)`은 preload 프로세스의 공유 메모리 표가 찼다는 뜻이다. 표 칸과 깊이가 넘친 몫은 창 집계에서만 빠지고 기록의 이벤트는 남는다. 스레드 칸이 넘친 스레드는 이벤트도 기록되지 않는다.
 
 | 경고 | 한도 | 조치 |
 | --- | --- | --- |

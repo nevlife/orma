@@ -8,10 +8,13 @@
 //     caller flux2-global STUB     flux2 events of a stub loaded RTLD_GLOBAL
 //     caller flux2-local STUB      the same loaded RTLD_LOCAL, as Python loads libflux2_ffi
 //     caller flux2-none STUB       a stub without flux2_trace_contract_2: no events
+//     caller collect CUDA DDS      spans, and stub CUDA and DDS calls with their options off and on
 #define _GNU_SOURCE
 #include "armo_preload/armo_events.h"
 #include "armo_preload/armo_shm.h"
 #include "armo_preload/armo_tracepoints.h"
+#include "armo_preload/cuda_api.h"
+#include "armo_span/span.h"
 #include "tracetools/tracetools.h"
 
 #include <dlfcn.h>
@@ -473,6 +476,230 @@ static void check_flux2(const char * mode, const char * stub)
   CHECK(flux2_count(ARMO_AGG_WAIT, 0, 0xE0) == FLUX2_ROUNDS);
 }
 
+// Whether `f` is a function this process's libarmo_preload.so defines, named `name` if given.
+static int ours(void * f, const char * name)
+{
+  Dl_info at;
+  return f != NULL && dladdr(f, &at) != 0 && strstr(at.dli_fname, "libarmo_preload") != NULL &&
+         (name == NULL || (at.dli_sname != NULL && strcmp(at.dli_sname, name) == 0));
+}
+
+static uint64_t count_records(uint16_t event)
+{
+  return records(slot_of((uint32_t)gettid()), event, 0);
+}
+
+static const char * span_name(const armo_record * r)
+{
+  return (const char *)(r + 1) + sizeof(armo_ev_span);
+}
+
+struct cuda_tally
+{
+  uint64_t n, by_api[ARMO_CUDA_API_COUNT], bytes, failed, slow;
+};
+
+static void cuda_one(const armo_record * r, void * arg)
+{
+  struct cuda_tally * t = arg;
+  if (r->event != ARMO_EV_CUDA_CALL) return;
+  const armo_ev_cuda_call * c = (const void *)(r + 1);
+  t->n++;
+  t->by_api[c->api]++;
+  t->bytes += c->bytes;
+  t->failed += c->result != 0;
+  t->slow += c->duration_ns >= 2000000;
+}
+
+#define CUDA_WRAPPERS UINT64_C(53)
+// Every entry is called once through each lookup.
+#define PASSES UINT64_C(2)
+
+static const armo_cuda_memcpy2d plane = {.width = 4, .height = 8};
+static const armo_cuda_memcpy3d box = {.width = 2, .height = 3, .depth = 5};
+
+// Bytes of one pass over every entry: 64 for each of 26 plain copies and allocs, 4 x 8 for each
+// of 6 2D copies and 2 x 3 x 5 for each of 4 3D ones.
+#define CUDA_PASS_BYTES UINT64_C(1976)
+
+// Each entry through `lookup`, which must hand out armo's function of that name, and each call on
+// to the stub's. The locals are the entries' parameter names.
+static void cuda_pass(void * (*lookup)(const char *), const char * (*stub_last)(void))
+{
+  CUdeviceptr ddst = 0, dsrc = 0, dptr = 0, out = 0, *dptr_out = &out;
+  char buf[64];
+  void *hdst = buf, *hptr = buf, *host_out = NULL, **hptr_out = &host_out;
+  const void * hsrc = buf;
+  size_t count = sizeof buf;
+  CUcontext ctx = NULL, dctx = NULL, sctx = NULL;
+  CUstream stream = NULL;
+  CUevent event = NULL;
+  CUfunction f = NULL;
+  CUgraphExec graph = NULL;
+  const CUlaunchConfig * config = NULL;
+  unsigned int gx = 1, gy = 1, gz = 1, bx = 1, by = 1, bz = 1, shared = 0, flags = 0;
+  void ** kparams = NULL;
+  void ** extra = NULL;
+  const armo_cuda_memcpy2d * copy2d = &plane;
+  const armo_cuda_memcpy3d * copy3d = &box;
+#define CALL(name, api, bytes, params, args) \
+  {                                          \
+    void * p = lookup(#name);                \
+    CHECK(ours(p, #name));                   \
+    ((CUresult(*) params)p) args;            \
+    CHECK(strcmp(stub_last(), #name) == 0);  \
+  }
+  ARMO_CUDA_FUNCTIONS(CALL)
+#undef CALL
+}
+
+static void * global_lookup(const char * name)
+{
+  return dlsym(RTLD_DEFAULT, name);
+}
+
+static armo_cu_get_proc_address_v2 gpa;
+
+// As cudart asks: the name without _v2, _ptds or _ptsz, and the per-thread flag for those two.
+static void * driver_lookup(const char * name)
+{
+  char base[96];
+  snprintf(base, sizeof base, "%s", name);
+  uint64_t flags = 0;
+  char * cut = strstr(base, "_pt");
+  if (cut != NULL) {
+    *cut = '\0';
+    flags = ARMO_CU_PER_THREAD;
+  }
+  cut = strstr(base, "_v2");
+  int version = cut != NULL || strcmp(base, "cuCtxSynchronize") != 0 ? 13000 : 2000;
+  if (cut != NULL) *cut = '\0';
+  void * p = NULL;
+  int status = -1;
+  CHECK(gpa(base, &p, version, flags, &status) == 0 && status == 0);
+  return p;
+}
+
+static void check_cuda(const char * stub)
+{
+  void * lib = dlopen(stub, RTLD_NOW | RTLD_LOCAL);
+  CHECK(lib != NULL);
+  const char * (*stub_last)(void) = (const char * (*)(void))dlsym(lib, "stub_last");
+  unsigned long (*stub_calls)(void) = (unsigned long (*)(void))dlsym(lib, "stub_calls");
+
+  // cudart's way in: cuGetProcAddress from its own libcuda handle, then itself at 12000 as _v2.
+  armo_cu_get_proc_address gpa_v1 = (armo_cu_get_proc_address)dlsym(lib, "cuGetProcAddress");
+  CHECK(ours((void *)gpa_v1, "cuGetProcAddress"));
+  void * p = NULL;
+  CHECK(gpa_v1("cuGetProcAddress", &p, 12000, 0) == 0 && ours(p, "cuGetProcAddress_v2"));
+  gpa = (armo_cu_get_proc_address_v2)p;
+  CHECK(gpa_v1("cuGetProcAddress", &p, 11030, 0) == 0 && ours(p, "cuGetProcAddress"));
+  CHECK(dlsym(lib, "cuGetProcAddress_v2") == (void *)gpa);
+  CHECK(!ours(dlsym(lib, "stub_last"), NULL));
+
+  // Off: straight to the stub, no record.
+  CUdeviceptr d;
+  CUresult (*alloc)(CUdeviceptr *, size_t) =
+    (CUresult(*)(CUdeviceptr *, size_t))dlsym(lib, "cuMemAlloc_v2");
+  CHECK(ours((void *)alloc, "cuMemAlloc_v2") && alloc(&d, 64) == 2);
+  CHECK(strcmp(stub_last(), "cuMemAlloc_v2") == 0 && count_records(ARMO_EV_CUDA_CALL) == 0);
+
+  __atomic_store_n(&header->options, ARMO_OPTION_GPU, __ATOMIC_RELAXED);
+  unsigned long before = stub_calls();
+  cuda_pass(global_lookup, stub_last);
+  cuda_pass(driver_lookup, stub_last);
+  CHECK(stub_calls() - before == PASSES * CUDA_WRAPPERS);
+  __atomic_store_n(&header->options, 0, __ATOMIC_RELAXED);
+  CHECK(alloc(&d, 64) == 2);
+
+  struct cuda_tally t = {0};
+  each_record(slot_of((uint32_t)gettid()), cuda_one, &t);
+  CHECK(t.n == PASSES * CUDA_WRAPPERS && t.bytes == PASSES * CUDA_PASS_BYTES);
+  CHECK(t.by_api[ARMO_CUDA_LAUNCH] == PASSES * 6 && t.by_api[ARMO_CUDA_GRAPH_LAUNCH] == PASSES * 2);
+  CHECK(
+    t.by_api[ARMO_CUDA_MEMCPY] == PASSES * 16 && t.by_api[ARMO_CUDA_MEMCPY_ASYNC] == PASSES * 14);
+  CHECK(
+    t.by_api[ARMO_CUDA_SYNC_STREAM] == PASSES * 2 && t.by_api[ARMO_CUDA_SYNC_CTX] == PASSES * 2);
+  CHECK(t.by_api[ARMO_CUDA_SYNC_EVENT] == PASSES && t.by_api[ARMO_CUDA_ALLOC] == PASSES * 6);
+  CHECK(t.by_api[ARMO_CUDA_FREE] == PASSES * 4);
+  // cuMemAlloc_v2's error comes through; the stub's cuStreamSynchronize sleeps 2 ms.
+  CHECK(t.failed == PASSES && t.slow >= PASSES);
+}
+
+typedef uintptr_t (*write1)(uintptr_t, uintptr_t);
+typedef uintptr_t (*write2)(uintptr_t, uintptr_t, uintptr_t);
+
+static void check_dds(const char * stub)
+{
+  // Global: librcl's constructor loaded the default rmw's DDS library, RTLD_LOCAL, and a search of
+  // the loaded objects would come to it before the stub.
+  void * lib = dlopen(stub, RTLD_NOW | RTLD_GLOBAL);
+  CHECK(lib != NULL);
+  const char * (*stub_last)(void) = (const char * (*)(void))dlsym(lib, "stub_last");
+  int32_t (*cyclone[3])(int32_t, const void *);
+  const char * cyclone_names[3] = {"dds_write", "dds_writecdr", "dds_forwardcdr"};
+  for (int i = 0; i < 3; i++) {
+    cyclone[i] = (int32_t(*)(int32_t, const void *))dlsym(RTLD_DEFAULT, cyclone_names[i]);
+    CHECK(ours((void *)cyclone[i], cyclone_names[i]));
+  }
+  write1 fast2 = (write1)dlsym(RTLD_DEFAULT, "_ZN8eprosima7fastdds3dds10DataWriter5writeEPv");
+  write2 fast2p = (write2)dlsym(
+    RTLD_DEFAULT, "_ZN8eprosima7fastdds3dds10DataWriter5writeEPvRNS_8fastrtps4rtps11WriteParamsE");
+  write1 fast3 = (write1)dlsym(RTLD_DEFAULT, "_ZN8eprosima7fastdds3dds10DataWriter5writeEPKv");
+  write2 fast3p = (write2)dlsym(
+    RTLD_DEFAULT, "_ZN8eprosima7fastdds3dds10DataWriter5writeEPKvRNS0_4rtps11WriteParamsE");
+  CHECK(ours((void *)fast2, NULL) && ours((void *)fast2p, NULL));
+  CHECK(ours((void *)fast3, NULL) && ours((void *)fast3p, NULL));
+
+  int32_t (*write_ts)(int32_t, const void *, int64_t) =
+    (int32_t(*)(int32_t, const void *, int64_t))dlsym(RTLD_DEFAULT, "dds_write_ts");
+  CHECK(ours((void *)write_ts, "dds_write_ts"));
+
+  for (int on = 0; on < 2; on++) {
+    __atomic_store_n(&header->options, on ? ARMO_OPTION_DDS : 0, __ATOMIC_RELAXED);
+    for (int i = 0; i < 3; i++) {
+      CHECK(cyclone[i](0x1234 + i, NULL) == 0 && strcmp(stub_last(), cyclone_names[i]) == 0);
+    }
+    CHECK(write_ts(0x1234, NULL, 7) == 0 && strcmp(stub_last(), "dds_write_ts") == 0);
+    CHECK(fast2(0xBEEF, 0) == 1 && fast2p(0xBEEF, 0, 0) == 1);
+    CHECK(fast3(0xBEEF, 0) == 0 && fast3p(0xBEEF, 0, 0) == 0);
+    CHECK(strstr(stub_last(), "EPKvRNS0_4rtps11WriteParamsE") != NULL);
+    CHECK(count_records(ARMO_EV_DDS_WRITE) == (on ? 8u : 0u));
+  }
+  __atomic_store_n(&header->options, 0, __ATOMIC_RELAXED);
+  const armo_thread_slot * s = slot_of((uint32_t)gettid());
+  CHECK(records(s, ARMO_EV_DDS_WRITE, 0x1234) == 2 && records(s, ARMO_EV_DDS_WRITE, 0x1235) == 1);
+  CHECK(records(s, ARMO_EV_DDS_WRITE, 0xBEEF) == 4);
+}
+
+// Spans need no option; the key of an end is the address its begin named.
+static void check_spans(void)
+{
+  static const char outer[] = "outer";
+  static const char inner[] = "inner";
+  for (int i = 0; i < 3; i++) {
+    armo_span_begin(outer);
+    armo_span_begin(inner);
+    armo_span_end(inner);
+    armo_span_end(outer);
+  }
+  const armo_thread_slot * s = slot_of((uint32_t)gettid());
+  CHECK(records(s, ARMO_EV_SPAN_BEGIN, (uintptr_t)outer) == 3);
+  CHECK(records(s, ARMO_EV_SPAN_BEGIN, (uintptr_t)inner) == 3);
+  CHECK(records(s, ARMO_EV_SPAN_END, (uintptr_t)outer) == 3);
+  CHECK(records(s, ARMO_EV_SPAN_END, (uintptr_t)inner) == 3);
+  CHECK(strcmp(span_name(last_record(s, ARMO_EV_SPAN_BEGIN)), "inner") == 0);
+}
+
+static void check_collect(const char * cuda_stub, const char * dds_stub)
+{
+  // dlsym forwards RTLD_NEXT as a tail call, so it still means after this program.
+  CHECK(ours(dlsym(RTLD_NEXT, "rcl_wait"), "rcl_wait"));
+  check_spans();
+  check_cuda(cuda_stub);
+  check_dds(dds_stub);
+}
+
 int main(int argc, char ** argv)
 {
   ros_trace_rcl_init(NULL);
@@ -482,7 +709,9 @@ int main(int argc, char ** argv)
   const armo_thread_slot * own = slot_of((uint32_t)gettid());
   CHECK(records(own, ARMO_EV_RCL_INIT, 0) == 1 && records(own, ARMO_EV_RCL_PUBLISH, 0) == 0);
   __atomic_store_n(&header->armed, 1, __ATOMIC_RELAXED);
-  if (argc == 3) {
+  if (argc == 4 && strcmp(argv[1], "collect") == 0) {
+    check_collect(argv[2], argv[3]);
+  } else if (argc == 3) {
     check_flux2(argv[1], argv[2]);
   } else {
     asan = argc == 2 && strcmp(argv[1], "asan") == 0;

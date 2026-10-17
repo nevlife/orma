@@ -71,6 +71,13 @@ static inline struct armo_thread * armo_thread(void)
   return armo_thread_claim();
 }
 
+// An extra collection the reader asked for in the header's options; off before the file exists.
+static inline bool armo_option(uint32_t bit)
+{
+  armo_shm_header * h = __atomic_load_n(&armo_header, __ATOMIC_ACQUIRE);
+  return h != NULL && (ARMO_LOAD(&h->options) & bit) != 0;
+}
+
 static inline void armo_set_current(struct armo_thread * t)
 {
   armo_thread_slot * s = t->slot;

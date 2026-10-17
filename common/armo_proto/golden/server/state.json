@@ -21,7 +21,18 @@
     "bandwidth": false,
     "sched": true,
     "malloc": false,
-    "pss": false
+    "pss": false,
+    "gpu": true,
+    "dds": false,
+    "futex": true,
+    "chains": [
+      {
+        "name": "perception",
+        "topics": ["/camera/image", "/detections", "/tracks"],
+        "mode": "lineage"
+      }
+    ],
+    "latest_nodes": ["/fusion"]
   },
   "recordings": [
     {

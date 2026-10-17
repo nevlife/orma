@@ -25,7 +25,7 @@ pub const WAKEUP_TARGET_CPU: usize = 32;
 /// (TASK_REPORT_MAX of this kernel's format file).
 const STATE_MASK: i64 = 0xff;
 
-fn field<T>(ctx: &TracePointContext, offset: usize) -> Option<T> {
+pub fn field<T>(ctx: &TracePointContext, offset: usize) -> Option<T> {
     // SAFETY: a read of the tracepoint's own record; a bad offset returns an error.
     unsafe { ctx.read_at::<T>(offset) }.ok()
 }

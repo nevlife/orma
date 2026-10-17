@@ -104,8 +104,11 @@ fn listen(socket: &Path, group: &str) -> Result<UnixListener> {
 fn run() -> Result<bool> {
     let mode = parse()?;
     let k = Kernel::load()?;
-    if let Err(why) = &k.layout {
+    if let Err(why) = &k.sched_tp.layout {
         eprintln!("armod: the scheduler probes stay off: {why}");
+    }
+    if let Err(why) = &k.futex_tp.layout {
+        eprintln!("armod: the futex probes stay off: {why}");
     }
     match mode {
         Mode::Serve { socket, group } => {

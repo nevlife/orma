@@ -292,6 +292,23 @@ fn layouts() -> Vec<Layout> {
             cpu
         }),
         layout!(armo_ev_sched_wakeup { tid, target_cpu }),
+        layout!(armo_ev_dds_write {
+            writer,
+            duration_ns
+        }),
+        layout!(armo_ev_cuda_call {
+            duration_ns,
+            bytes,
+            api,
+            result
+        }),
+        layout!(armo_ev_span { key }),
+        layout!(armo_ev_futex_wait {
+            uaddr,
+            duration_ns,
+            op,
+            ret
+        }),
     ]
 }
 

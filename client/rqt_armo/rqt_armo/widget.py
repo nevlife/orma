@@ -3,6 +3,7 @@
 
 import datetime
 
+from armo_cli.cli import EXTRAS
 from python_qt_binding.QtCore import Qt, QTimer
 from python_qt_binding.QtWidgets import (
     QHBoxLayout,
@@ -163,7 +164,8 @@ class ArmoWidget(QWidget):
         target += "".join(
             f" {k} {selection[k]}" for k in ("node", "topic", "exclude") if k in selection
         )
-        extras = "".join(f", {k}" for k in ("bandwidth", "sched", "malloc", "pss") if m[k])
+        extras = "".join(f", {k}" for k in EXTRAS if m.get(k))
+        extras += "".join(f", chain {c['name']}" for c in m.get("chains", []))
         running = "running" if m["running"] else "idle"
         self.monitor_label.setText(
             f"monitor: {running}, window {m['window_s']:g} s, {target}{extras}"

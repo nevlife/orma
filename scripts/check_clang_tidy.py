@@ -17,7 +17,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-PACKAGES = ("armo_preload", "armo_lttng")
+PACKAGES = ("armo_preload", "armo_lttng", "armo_span")
 
 
 def compile_commands():

@@ -18,6 +18,8 @@ use std::thread;
 use std::time::Duration;
 
 use armo_proto::Ingest;
+use armo_proto::msg::ChainSpec;
+use regex::Regex;
 
 pub use self::core::Core;
 use crate::guard::Guard;
@@ -110,6 +112,10 @@ pub trait Model: Ingest + Send {
     fn set_lttng_span(&mut self, ns: u64);
     /// Processes with callbacks whose node armod should read from the executor.
     fn unowned(&self) -> BTreeSet<u32>;
+    /// Whether CUDA calls are measured, and the processes whose futex waits armod delivers.
+    fn set_probes(&mut self, gpu: bool, futex: Sel);
+    /// The chains to measure, and the nodes whose outputs link to their latest inputs.
+    fn set_flows(&mut self, chains: Vec<ChainSpec>, latest_nodes: Vec<Regex>);
 }
 
 impl Model for crate::model::Model {
@@ -130,6 +136,12 @@ impl Model for crate::model::Model {
     }
     fn set_lttng_span(&mut self, ns: u64) {
         crate::model::Model::set_lttng_span(self, ns);
+    }
+    fn set_probes(&mut self, gpu: bool, futex: Sel) {
+        crate::model::Model::set_probes(self, gpu, futex);
+    }
+    fn set_flows(&mut self, chains: Vec<ChainSpec>, latest_nodes: Vec<Regex>) {
+        crate::model::Model::set_flows(self, chains, latest_nodes);
     }
 }
 

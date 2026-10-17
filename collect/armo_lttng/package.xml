@@ -19,6 +19,7 @@
 
   <test_depend>ament_cmake_test</test_depend>
   <test_depend>armo_rclpy</test_depend>
+  <test_depend>armo_span</test_depend>
   <test_depend>babeltrace</test_depend>
   <test_depend>flux2_ffi</test_depend>
   <test_depend>lttng-tools</test_depend>

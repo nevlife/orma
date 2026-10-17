@@ -1,0 +1,30 @@
+# Each entry: `match`, a regular expression over the whole target name, and the `warn` and
+# `error` levels. topic_hz_min warns below its levels, every other rule above them.
+callback_p99_us:
+  - match: "sub\\(/scan\\)"
+    warn: 5000
+    error: 20000
+topic_hz_min:
+  - match: /scan
+    warn: 9.0
+    error: 5.0
+topic_hop_p99_us:
+  - match: /camera/.*
+    warn: 2000
+    error: 10000
+sub_loss_pct:
+  - match: /scan
+    warn: 1.0
+    error: 5.0
+chain_e2e_p99_us:
+  - match: perception
+    warn: 50000
+    error: 100000
+gpu_temp_c:
+  - match: "0"
+    warn: 80
+    error: 90
+thermal_c:
+  - match: .*
+    warn: 85
+    error: 95

@@ -2,8 +2,9 @@ import json
 import shutil
 import subprocess
 
+import armo_client
 import pytest
-from conftest import HERE, golden
+from conftest import HERE
 
 CASES = [
     ("preload", True, True),
@@ -33,7 +34,7 @@ def test_armo_trace(fake, env, prefix, runtime, monkeypatch, method, record, sto
     assert seen["mapped"] == ([library] if instrumented else [])
 
     requests = [{k: v for k, v in r.items() if k not in ("id", "pid")} for r in fake.requests()]
-    hello = {"op": "hello", "proto": golden("hello")["proto"], "client": "armo_launch"}
+    hello = {"op": "hello", "proto": armo_client.PROTO, "client": "armo_launch"}
     start = {
         "op": "record_start",
         "method": method,

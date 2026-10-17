@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Summarize a campaign (design 8.6): latency tail and resources per workload, rate, sched and
-method.
+"""Summarize a campaign (design 8.6): latency tail and resources per workload, rate, sched,
+topics and method.
 
 usage: analyze.py OUT_DIR
 
@@ -82,18 +82,18 @@ def main():
         if not os.path.exists(os.path.join(d, "meta.json")):
             continue
         m, lat = load_run(d)
-        key = (m["workload"], m["rate"], m["sched"], m["method"])
+        key = (m["workload"], m["rate"], m["sched"], m["topics"], m["method"])
         if lat is None:
             pending[key] = m["pending"]
             continue
         groups[key].append((m, lat))
 
     rows = []
-    blocks = sorted({k[:3] for k in groups})
+    blocks = sorted({k[:4] for k in groups})
     for blk in blocks:
         base = np.concatenate([l for _, l in groups[blk + ("none",)]])
         thr, thr9 = q(base, 99), q(base, 99.9)
-        for key in sorted(k for k in groups if k[:3] == blk):
+        for key in sorted(k for k in groups if k[:4] == blk):
             runs = groups[key]
             lat = np.concatenate([l for _, l in runs])
             res = [resources(m) for m, _ in runs]
@@ -104,7 +104,8 @@ def main():
                 "workload": key[0],
                 "rate": key[1],
                 "sched": key[2],
-                "method": key[3],
+                "topics": key[3],
+                "method": key[4],
                 "reps": len(runs),
                 "n": int(len(lat)),
                 "lost": sum(m["lost"] for m, _ in runs),
@@ -125,15 +126,22 @@ def main():
             rows.append(row)
     for key, why in sorted(pending.items()):
         rows.append(
-            {"workload": key[0], "rate": key[1], "sched": key[2], "method": key[3], "pending": why}
+            {
+                "workload": key[0],
+                "rate": key[1],
+                "sched": key[2],
+                "topics": key[3],
+                "method": key[4],
+                "pending": why,
+            }
         )
 
     cur = None
     for r in rows:
-        blk = (r["workload"], r["rate"], r["sched"])
+        blk = (r["workload"], r["rate"], r["sched"], r["topics"])
         if blk != cur:
             cur = blk
-            print(f"\n== {blk[0]} {blk[1]} Hz {blk[2]}")
+            print(f"\n== {blk[0]} {blk[1]} Hz {blk[2]} topics {blk[3]}")
             print(
                 f"{'method':24} {'p50':>7} {'p90':>7} {'p99':>7} {'p99.9':>8} {'max':>8} "
                 f"{'>n99%':>6} {'>n999%':>6} {'>1ms%':>6} {'lost':>5} {'cpuW':>6} "

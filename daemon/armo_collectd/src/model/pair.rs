@@ -3,6 +3,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
+use super::chain::Origins;
 use super::stamp::AGE_MAX_NS;
 use super::{NodeIx, PubKey, SubKey, TopicIx};
 
@@ -27,6 +28,7 @@ pub struct Sent {
     /// Another publisher of the topic sent the same key: no take of it is paired.
     pub ambiguous: bool,
     pub takers: Vec<SubKey>,
+    pub origins: Origins,
 }
 
 pub struct Pending {
@@ -36,6 +38,7 @@ pub struct Pending {
     pub wake: Option<u64>,
     pub source_ts: Option<i64>,
     pub delivery: Option<u64>,
+    pub take: u64,
     pub windows: u8,
 }
 
@@ -49,7 +52,14 @@ pub struct Pairing {
 }
 
 impl Pairing {
-    pub fn publish(&mut self, key: PairKey, t: u64, publisher: PubKey, topic: TopicIx) {
+    pub fn publish(
+        &mut self,
+        key: PairKey,
+        t: u64,
+        publisher: PubKey,
+        topic: TopicIx,
+        origins: Origins,
+    ) {
         if let Some(s) = self.sent.get_mut(&key) {
             if s.publisher != publisher {
                 s.ambiguous = true;
@@ -64,6 +74,7 @@ impl Pairing {
                 topic,
                 ambiguous: false,
                 takers: Vec::new(),
+                origins,
             },
         );
         self.order.push_back((t, key));
@@ -89,6 +100,8 @@ pub struct StampTake {
     /// The input topics that took this stamp in the node; more than one is ambiguous.
     pub inputs: Vec<TopicIx>,
     pub t: u64,
+    /// The number of the last take.
+    pub take: u64,
 }
 
 #[derive(Default)]
@@ -100,7 +113,7 @@ pub struct StampIndex {
 }
 
 impl StampIndex {
-    pub fn take(&mut self, node: NodeIx, stamp_ns: u64, topic: TopicIx, t: u64) {
+    pub fn take(&mut self, node: NodeIx, stamp_ns: u64, topic: TopicIx, t: u64, take: u64) {
         self.stamped.insert(node);
         let e = self
             .map
@@ -108,11 +121,13 @@ impl StampIndex {
             .or_insert_with(|| StampTake {
                 inputs: Vec::new(),
                 t,
+                take,
             });
         if !e.inputs.contains(&topic) {
             e.inputs.push(topic);
         }
         e.t = t;
+        e.take = take;
         self.order.push_back((t, node, stamp_ns));
         while self.order.len() > STAMP_CAP {
             self.drop_front();

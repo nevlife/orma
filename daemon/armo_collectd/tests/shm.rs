@@ -97,10 +97,30 @@ fn armed_follows_clients_selection_and_recordings() {
         malloc: Some(true),
         pss: None,
         expected_hz: None,
+        gpu: None,
+        dds: None,
+        futex: None,
+        chains: None,
+        latest_nodes: None,
     }))
     .unwrap();
     let options = || header_u32(shm.path(), offset_of!(armo_shm_header, options));
     until(|| options() == ARMO_OPTION_MALLOC);
+    gui.request(ClientOp::Configure(Configure {
+        window_s: None,
+        bandwidth: None,
+        sched: None,
+        malloc: None,
+        pss: None,
+        expected_hz: None,
+        gpu: Some(true),
+        dds: Some(true),
+        futex: None,
+        chains: None,
+        latest_nodes: None,
+    }))
+    .unwrap();
+    until(|| options() == ARMO_OPTION_MALLOC | ARMO_OPTION_GPU | ARMO_OPTION_DDS);
     gui.request(ClientOp::Select(Select {
         selection: Selection {
             all: false,
@@ -295,6 +315,8 @@ fn process(id: &str, pid: u32) -> Process {
         cold: false,
         overflow: None,
         flux2_gpu_wedged: None,
+        cuda: None,
+        gpu_mem_bytes: None,
     }
 }
 

@@ -11,16 +11,18 @@ use std::sync::mpsc::SyncSender;
 use std::time::Duration;
 
 use armo_common::catalog;
-use armo_common::events::{ARMO_EV_SCHED_SWITCH, ARMO_EV_SCHED_WAKEUP};
-use armo_common::shm::ARMO_OPTION_MALLOC;
+use armo_common::events::{ARMO_EV_FUTEX_WAIT, ARMO_EV_SCHED_SWITCH, ARMO_EV_SCHED_WAKEUP};
+use armo_common::shm::{ARMO_OPTION_DDS, ARMO_OPTION_GPU, ARMO_OPTION_MALLOC};
 use armo_proto::Ingest;
 use armo_proto::frame;
 use armo_proto::msg::*;
 use armo_proto::records::{self, RecordError};
+use regex::Regex;
 
 use super::{Config, Exit, Model};
+use crate::devices::Devices;
 use crate::guard::{self, Cleanup, Guard};
-use crate::model::procfs;
+use crate::model::{chain, procfs};
 use crate::names::{Known, Names};
 use crate::record::replay::Replay;
 use crate::record::{self, Active, Context, show};
@@ -78,6 +80,11 @@ pub struct Core {
     sched: bool,
     malloc: bool,
     pss: bool,
+    gpu: bool,
+    dds: bool,
+    futex: bool,
+    chains: Vec<ChainSpec>,
+    latest_nodes: Vec<String>,
 
     active: Vec<Active>,
     finished: VecDeque<Recording>,
@@ -106,6 +113,7 @@ pub struct Core {
     idle_since: Option<u64>,
     uid: u32,
     host: Host,
+    devices: Devices,
     realtime: sys::RealtimeSteps,
 }
 
@@ -130,8 +138,8 @@ fn selection_sel(selection: &Selection) -> Sel {
 }
 
 /// Hands a batch of positioned records to the model and, in runs of one pid, to every recording
-/// that takes that pid by `method`. Scheduler records go only to recordings that asked for them:
-/// armod switches its scheduler probes on for a pid when any client wants them.
+/// that takes that pid by `method`. Scheduler and futex records go only to recordings that asked
+/// for them: armod switches those probes on for a pid when any client wants them.
 fn deliver(
     ingest: &mut dyn Ingest,
     active: &mut [Active],
@@ -140,10 +148,15 @@ fn deliver(
     batch: &[u8],
     now_ns: u64,
 ) -> Result<(), RecordError> {
-    let mut flush = |(pid, sched): (u32, bool), run: &[u8], n: u64| {
+    let mut flush = |(pid, event): (u32, u16), run: &[u8], n: u64| {
         let id = entity(pid);
         for r in active.iter_mut() {
-            if (!sched || r.options().sched == Some(true)) && r.takes(pid, method) {
+            let asked = match event {
+                ARMO_EV_SCHED_SWITCH => r.options().sched == Some(true),
+                ARMO_EV_FUTEX_WAIT => r.options().futex == Some(true),
+                _ => true,
+            };
+            if asked && r.takes(pid, method) {
                 r.append_events(&id, run, n, now_ns);
             }
         }
@@ -152,15 +165,17 @@ fn deliver(
     for record in records::positioned(batch) {
         let record = record?;
         ingest.record(method, &record);
-        let sched = matches!(
-            record.header.event,
-            ARMO_EV_SCHED_SWITCH | ARMO_EV_SCHED_WAKEUP
-        );
-        if run != Some((record.pid, sched)) {
+        // Runs split by what a recording must have asked for.
+        let class = match record.header.event {
+            ARMO_EV_SCHED_SWITCH | ARMO_EV_SCHED_WAKEUP => ARMO_EV_SCHED_SWITCH,
+            ARMO_EV_FUTEX_WAIT => ARMO_EV_FUTEX_WAIT,
+            _ => 0,
+        };
+        if run != Some((record.pid, class)) {
             if let Some(r) = run {
                 flush(r, &batch[start..at], n);
             }
-            (start, n, run) = (at, 0, Some((record.pid, sched)));
+            (start, n, run) = (at, 0, Some((record.pid, class)));
         }
         n += 1;
         at += size_of::<armo_common::events::armo_position>() + record.header.len as usize;
@@ -200,6 +215,11 @@ impl Core {
             sched: true,
             malloc: false,
             pss: false,
+            gpu: false,
+            dds: false,
+            futex: false,
+            chains: Vec::new(),
+            latest_nodes: Vec::new(),
             active: Vec::new(),
             finished: VecDeque::new(),
             next_record: 1,
@@ -230,6 +250,7 @@ impl Core {
                 arch: std::env::consts::ARCH.into(),
                 cpus: std::thread::available_parallelism().map_or(1, |n| n.get() as u32),
             },
+            devices: Devices::new("/"),
             realtime: sys::RealtimeSteps::new().expect("timerfd"),
         }
     }
@@ -346,6 +367,11 @@ impl Core {
                 sched: self.sched,
                 malloc: self.malloc,
                 pss: self.pss,
+                gpu: self.gpu,
+                dds: self.dds,
+                futex: self.futex,
+                chains: self.chains.clone(),
+                latest_nodes: self.latest_nodes.clone(),
             },
             recordings,
         }
@@ -381,26 +407,55 @@ impl Core {
     /// memory file, armod's probes and streams, and the guard's list.
     fn refresh(&mut self) {
         let monitor = self.monitoring();
+        // The LTTng files whose records monitoring or a recording takes, and whether monitoring
+        // does.
+        let lttng: BTreeMap<u32, bool> = self
+            .shm
+            .files
+            .values()
+            .filter(|f| !f.preload() && self.lttng_takes(f.pid))
+            .map(|f| (f.pid, self.lttng_monitors(f.pid)))
+            .collect();
         let Core {
             shm,
             active,
             method_by_pid,
             ..
         } = self;
-        let malloc = self.malloc;
+        let (malloc, gpu, dds) = (self.malloc, self.gpu, self.dds);
         let selection = &self.selection;
-        let want = |pid: u32| -> Option<u32> {
-            let mon = monitor
-                && (selection.all || selection.pids.contains(&pid))
-                && method_by_pid
-                    .get(&pid.to_string())
-                    .is_none_or(|m| *m == Method::Preload);
-            let recs: Vec<&Active> = active.iter().filter(|r| r.wants_preload(pid)).collect();
+        let want = |pid: u32, preload: bool| -> Option<u32> {
+            let (mon, recs): (bool, Vec<&Active>) = if preload {
+                let mon = monitor
+                    && (selection.all || selection.pids.contains(&pid))
+                    && method_by_pid
+                        .get(&pid.to_string())
+                        .is_none_or(|m| *m == Method::Preload);
+                (
+                    mon,
+                    active.iter().filter(|r| r.wants_preload(pid)).collect(),
+                )
+            } else {
+                let mon = *lttng.get(&pid)?;
+                (mon, active.iter().filter(|r| r.wants_lttng(pid)).collect())
+            };
             if !mon && recs.is_empty() {
                 return None;
             }
-            let malloc = (mon && malloc) || recs.iter().any(|r| r.options().malloc == Some(true));
-            Some(if malloc { ARMO_OPTION_MALLOC } else { 0 })
+            let on = |m: bool, asked: fn(&RecordOptions) -> Option<bool>| {
+                (mon && m) || recs.iter().any(|r| asked(r.options()) == Some(true))
+            };
+            let mut options = 0;
+            if preload && on(malloc, |o| o.malloc) {
+                options |= ARMO_OPTION_MALLOC;
+            }
+            if on(gpu, |o| o.gpu) {
+                options |= ARMO_OPTION_GPU;
+            }
+            if on(dds, |o| o.dds) {
+                options |= ARMO_OPTION_DDS;
+            }
+            Some(options)
         };
         shm.arm(&want);
 
@@ -421,10 +476,20 @@ impl Core {
                 .filter(|p| self.selected(*p))
                 .collect();
             plan.hot.add(Sel::pids(uprobe.iter().copied()));
+            // LD_PRELOAD and LTTng processes time these calls themselves.
+            if self.gpu {
+                plan.gpu.add(Sel::pids(uprobe.iter().copied()));
+            }
+            if self.dds {
+                plan.dds.add(Sel::pids(uprobe.iter().copied()));
+            }
             // Rates, hops and losses come from individual publish and take records.
             plan.stream.add(Sel::pids(uprobe));
             if self.sched {
                 plan.sched.add(selection_sel(&self.selection));
+            }
+            if self.futex {
+                plan.futex.add(selection_sel(&self.selection));
             }
             if self.bandwidth {
                 plan.bandwidth.add(selection_sel(&self.selection));
@@ -434,6 +499,12 @@ impl Core {
         for r in &self.active {
             let uprobe = r.uprobe_pids().map_or(Sel::All, Sel::pids);
             plan.hot.add(uprobe.clone());
+            if r.options().gpu == Some(true) {
+                plan.gpu.add(uprobe.clone());
+            }
+            if r.options().dds == Some(true) {
+                plan.dds.add(uprobe.clone());
+            }
             if r.kind() == RecordKind::Events {
                 plan.stream.add(uprobe);
             }
@@ -445,6 +516,9 @@ impl Core {
             };
             if r.options().sched == Some(true) {
                 plan.sched.add(targets.clone());
+            }
+            if r.options().futex == Some(true) {
+                plan.futex.add(targets.clone());
             }
             if r.options().bandwidth == Some(true) {
                 plan.bandwidth.add(targets);
@@ -489,9 +563,40 @@ impl Core {
         self.ingest.set_sched(sched);
         let hot = self.hot(&plan.hot);
         self.ingest.set_hot(hot);
+        let futex = match self.armod {
+            ArmodLink::Connected => plan.futex.clone(),
+            _ => Sel::None,
+        };
+        self.ingest.set_probes(self.gpu_measured(), futex);
+        let (chains, latest) = self.flows();
+        self.ingest.set_flows(chains, latest);
         self.send_plan(plan);
         self.lttng_refresh();
         self.update_guard();
+    }
+
+    fn gpu_measured(&self) -> bool {
+        self.gpu || self.active.iter().any(|r| r.options().gpu == Some(true))
+    }
+
+    /// The chains and latest nodes of monitoring and of every recording: they share the window.
+    fn flows(&self) -> (Vec<ChainSpec>, Vec<Regex>) {
+        let mut chains = self.chains.clone();
+        let mut latest = self.latest_nodes.clone();
+        for o in self.active.iter().map(Active::options) {
+            for c in o.chains.iter().flatten() {
+                if !chains.contains(c) {
+                    chains.push(c.clone());
+                }
+            }
+            for n in o.latest_nodes.iter().flatten() {
+                if !latest.contains(n) {
+                    latest.push(n.clone());
+                }
+            }
+        }
+        let latest = chain::latest_nodes(&latest).expect("checked when configured");
+        (chains, latest)
     }
 
     /// The processes whose hot events reach the model: armod's `uprobe` ones while it is there,
@@ -792,6 +897,7 @@ impl Core {
         self.ingest
             .set_lttng_span(std::mem::take(&mut self.lt.span_ns));
         let mut w = self.ingest.window(now, real, window_ns, true);
+        self.devices.fill(&mut w, sys::mono_ns());
         for f in self.shm.files.values().filter(|f| f.preload()) {
             let id = f.entity();
             if let Some(p) = w.processes.iter_mut().find(|p| p.id == id) {
@@ -951,6 +1057,11 @@ impl Core {
         }
         self.finish_ended();
         let busy = self.monitoring() || !self.active.is_empty();
+        if busy {
+            self.devices.start(sys::mono_ns());
+        } else {
+            self.devices.stop();
+        }
         if !busy {
             self.window_start = now;
         } else if !self.armod_clock() && now - self.window_start >= (self.window_s * 1e9) as u64 {
@@ -970,7 +1081,7 @@ impl Core {
     /// Ends what armo-collectd owns, so the guard has nothing left to do.
     pub(super) fn shutdown(&mut self) {
         self.lttng_close();
-        self.shm.arm(&|_| None);
+        self.shm.arm(&|_, _| None);
         if let Some(s) = self.armod_stream.take() {
             let _ = s.shutdown(Shutdown::Both);
         }
@@ -1074,8 +1185,8 @@ impl Core {
         self.refresh();
         self.broadcast_state();
         if self.selection.all {
-            let text = "uprobe attaches only to processes selected by pid: the others show rates \
-                        only when started with preload or lttng";
+            let text = "all processes: values come from those started with `armo run`; for \
+                        others run armod and select them with --pid";
             self.event_line(Level::Info, "select_all", text.into(), Vec::new());
         }
         ok(id)
@@ -1344,6 +1455,9 @@ impl Core {
             }
             ClientOp::Select(select) => self.select(id, select),
             ClientOp::Configure(c) => {
+                let flows = chain::check(c.chains.as_deref().unwrap_or_default()).and_then(|()| {
+                    chain::latest_nodes(c.latest_nodes.as_deref().unwrap_or_default())
+                });
                 if let Some(w) = c
                     .window_s
                     .filter(|w| !(*w > 0.0 && Duration::try_from_secs_f64(*w).is_ok()))
@@ -1352,12 +1466,21 @@ impl Core {
                         id,
                         format!("window_s {w} is not a positive number of seconds"),
                     )
+                } else if let Err(e) = flows {
+                    bad(id, e)
                 } else {
                     self.window_s = c.window_s.unwrap_or(self.window_s);
                     self.bandwidth = c.bandwidth.unwrap_or(self.bandwidth);
                     self.sched = c.sched.unwrap_or(self.sched);
                     self.malloc = c.malloc.unwrap_or(self.malloc);
                     self.pss = c.pss.unwrap_or(self.pss);
+                    self.gpu = c.gpu.unwrap_or(self.gpu);
+                    self.dds = c.dds.unwrap_or(self.dds);
+                    self.futex = c.futex.unwrap_or(self.futex);
+                    self.chains = c.chains.unwrap_or(std::mem::take(&mut self.chains));
+                    self.latest_nodes = c
+                        .latest_nodes
+                        .unwrap_or(std::mem::take(&mut self.latest_nodes));
                     self.ingest.set_pss(self.pss);
                     if let Some(hz) = c.expected_hz {
                         self.ingest.set_expected_hz(hz);
@@ -1492,6 +1615,7 @@ impl Core {
         }
         self.armod = link;
         self.ingest.set_sched(Sel::None);
+        self.ingest.set_probes(self.gpu_measured(), Sel::None);
         let hot = self.hot(&Sel::None);
         self.ingest.set_hot(hot);
         self.broadcast_state();

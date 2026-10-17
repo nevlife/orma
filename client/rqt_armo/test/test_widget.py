@@ -49,7 +49,9 @@ def test_initial_state(gui, fake):
     assert row[5:9] == ["0:00:42", "100.0MiB", "0:29:18", "7.9GiB"]
     assert row[9:12] == ["1200000", "0", "rqt_armo:5555@orin"]
     assert gui.armod.text.text() == "armod: connected"
-    assert gui.monitor_label.text() == "monitor: running, window 1 s, 4021:preload, sched"
+    assert gui.monitor_label.text() == (
+        "monitor: running, window 1 s, 4021:preload, sched, gpu, futex, chain perception"
+    )
 
     tree = gui.monitor.tree
     lines = []
@@ -64,8 +66,8 @@ def test_initial_state(gui, fake):
         "listener (5100/12)",
     ]
     callback = tree.topLevelItem(0).child(0).child(0)
-    assert [callback.text(c) for c in range(2, 10)] == [
-        "10.0", "10.0", "-", "2.1ms", "2.1ms", "2.0ms", "1.0ms", "-",
+    assert [callback.text(c) for c in range(2, 13)] == [
+        "10.0", "10.0", "-", "1.0ms", "1.6ms", "2.1ms", "2.0ms", "-", "-", "-", "-",
     ]  # fmt: skip
     assert column(gui.monitor.topics, 0) == ["/scan", "/image"]
     assert table_texts(gui.monitor.subscriptions)[0][:5] == [
@@ -241,7 +243,7 @@ def test_threads_sort_by_value_and_search_by_name(app):
     assert column(threads, 0) == ["11", "12", "13"]
     threads.sortItems(4, Qt.DescendingOrder)
     assert column(threads, 0) == ["13", "11", "12"]
-    threads.sortItems(6, Qt.DescendingOrder)
+    threads.sortItems(8, Qt.DescendingOrder)
     assert column(threads, 0)[0] == "12"
     monitor.show_window(w)
     assert column(threads, 0)[0] == "12"
@@ -261,7 +263,7 @@ def test_graph_walk(gui):
     assert graph.next.itemText(0) == "/scan -> /camera/driver"
     graph.add_button.click()
     assert table_texts(graph.hops) == [
-        ["1", "transport", "/scan -> /camera/driver", "524.3us", "524.3us", "400.0us", "131.1us", "210.0us", "100% (largest)"]
+        ["1", "transport", "/scan -> /camera/driver", "131.1us", "327.7us", "524.3us", "400.0us", "210.0us", "100% (largest)"]
     ]  # fmt: skip
     assert graph.e2e.text() == "e2e (sum of hop means): 210.0us"
     graph.back_button.click()
@@ -273,6 +275,7 @@ def lat_of(mean):
         "n": 1,
         "mean_ns": mean,
         "p50_ns": mean,
+        "p90_ns": mean,
         "p99_ns": mean,
         "p999_ns": mean,
         "max_ns": mean,
@@ -337,3 +340,116 @@ def test_rqt_loads_plugin(app, fake, tmp_path):
     assert rqt.wait(30) == 0
     assert fake.ops() == ["hello", "subscribe", "bye"]
     assert fake.requests()[0]["client"] == "rqt_armo"
+
+
+def test_select_new_options_and_chains(gui, fake):
+    selection = gui.selection
+    assert selection.extras["gpu"].isChecked() and not selection.extras["dds"].isChecked()
+    assert selection.chains.text() == "perception=/camera/image,/detections,/tracks"
+    selection.extras["dds"].setChecked(True)
+    selection.chains.setText("x=/a")
+    selection.apply_button.click()
+    assert selection.status.text().startswith("chain 'x=/a'")
+    assert "configure" not in fake.ops()
+    selection.chains.setText("r=/obstacle,/trajectory:first")
+    selection.apply_button.click()
+    wait_for(lambda: "configure" in fake.ops())
+    assert last(fake, "configure") == {
+        "op": "configure",
+        "dds": True,
+        "chains": [{"name": "r", "topics": ["/obstacle", "/trajectory"], "mode": "first"}],
+    }
+    wait_for(lambda: gui.monitor_label.text().endswith("gpu, dds, futex, chain r"))
+
+
+def test_form_sends_new_options(gui, fake):
+    gui.recordings.start_button.click()
+    form = gui.recordings.dialog.form
+    form.switches["gpu"].setChecked(True)
+    form.switches["futex"].setChecked(True)
+    form.chains.setText("a=/x,/y b=/p,/q:first")
+    form.latest_nodes.setText("/fusion /planner")
+    gui.recordings.dialog.accept()
+    wait_for(lambda: "record_start" in fake.ops())
+    assert last(fake, "record_start") == {
+        "op": "record_start",
+        "gpu": True,
+        "futex": True,
+        "chains": [
+            {"name": "a", "topics": ["/x", "/y"], "mode": "lineage"},
+            {"name": "b", "topics": ["/p", "/q"], "mode": "first"},
+        ],
+        "latest_nodes": ["/fusion", "/planner"],
+    }
+
+
+def lat_ns(p50, p99):
+    return {
+        "n": 4,
+        "mean_ns": p50,
+        "p50_ns": p50,
+        "p90_ns": p50,
+        "p99_ns": p99,
+        "p999_ns": p99,
+        "max_ns": p99,
+    }
+
+
+def test_new_tabs(app):
+    from rqt_armo.monitor import MonitorView
+
+    w = golden("server", "window")
+    callback = w["callbacks"][0]
+    callback["cuda"] = {
+        "calls": 3, "launches": 2, "memcpy_bytes": 0, "api_mean_ns": 250_000, "sync_mean_ns": 0,
+    }  # fmt: skip
+    callback["futex_mean_ns"] = 12_000
+    w["threads"][0]["futex"] = lat_ns(1_000, 7_000)
+    w["topics"][0]["dds_write"] = lat_ns(5_000, 20_000)
+    w["processes"][0]["gpu_mem_bytes"] = 512 << 20
+    w["spans"] = [
+        {
+            "id": "s:4021:771234:1", "name": "preprocess", "pid": 4021, "node": callback["node"],
+            "callback": callback["id"], "parent": None, "hz": 10.0,
+            "duration": lat_ns(800_000, 1_200_000),
+        }
+    ]  # fmt: skip
+    w["chains"] = [
+        {
+            "name": "perception", "mode": "lineage", "topics": ["/scan", "/tracks"], "count": 10,
+            "e2e": lat_ns(20_000_000, 31_000_000), "steps": [lat_ns(20_000_000, 31_000_000)],
+            "broken": 0,
+        }
+    ]  # fmt: skip
+    w["host"] = {
+        "cpu_mhz": [1200, 2200],
+        "thermal": [{"name": "cpu-thermal", "temp_c": 61.5}],
+        "throttle": {},
+        "net": [],
+        "udp": None,
+        "gpus": [
+            {
+                "index": 0, "name": "Orin", "util_pct": None, "mem_used_bytes": None,
+                "mem_total_bytes": None, "clock_mhz": 918, "temp_c": None, "power_w": None,
+                "throttle": [],
+            }
+        ],
+    }  # fmt: skip
+    monitor = MonitorView()
+    monitor.show_window(w)
+    item = monitor.tree.topLevelItem(0).child(0).child(0)
+    assert [item.text(c) for c in range(10, 13)] == ["250.0us", "0ns", "12.0us"]
+    assert table_texts(monitor.threads)[0][-3] == "7.0us"
+    assert table_texts(monitor.topics)[0][-2:] == ["-", "20.0us"]
+    assert table_texts(monitor.gpus) == [["0", "Orin", "-", "-/-", "918MHz", "-", "-", ""]]
+    assert table_texts(monitor.cuda)[0][:2] == ["4021", "camera_node"]
+    assert table_texts(monitor.cuda)[0][7] == "512.0MiB"
+    assert monitor.host.cpu.text() == "cpu MHz: min 1200 mean 1700 max 2200 (2 cpus)"
+    assert monitor.host.udp.text() == "udp: -"
+    assert table_texts(monitor.host.thermal) == [["cpu-thermal", "61.5"]]
+    assert table_texts(monitor.spans)[0][:4] == ["preprocess", "-", "sub(/scan)", "/camera/driver"]
+    assert table_texts(monitor.chains) == [
+        ["perception", "lineage", "10", "20.0ms", "20.0ms", "31.0ms", "31.0ms", "/tracks:31.0ms", "0"]
+    ]  # fmt: skip
+    tabs = [monitor.tabText(i) for i in range(monitor.count())]
+    assert tabs[5:9] == ["GPU", "Host", "Spans", "Chains"]

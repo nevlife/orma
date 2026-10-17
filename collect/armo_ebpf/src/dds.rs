@@ -1,5 +1,6 @@
-//! Serialized message sizes inside the DDS implementations (design 2.1.2, bandwidth opt-in).
-//! These are internal functions reached through function tables, so only a uprobe sees them.
+//! Serialized message sizes inside the DDS implementations (design 2.1.2, bandwidth opt-in):
+//! internal functions reached through function tables, so only a uprobe sees them. And the DDS
+//! write calls under `rmw_publish` (design 20.2, dds opt-in).
 
 use armo_common::{bpf::*, events::*};
 use aya_ebpf::{
@@ -109,4 +110,57 @@ pub fn cyclone_from_sample_ret(ctx: RetProbeContext) -> u32 {
         size(v);
     }
     0
+}
+
+fn write_enter(writer: u64) -> u32 {
+    if streamed(tgid()) {
+        let p = Pending {
+            ns: now(),
+            arg: writer,
+            kind: 0,
+            pad: 0,
+        };
+        let _ = DDS_CALLS.insert(tid(), p, 0);
+    }
+    0
+}
+
+fn write_ret(ctx: &RetProbeContext) -> u32 {
+    let ns = now();
+    if !mine(ctx) || !streamed(tgid()) {
+        return 0;
+    }
+    let Some(p) = take(&DDS_CALLS) else {
+        lost(LOST_UNPAIRED);
+        return 0;
+    };
+    let ev = armo_ev_dds_write {
+        writer: p.arg,
+        duration_ns: ns.saturating_sub(p.ns),
+    };
+    emit(ARMO_EV_DDS_WRITE, ns, &ev, []);
+    0
+}
+
+// dds_write(writer, data), dds_write_ts(writer, data, timestamp), dds_writecdr(writer, serdata),
+// dds_forwardcdr(writer, serdata). `dds_entity_t` is an int32.
+#[uprobe]
+pub fn cyclone_write(ctx: ProbeContext) -> u32 {
+    write_enter(ctx.arg::<u64>(0).unwrap_or(0) & 0xffff_ffff)
+}
+
+#[uretprobe]
+pub fn cyclone_write_ret(ctx: RetProbeContext) -> u32 {
+    write_ret(&ctx)
+}
+
+// eprosima::fastdds::dds::DataWriter::write(this, data, ...)
+#[uprobe]
+pub fn fastdds_write(ctx: ProbeContext) -> u32 {
+    write_enter(ctx.arg::<u64>(0).unwrap_or(0))
+}
+
+#[uretprobe]
+pub fn fastdds_write_ret(ctx: RetProbeContext) -> u32 {
+    write_ret(&ctx)
 }

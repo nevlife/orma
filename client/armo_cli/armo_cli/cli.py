@@ -1,16 +1,28 @@
 """The armo command."""
 
 import argparse
+import collections
+import contextlib
+import csv
+import io
 import json
 import os
+import re
 import shlex
+import subprocess
 import sys
+import time
 
+import argcomplete
 import armo_client
 from armo_client import ArmoError, view
 
 METHODS = ("uprobe", "preload", "lttng")
 LAUNCH_METHODS = ("preload", "lttng")
+EXTRAS = ("bandwidth", "sched", "malloc", "pss", "gpu", "dds", "futex")
+MONITOR_OPTIONS = ("gpu", "dds", "futex", "chains", "latest_nodes")
+EXPORT_METRICS = ("processes", "threads", "nodes", "executors", "callbacks", "topics")
+EXPORT_METRICS += ("subscriptions", "flows", "spans", "chains", "host", "agent")
 
 
 def ns(value):
@@ -36,10 +48,14 @@ def num(value, fmt="{:.1f}"):
 
 
 def lat(value):
-    """Tail first: p99, p99.9, max, then p50."""
+    """p50, p90, p99, max."""
     if value is None:
         return ["-"] * 4
-    return [ns(value[k]) for k in ("p99_ns", "p999_ns", "max_ns", "p50_ns")]
+    return [ns(value[k]) for k in ("p50_ns", "p90_ns", "p99_ns", "max_ns")]
+
+
+def p99(value):
+    return "-" if value is None else ns(value["p99_ns"])
 
 
 def table(title, headers, rows):
@@ -59,16 +75,7 @@ OVERFLOW = [
 ]
 
 
-def print_processes(w):
-    table(
-        "processes",
-        ["pid", "comm", "method", "cpu%", "rss", "pss", "shared cpu%", "exited"],
-        [
-            [p["pid"], p["comm"], p["method"] or "-", num(p["cpu_pct"]), size(p["rss_bytes"])]
-            + [size(p["pss_bytes"]), num(p["shared_cpu_pct"]), "yes" if p["exited"] else ""]
-            for p in w["processes"]
-        ],
-    )
+def print_process_warnings(w):
     for p in w["processes"]:
         overflow = p.get("overflow") or {}
         lost = [f"{overflow[k]} {what}" for k, what in OVERFLOW if overflow.get(k)]
@@ -79,6 +86,9 @@ def print_processes(w):
                 f"warning: pid {p['pid']} ({p['comm']}): flux2 GPU wedged (CUresult "
                 f"{p['flux2_gpu_wedged']}); its GPU channels refuse claims, loans and takes"
             )
+
+
+def print_agent(w):
     a = w["agent"]
     armod = a["armod"]
     print(
@@ -89,49 +99,60 @@ def print_processes(w):
     )
 
 
+def node_rss(w, n):
+    """The process's RSS, marked when the process holds more than this node."""
+    p = next((p for p in w["processes"] if p["pid"] == n["pid"]), None)
+    if p is None:
+        return "-"
+    return size(p["rss_bytes"]) + (" (shared)" if len(p["nodes"]) > 1 else "")
+
+
 def print_nodes(w):
     table(
         "nodes",
-        ["node", "pid", "cpu%", "source", "busy%", "cb Hz"],
+        ["node", "pid", "cpu%", "source", "busy%", "cb Hz", "rss"],
         [
             [n["fqn"], n["pid"], num(n["cpu_pct"]), n["cpu_source"], num(n["busy_pct"])]
-            + [num(n["cb_hz"])]
+            + [num(n["cb_hz"]), node_rss(w, n)]
             for n in w["nodes"]
         ],
     )
+    print_process_warnings(w)
 
 
-LAT_HEADS = ["p99", "p99.9", "max", "p50"]
+LAT_HEADS = ["p50", "p90", "p99", "max"]
 
 
 def print_callbacks(w):
     labels = view.callback_labels(w)
+    callbacks = view.callbacks_in_order(w)
+    cuda = any(c.get("cuda") for c in callbacks)
+    futex = any(c.get("futex_mean_ns") is not None for c in callbacks)
     table(
         "callbacks",
-        ["callback", "node", "pid", "Hz", "expected"] + LAT_HEADS + ["dispatch p99"],
+        ["callback", "node", "pid", "Hz", "expected"]
+        + LAT_HEADS
+        + ["dispatch p99"]
+        + ["cuda api", "cuda sync"] * cuda
+        + ["futex"] * futex,
         [
             [labels[c["id"]], view.owner_label(w, c["node"] or c["id"]), view.pid_of(c["id"])]
             + [num(c["hz"]), num(c["expected_hz"])]
             + lat(c["duration"])
-            + [lat(c["dispatch"])[0]]
-            for c in view.callbacks_in_order(w)
+            + [p99(c["dispatch"])]
+            + cuda_cells(c.get("cuda")) * cuda
+            + [ns(c.get("futex_mean_ns"))] * futex
+            for c in callbacks
         ],
     )
 
 
-def print_topics(w):
-    table(
-        "topics",
-        ["topic", "transport", "pub Hz", "expected", "bw", "drops"]
-        + ["hop " + h for h in LAT_HEADS],
-        [
-            [t["name"], t["transport"], num(t["pub_hz"]), num(t["expected_hz"])]
-            + [size(t["bw_bps"]) + "/s" if t["bw_bps"] is not None else "-"]
-            + [num(t["drops"]["publish"], "{}")]
-            + lat(t["hop"])
-            for t in w["topics"]
-        ],
-    )
+def cuda_cells(use):
+    return [ns(use["api_mean_ns"]), ns(use["sync_mean_ns"])] if use else ["-", "-"]
+
+
+def rate(bps):
+    return "-" if bps is None else size(bps) + "/s"
 
 
 def print_subscriptions(w):
@@ -150,20 +171,135 @@ def print_subscriptions(w):
     )
 
 
-# View name: the window field it shows, and its printer.
-VIEWS = {
-    "proc": ("processes", print_processes),
-    "node": ("nodes", print_nodes),
-    "cb": ("callbacks", print_callbacks),
-    "topic": ("topics", print_topics),
-    "sub": ("subscriptions", print_subscriptions),
-}
+GPU_HEADS = ["gpu", "name", "util%", "mem", "clock", "temp", "power", "throttle"]
+CUDA_HEADS = ["pid", "comm", "calls Hz", "launch Hz", "memcpy", "alloc Hz", "errors", "gpu mem"]
+CUDA_HEADS += ["sync " + h for h in LAT_HEADS]
+SPAN_HEADS = ["span", "parent", "callback", "node", "pid", "Hz"] + LAT_HEADS
+CHAIN_HEADS = ["chain", "mode", "count"] + ["e2e " + h for h in LAT_HEADS]
+CHAIN_HEADS += ["steps p99", "broken"]
+THERMAL_HEADS = ["zone", "temp C"]
+THROTTLE_HEADS = ["counter", "count"]
+NET_HEADS = ["interface", "rx", "tx", "rx pps", "tx pps", "rx drops", "tx drops", "rx errors"]
+NET_HEADS += ["tx errors"]
 
 
-def print_window(w, name, selection=None, infra=False):
-    behind = " behind" if w["behind"] else ""
-    print(f"window {w['seq']}  {w['window_ns'] / 1e9:g}s{behind}")
-    VIEWS[name][1](view.visible(w, selection, infra))
+def unit(value, suffix, fmt="{:.0f}"):
+    return "-" if value is None else fmt.format(value) + suffix
+
+
+def host_of(w):
+    return w.get("host") or {"cpu_mhz": [], "thermal": [], "throttle": {}, "net": [], "gpus": []}
+
+
+def gpu_rows(w):
+    return [
+        [g["index"], g["name"], num(g["util_pct"])]
+        + [f"{size(g['mem_used_bytes'])}/{size(g['mem_total_bytes'])}"]
+        + [unit(g["clock_mhz"], "MHz"), unit(g["temp_c"], "C"), unit(g["power_w"], "W", "{:.1f}")]
+        + [",".join(g["throttle"])]
+        for g in host_of(w)["gpus"]
+    ]
+
+
+def cuda_rows(w):
+    rows = []
+    for p in w["processes"]:
+        cuda = p.get("cuda")
+        if cuda is None and p.get("gpu_mem_bytes") is None:
+            continue
+        cells = [p["pid"], p["comm"]]
+        if cuda is None:
+            cells += ["-"] * 5
+        else:
+            cells += [num(cuda["calls_hz"]), num(cuda["launch_hz"]), rate(cuda["memcpy_bps"])]
+            cells += [num(cuda["alloc_hz"]), cuda["errors"]]
+        rows.append(cells + [size(p.get("gpu_mem_bytes"))] + lat(cuda and cuda["sync"]))
+    return rows
+
+
+def span_names(spans):
+    """Names that repeat in one process with the same callback and parent get `#` and the last
+    six digits of their key, the address of the name string at each begin."""
+    seen = collections.Counter((s["pid"], s["name"], s["callback"], s["parent"]) for s in spans)
+    names = {}
+    for s in spans:
+        key = re.search(r"@([0-9a-f]+)#", s["id"])
+        repeated = seen[(s["pid"], s["name"], s["callback"], s["parent"])] > 1
+        names[s["id"]] = f"{s['name']} #{key[1][-6:]}" if repeated and key else s["name"]
+    return names
+
+
+def span_rows(w):
+    labels = view.callback_labels(w)
+    names = span_names(w.get("spans", []))
+    nodes = {n["id"]: n["fqn"] for n in w["nodes"]}
+    return [
+        [names[s["id"]], names.get(s["parent"], "-") if s["parent"] else "-"]
+        + [labels.get(s["callback"], s["callback"]) if s["callback"] else "-"]
+        + [nodes.get(s["node"], view.UNLINKED), s["pid"], num(s["hz"])]
+        + lat(s["duration"])
+        for s in w.get("spans", [])
+    ]
+
+
+def chain_rows(w):
+    return [
+        [c["name"], c["mode"], c["count"]]
+        + lat(c["e2e"])
+        + [" ".join(f"{t}:{p99(step)}" for t, step in zip(c["topics"][1:], c["steps"]))]
+        + [c["broken"]]
+        for c in w.get("chains", [])
+    ]
+
+
+def thermal_rows(w):
+    return [[t["name"], f"{t['temp_c']:.1f}"] for t in host_of(w)["thermal"]]
+
+
+def throttle_rows(w):
+    return [[name, count] for name, count in host_of(w)["throttle"].items()]
+
+
+def net_rows(w):
+    return [
+        [n["name"], rate(n["rx_bps"]), rate(n["tx_bps"]), num(n["rx_pps"]), num(n["tx_pps"])]
+        + [n["rx_drops"], n["tx_drops"], n["rx_errors"], n["tx_errors"]]
+        for n in host_of(w)["net"]
+    ]
+
+
+def cpu_line(w):
+    cpus = host_of(w)["cpu_mhz"]
+    mhz = [m for m in cpus if m is not None]
+    if not mhz:
+        return f"cpu MHz: - ({len(cpus)} cpus)"
+    mean = sum(mhz) / len(mhz)
+    return f"cpu MHz: min {min(mhz)} mean {mean:.0f} max {max(mhz)} ({len(cpus)} cpus)"
+
+
+def udp_line(w):
+    u = host_of(w).get("udp")
+    if u is None:
+        return "udp: -"
+    return (
+        f"udp: in errors {u['in_errors']}, rcvbuf errors {u['rcvbuf_errors']}"
+        f", sndbuf errors {u['sndbuf_errors']}, no ports {u['no_ports']}"
+    )
+
+
+def print_host(w):
+    if w.get("host") is None:
+        return
+    print(cpu_line(w))
+    table("thermal", THERMAL_HEADS, thermal_rows(w))
+    table("throttle", THROTTLE_HEADS, throttle_rows(w))
+    table("net", NET_HEADS, net_rows(w))
+    print(udp_line(w))
+    table("gpus", GPU_HEADS, gpu_rows(w))
+
+
+def print_spans(w):
+    table("spans", SPAN_HEADS, span_rows(w))
 
 
 def print_recordings(recordings):
@@ -207,7 +343,7 @@ def cmd_status(args):
         src, m = c.state["sources"], c.state["monitor"]
         selection = m["selection"]
         pids = " ".join(f"{p}:{m['method_by_pid'].get(str(p), 'auto')}" for p in selection["pids"])
-        extra = "".join(f", {k}" for k in ("bandwidth", "sched", "malloc", "pss") if m[k])
+        extra = "".join(f", {k}" for k in EXTRAS if m.get(k))
         names = "".join(
             f" {k} {selection[k]}" for k in ("node", "topic", "exclude") if k in selection
         )
@@ -222,52 +358,237 @@ def cmd_status(args):
             f"monitor: {'running' if m['running'] else 'idle'}, window {m['window_s']:g}s, "
             f"selection {'all' if selection['all'] else pids or 'none'}{names}{extra}"
         )
+        for chain in m.get("chains", []):
+            print(f"chain: {armo_client.format_chain(chain)}")
+        if m.get("latest_nodes"):
+            print(f"latest-input nodes: {' '.join(m['latest_nodes'])}")
         print_recordings(c.state["recordings"])
+        c.request("subscribe", streams=["window"])
+        print_agent(next_window(c))
     return 0
 
 
-def cmd_top(args):
-    if args.view is None and not args.json:
-        raise ArmoError(f"armo top needs a view: {', '.join(VIEWS)}")
-    methods = args.method or []
-    if methods and not args.pid:
+def exact(names):
+    return "^(" + "|".join(map(re.escape, names)) + ")$"
+
+
+def select(c, args, options=(), **names):
+    """Subscribe, configure, and select these processes, names, or else all."""
+    # First, so that the event lines `select` raises reach this client.
+    c.request("subscribe", streams=["state", "window", "event_line"])
+    pids = getattr(args, "pid", None) or []
+    methods = getattr(args, "method", None) or []
+    if methods and not pids:
         raise ArmoError("--method needs --pid")
-    names = {k: getattr(args, k) for k in ("node", "topic", "exclude") if getattr(args, k)}
-    if len(methods) not in (0, 1, len(args.pid)):
+    if len(methods) not in (0, 1, len(pids)):
         raise ArmoError("give --method once, or once per --pid")
-    methods = methods * len(args.pid) if len(methods) == 1 else methods
+    methods = methods * len(pids) if len(methods) == 1 else methods
+    configure = {"window_s": getattr(args, "window", None)}
+    configure.update((k, getattr(args, k, None)) for k in options)
+    configure = {k: v for k, v in configure.items() if v is not None}
+    if configure:
+        c.request("configure", **configure)
+    names = {k: v for k, v in names.items() if v}
+    c.request(
+        "select",
+        all=not (pids or names),
+        pids=pids,
+        method_by_pid={str(p): m for p, m in zip(pids, methods)},
+        **names,
+    )
+
+
+def watch(c, show):
+    """Each window's header, then what `show` prints of it or `none`, until Ctrl-C."""
+    try:
+        while True:
+            m = c.next_message()
+            if m["type"] == "window":
+                behind = " behind" if m["behind"] else ""
+                print(f"window {m['seq']}  {m['window_ns'] / 1e9:g}s{behind}")
+                out = io.StringIO()
+                with contextlib.redirect_stdout(out):
+                    show(m)
+                print(out.getvalue() or "  none\n")
+            elif m["type"] == "event_line":
+                print(f"[{m['level']}] {m['kind']}: {m['text']}")
+            sys.stdout.flush()
+    except KeyboardInterrupt:
+        return 0
+
+
+def of_nodes(w, nodes, infra=False):
+    """`w` without the infrastructure entities, and with only the callbacks and subscriptions of
+    these nodes."""
+    w = view.visible(w, None, infra)
+    ids = {n["id"] for n in w["nodes"] if n["fqn"] in nodes}
+    return dict(
+        w,
+        nodes=[n for n in w["nodes"] if n["id"] in ids],
+        callbacks=[c for c in w["callbacks"] if c["node"] in ids],
+        subscriptions=[s for s in w["subscriptions"] if s["node"] in ids],
+    )
+
+
+def cmd_top(args):
     with armo_client.connect() as c:
-        # First, so that the event lines `select` raises reach this client.
-        c.request("subscribe", streams=["state", "window", "event_line"])
-        if args.window is not None or args.pss:
-            options = {"window_s": args.window, "pss": True if args.pss else None}
-            c.request("configure", **{k: v for k, v in options.items() if v is not None})
-        c.request(
-            "select",
-            all=not (args.pid or names),
-            pids=args.pid,
-            method_by_pid={str(p): m for p, m in zip(args.pid, methods)},
-            **names,
-        )
-        try:
-            while True:
-                m = c.next_message()
-                if m["type"] == "window":
-                    selection = c.state["monitor"]["selection"]
-                    if args.json and args.view:
-                        field = VIEWS[args.view][0]
-                        shown = view.visible(m, selection, args.infra)
-                        m = {"seq": m["seq"], "window_ns": m["window_ns"], field: shown[field]}
-                    if args.json:
-                        print(json.dumps(m, separators=(",", ":")))
-                    else:
-                        print_window(m, args.view, selection, args.infra)
-                        print()
-                elif m["type"] == "event_line" and not args.json:
-                    print(f"[{m['level']}] {m['kind']}: {m['text']}")
-                sys.stdout.flush()
-        except KeyboardInterrupt:
-            return 0
+        c.request("subscribe", streams=["window", "event_line"])
+        if args.window is not None:
+            c.request("configure", window_s=args.window)
+        if args.json:
+            try:
+                while True:
+                    print(json.dumps(next_window(c), separators=(",", ":")), flush=True)
+            except KeyboardInterrupt:
+                return 0
+        return watch(c, print_host)
+
+
+def cmd_node_list(args):
+    with armo_client.connect() as c:
+        select(c, args)
+        w = next_window(c)
+    for name in sorted({n["fqn"] for n in w["nodes"]}):
+        print(name)
+    return 0
+
+
+def cmd_node_info(args):
+    with armo_client.connect() as c:
+        select(c, args, node=exact([args.node]))
+        w = next_window(c)
+    shown = of_nodes(w, [args.node], args.infra)
+    if not shown["nodes"]:
+        raise ArmoError(f"{args.node}: not an observed node")
+    labels = view.callback_labels(w)
+    for n in shown["nodes"]:
+        p = next((p for p in w["processes"] if p["pid"] == n["pid"]), None)
+        print(n["fqn"])
+        print(f"  pid {n['pid']} ({p['comm'] if p else '-'}), rss {node_rss(w, n)}")
+        for kind, field in (("publishers", "publishers"), ("subscriptions", "subscribers")):
+            topics = sorted(t["name"] for t in shown["topics"] if n["id"] in t[field])
+            print(f"  {kind}: {len(topics)}")
+            for name in topics:
+                print(f"    {name}")
+        callbacks = [labels[c["id"]] for c in shown["callbacks"] if c["node"] == n["id"]]
+        print(f"  callbacks: {len(callbacks)}")
+        for label in callbacks:
+            print(f"    {label}")
+    return 0
+
+
+def cmd_node_cpu(args):
+    with armo_client.connect() as c:
+        select(c, args, node=args.nodes and exact(args.nodes))
+
+        def show(w):
+            w = view.visible(w, None)
+            if args.nodes:
+                w = dict(w, nodes=[n for n in w["nodes"] if n["fqn"] in args.nodes])
+            print_nodes(w)
+
+        return watch(c, show)
+
+
+def cmd_node_cb(args):
+    with armo_client.connect() as c:
+        select(c, args, ("gpu", "futex"), node=exact([args.node]))
+
+        def show(w):
+            w = of_nodes(w, [args.node], args.infra)
+            if args.callback:
+                labels = view.callback_labels(w)
+                callbacks = [c for c in w["callbacks"] if args.callback in labels[c["id"]]]
+                w = dict(w, callbacks=callbacks)
+            print_callbacks(w)
+
+        return watch(c, show)
+
+
+def cmd_node_sub(args):
+    with armo_client.connect() as c:
+        select(c, args, node=exact([args.node]))
+
+        def show(w):
+            w = of_nodes(w, [args.node], args.infra)
+            if args.topic:
+                ids = {t["id"] for t in w["topics"] if t["name"] == args.topic}
+                w = dict(w, subscriptions=[s for s in w["subscriptions"] if s["topic"] in ids])
+            print_subscriptions(w)
+
+        return watch(c, show)
+
+
+def cmd_span(args):
+    with armo_client.connect() as c:
+        select(c, args)
+
+        def show(w):
+            if args.names:
+                w = dict(w, spans=[s for s in w["spans"] if s["name"] in args.names])
+            print_spans(w)
+
+        return watch(c, show)
+
+
+def hz_cells(t, dds):
+    return [num(t["pub_hz"]), num(t["expected_hz"]), num(t["drops"]["publish"], "{}")]
+
+
+def delay_cells(t, dds):
+    return lat(t["hop"]) + [p99(t.get("pub_to_dds")), p99(t.get("dds_write"))] * dds
+
+
+# `armo topic` command: its columns, and the cells of one topic.
+TOPIC_COLUMNS = {
+    "hz": (["pub Hz", "expected", "drops"], hz_cells),
+    "bw": (["bw"], lambda t, dds: [rate(t["bw_bps"])]),
+    "delay": (["hop " + h for h in LAT_HEADS], delay_cells),
+}
+
+
+def print_topic_window(w, command, topics):
+    by_name = {t["name"]: t for t in w["topics"]}
+    heads, cells = TOPIC_COLUMNS[command]
+    dds = command == "delay" and any(t.get("dds_write") or t.get("pub_to_dds") for t in w["topics"])
+    heads = heads + ["pub to dds p99", "dds write p99"] * dds
+    rows = [
+        [name] + (cells(by_name[name], dds) if name in by_name else ["-"] * len(heads))
+        for name in topics
+    ]
+    table("topics", ["topic"] + heads, rows)
+
+
+def cmd_topic_watch(args):
+    """Counted in the publishers and subscribers, not by subscribing as `ros2 topic` does."""
+    with armo_client.connect() as c:
+        select(c, args, ("dds",), topic=exact(args.topics))
+        return watch(c, lambda w: print_topic_window(w, args.topic_command, args.topics))
+
+
+def cmd_topic_list(args):
+    with armo_client.connect() as c:
+        select(c, args)
+        w = view.visible(next_window(c), None, args.infra)
+    for name in sorted({t["name"] for t in w["topics"]}):
+        print(name)
+    return 0
+
+
+def cmd_topic_info(args):
+    with armo_client.connect() as c:
+        select(c, args, topic=exact([args.topic]))
+        w = next_window(c)
+    topics = [t for t in w["topics"] if t["name"] == args.topic]
+    if not topics:
+        raise ArmoError(f"{args.topic}: no observed publisher or subscriber")
+    for t in topics:
+        print(f"{t['name']}  transport {t['transport']}")
+        for kind in ("publishers", "subscribers"):
+            print(f"{kind}: {len(t[kind])}")
+            for owner in t[kind]:
+                print(f"  {view.owner_label(w, owner)}")
+    return 0
 
 
 def recording(state, record_id):
@@ -343,7 +664,8 @@ def cmd_record_show(args):
 
 
 def cmd_analyze(args):
-    os.execvp("armo-analyze", ["armo-analyze", os.path.abspath(args.dir)])
+    chains = [a for spec in args.chain for a in ("--chain", spec)]
+    os.execvp("armo-analyze", ["armo-analyze", os.path.abspath(args.dir)] + chains)
 
 
 def cmd_export(args):
@@ -375,10 +697,229 @@ def cmd_run(args):
     os.execvpe(command[0], command, env)
 
 
+REACT_COUNT = 10
+REACT_SEEN_WINDOWS = 5
+REACT_SETTLE_WINDOWS = 2
+REACT_NOTE = (
+    "n and max are exact; p50 is the n-weighted mean of the window p50s (an estimate), "
+    "p99 the largest window p99 (an upper bound)"
+)
+
+
+def merge_lat(lats):
+    """Window latencies pooled: no window's p99 is exceeded by more than 1% of its samples, so
+    none of the pooled ones exceed the largest p99 by more than 1% either."""
+    lats = [x for x in lats if x and x["n"]]
+    if not lats:
+        return None
+    n = sum(x["n"] for x in lats)
+    return {
+        "n": n,
+        "p50_ns": round(sum(x["p50_ns"] * x["n"] for x in lats) / n),
+        "p99_ns": max(x["p99_ns"] for x in lats),
+        "max_ns": max(x["max_ns"] for x in lats),
+    }
+
+
+def react_selection(selection, methods, pid):
+    """The selection that also sees the publisher; None when the current one already does."""
+    if selection["all"]:
+        return None
+    if not (selection["pids"] or any(k in selection for k in ("node", "topic", "exclude"))):
+        return {"all": True, "pids": [], "method_by_pid": {}}
+    return dict(
+        selection,
+        pids=selection["pids"] + [pid],
+        method_by_pid=dict(methods, **{str(pid): "preload"}),
+    )
+
+
+def react_publisher(args, env):
+    count = args.count if args.count is not None else (None if args.bag else REACT_COUNT)
+    command = [sys.executable, "-m", "armo_cli.react_publisher", "--input", args.input]
+    command += ["--type", args.type, "--period", str(args.period)]
+    command += ["--bag", os.path.abspath(args.bag)] if args.bag else ["--msg", args.msg]
+    command += [] if count is None else ["--count", str(count)]
+    # Its own session: Ctrl-C reaches only armo react, which then ends it.
+    return subprocess.Popen(
+        command,
+        env=env,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    )
+
+
+def next_window(c):
+    while True:
+        m = c.next_message()
+        if m["type"] == "window":
+            return m
+
+
+def react_windows(c, publisher, name):
+    """The chain rows of `name` from when the publisher starts until it has ended and
+    REACT_SETTLE_WINDOWS more windows have passed."""
+    ready, seen = time.monotonic_ns(), 0
+    while True:
+        w = next_window(c)
+        if w["t_mono_ns"] < ready:
+            continue
+        if any(p["pid"] == publisher.pid for p in w["processes"]):
+            break
+        seen += 1
+        if seen == REACT_SEEN_WINDOWS:
+            raise ArmoError(
+                f"armo-collectd does not see the publisher (pid {publisher.pid}) after "
+                f"{seen} windows"
+            )
+    publisher.stdin.write("go\n")
+    publisher.stdin.flush()
+    rows, settle = [], 0
+    while settle < REACT_SETTLE_WINDOWS:
+        w = next_window(c)
+        rows += [x for x in w.get("chains", []) if x["name"] == name]
+        settle += publisher.poll() is not None
+    return rows
+
+
+def cmd_react(args):
+    name = f"react-{os.getpid()}"
+    chain = {"name": name, "topics": [args.input] + args.output, "mode": "first"}
+    env = dict(os.environ)
+    env.update(armo_client.environment("preload", env))
+    with armo_client.connect() as c:
+        c.request("subscribe", streams=["state", "window"])
+        monitor = c.state["monitor"]
+        chains, selection = monitor.get("chains", []), monitor["selection"]
+        publisher = react_publisher(args, env)
+        select = react_selection(selection, monitor["method_by_pid"], publisher.pid)
+        try:
+            c.request("configure", chains=chains + [chain])
+            if select is not None:
+                c.request("select", **select)
+            if publisher.stdout.readline() != "ready\n":
+                raise ArmoError(f"the publisher ended with {publisher.wait()}")
+            rows = react_windows(c, publisher, name)
+            published = publisher.stdout.read().strip()
+        finally:
+            publisher.kill()
+            publisher.wait()
+            c.request("configure", chains=chains)
+            if select is not None:
+                c.request("select", method_by_pid=monitor["method_by_pid"], **selection)
+    steps = [merge_lat(row["steps"][k] for row in rows) for k in range(len(chain["topics"]) - 1)]
+    count, broken = sum(r["count"] for r in rows), sum(r["broken"] for r in rows)
+    results = [
+        [k + 1, topic, s["n"] if s else 0] + [s and s[f] for f in ("p50_ns", "p99_ns", "max_ns")]
+        for k, (topic, s) in enumerate(zip(chain["topics"][1:], steps))
+    ]
+    print(f"{name} (first): {' -> '.join(chain['topics'])}, {published}")
+    table(
+        "steps",
+        ["step", "topic", "n", "p50", "p99", "max"],
+        [r[:3] + [ns(v) for v in r[3:]] for r in results],
+    )
+    print(f"count {count}, broken {broken}")
+    print(f"note: {REACT_NOTE}")
+    if args.output_csv:
+        with open(args.output_csv, "w", newline="") as out:
+            writer = csv.writer(out)
+            writer.writerow(["step", "topic", "n", "p50_ns", "p99_ns", "max_ns", "count", "broken"])
+            for r in results:
+                writer.writerow(r[:3] + ["" if v is None else v for v in r[3:]] + [count, broken])
+    return 0
+
+
 def cmd_env(args):
     for name, value in armo_client.environment(args.method, os.environ).items():
         print(f"export {name}={shlex.quote(value)}")
     return 0
+
+
+def chain_arg(text):
+    try:
+        return armo_client.parse_chain(text)
+    except ArmoError as e:
+        raise argparse.ArgumentTypeError(str(e)) from None
+
+
+def add_monitor_options(p, chains=True):
+    p.add_argument("--gpu", action="store_const", const=True, help="CUDA driver calls")
+    p.add_argument("--dds", action="store_const", const=True, help="DDS write calls")
+    p.add_argument("--futex", action="store_const", const=True, help="futex waits (armod)")
+    if not chains:
+        return
+    p.add_argument(
+        "--chain",
+        dest="chains",
+        type=chain_arg,
+        action="append",
+        metavar="NAME=T1,T2,...[:first]",
+        help="an end-to-end chain over these topics; replaces the chains",
+    )
+    p.add_argument(
+        "--latest-node",
+        dest="latest_nodes",
+        action="append",
+        metavar="REGEX",
+        help="link this node's outputs to its latest inputs",
+    )
+
+
+INFRA_HELP = "also /rosout, /parameter_events, ros_discovery_info, parameter services"
+
+
+def from_window(names):
+    """A completer: `names(window, parsed_args)` of armo-collectd's next window, or nothing when
+    armo-collectd is not running (a completer must not fail or start it)."""
+
+    def complete(prefix, parsed_args, **_):
+        try:
+            with armo_client.connect(start=False) as c:
+                c.request("subscribe", streams=["window"])
+                return sorted(set(names(view.visible(next_window(c)), parsed_args)))
+        except (ArmoError, OSError):
+            return []
+
+    return complete
+
+
+NODES = from_window(lambda w, _: (n["fqn"] for n in w["nodes"]))
+TOPICS = from_window(lambda w, _: (t["name"] for t in w["topics"]))
+SPANS = from_window(lambda w, _: (s["name"] for s in w["spans"]))
+
+
+def node_callbacks(w, args):
+    labels = view.callback_labels(w)
+    return (labels[c["id"]] for c in of_nodes(w, [args.node])["callbacks"])
+
+
+def node_topics(w, args):
+    w = of_nodes(w, [args.node])
+    ids = {s["topic"] for s in w["subscriptions"]}
+    return (t["name"] for t in w["topics"] if t["id"] in ids)
+
+
+def record_ids(prefix, parsed_args, **_):
+    try:
+        with armo_client.connect(start=False) as c:
+            return [r["id"] for r in c.state["recordings"]]
+    except (ArmoError, OSError):
+        return []
+
+
+def add_target_options(p, window=True):
+    p.add_argument(
+        "--pid",
+        type=int,
+        action="append",
+        help="a process started without armo run; uprobe needs armod",
+    )
+    p.add_argument("--method", choices=METHODS, action="append")
+    if window:
+        p.add_argument("--window", type=float, metavar="S")
 
 
 def parser():
@@ -389,34 +930,74 @@ def parser():
         run=cmd_status
     )
 
-    m = sub.add_parser("top", help="print one view of each window")
-    m.add_argument("view", nargs="?", choices=tuple(VIEWS))
-    m.add_argument("--pid", type=int, action="append", default=[])
-    m.add_argument("--method", choices=METHODS, action="append")
-    m.add_argument("--node", metavar="REGEX", help="the processes of the nodes it names")
-    m.add_argument("--topic", metavar="REGEX", help="the publishers and subscribers")
-    m.add_argument("--exclude", metavar="REGEX", help="leave out these nodes and topics")
-    m.add_argument(
-        "--infra",
-        action="store_true",
-        help="also show /rosout, /parameter_events, ros_discovery_info, parameter services",
-    )
+    m = sub.add_parser("top", help="the machine: CPU clocks, temperatures, network, GPUs")
     m.add_argument("--window", type=float, metavar="S")
-    m.add_argument(
-        "--pss", action="store_true", help="also read PSS, which walks each process's page tables"
-    )
-    m.add_argument(
-        "--json", action="store_true", help="one window message per line, only the view if given"
-    )
+    m.add_argument("--json", action="store_true", help="each window message, one per line")
     m.set_defaults(run=cmd_top)
+
+    n = sub.add_parser("node", help="per-node values: CPU, callbacks, subscriptions")
+    nsub = n.add_subparsers(dest="node_command", required=True)
+    x = nsub.add_parser("list", help="the nodes of the observed processes")
+    add_target_options(x, window=False)
+    x.set_defaults(run=cmd_node_list)
+    x = nsub.add_parser("info", help="pid, RSS, topics and callbacks of a node")
+    x.add_argument("node", metavar="NODE").completer = NODES
+    x.add_argument("--infra", action="store_true", help=INFRA_HELP)
+    x.set_defaults(run=cmd_node_info)
+    x = nsub.add_parser("cpu", help="CPU, busy time, callback rate and RSS")
+    x.add_argument("nodes", nargs="*", metavar="NODE").completer = NODES
+    add_target_options(x)
+    x.set_defaults(run=cmd_node_cpu)
+    x = nsub.add_parser("cb", help="each callback's rate, duration and dispatch wait")
+    x.add_argument("node", metavar="NODE").completer = NODES
+    cb = x.add_argument(
+        "callback", nargs="?", metavar="CB", help="callbacks whose label contains CB"
+    )
+    cb.completer = from_window(node_callbacks)
+    add_target_options(x)
+    x.add_argument("--infra", action="store_true", help=INFRA_HELP)
+    x.add_argument("--gpu", action="store_const", const=True, help="CUDA driver calls")
+    x.add_argument("--futex", action="store_const", const=True, help="futex waits (armod)")
+    x.set_defaults(run=cmd_node_cb)
+    x = nsub.add_parser("sub", help="each subscription's receive rate, loss and wake latency")
+    x.add_argument("node", metavar="NODE").completer = NODES
+    x.add_argument("topic", nargs="?", metavar="TOPIC").completer = from_window(node_topics)
+    add_target_options(x)
+    x.add_argument("--infra", action="store_true", help=INFRA_HELP)
+    x.set_defaults(run=cmd_node_sub)
+
+    x = sub.add_parser("span", help="the spans marked in code: armo::Span, @span")
+    x.add_argument("names", nargs="*", metavar="NAME").completer = SPANS
+    add_target_options(x)
+    x.set_defaults(run=cmd_span)
+
+    t = sub.add_parser("topic", help="per-topic values, measured in the publishers and subscribers")
+    tsub = t.add_subparsers(dest="topic_command", required=True)
+    for name, text in (
+        ("hz", "publish calls per second, and the publishes dropped"),
+        ("bw", "bytes published per second"),
+        ("delay", "publish to take, and with --dds to the DDS write"),
+    ):
+        x = tsub.add_parser(name, help=text)
+        x.add_argument("topics", nargs="+", metavar="TOPIC").completer = TOPICS
+        x.add_argument("--window", type=float, metavar="S")
+        if name == "delay":
+            x.add_argument("--dds", action="store_const", const=True, help="also the DDS write")
+        x.set_defaults(run=cmd_topic_watch)
+    x = tsub.add_parser("list", help="the topics of the observed processes")
+    x.add_argument("--infra", action="store_true", help=INFRA_HELP)
+    x.set_defaults(run=cmd_topic_list)
+    x = tsub.add_parser("info", help="transport, publishers and subscribers")
+    x.add_argument("topic", metavar="TOPIC").completer = TOPICS
+    x.set_defaults(run=cmd_topic_info)
 
     r = sub.add_parser("record", help="start a recording; list, stop, show")
     r.add_argument("--method", choices=("auto",) + METHODS)
     who = r.add_mutually_exclusive_group()
     who.add_argument("--all", action="store_true")
     who.add_argument("--pid", type=int, action="append")
-    r.add_argument("--node", metavar="REGEX")
-    r.add_argument("--topic", metavar="REGEX")
+    r.add_argument("--node", metavar="REGEX").completer = NODES
+    r.add_argument("--topic", metavar="REGEX").completer = TOPICS
     r.add_argument("--exclude", metavar="REGEX")
     r.add_argument("--kind", choices=("events", "windows"))
     r.add_argument("-o", dest="dir", metavar="DIR")
@@ -430,12 +1011,13 @@ def parser():
     r.add_argument("--bandwidth", action="store_const", const=True)
     r.add_argument("--sched", action=argparse.BooleanOptionalAction)
     r.add_argument("--malloc", action="store_const", const=True)
+    add_monitor_options(r)
     r.add_argument("--no-follow", action="store_true")
     r.set_defaults(run=cmd_record)
     rsub = r.add_subparsers(dest="record_command")
     rsub.add_parser("list").set_defaults(run=cmd_record_list)
     stop = rsub.add_parser("stop")
-    stop.add_argument("record_id")
+    stop.add_argument("record_id").completer = record_ids
     stop.set_defaults(run=cmd_record_stop)
     show = rsub.add_parser("show")
     show.add_argument("target", metavar="ID_OR_DIR")
@@ -443,12 +1025,13 @@ def parser():
 
     a = sub.add_parser("analyze", help="split a recording into the 2.5 intervals")
     a.add_argument("dir")
+    a.add_argument("--chain", action="append", default=[], metavar="NAME=T1,T2,...[:first]")
     a.set_defaults(run=cmd_analyze)
 
     e = sub.add_parser("export", help="CSV of a recording")
     e.add_argument("dir")
     e.add_argument("-o", dest="output", required=True)
-    e.add_argument("--metric", action="append")
+    e.add_argument("--metric", action="append", choices=EXPORT_METRICS)
     e.set_defaults(run=cmd_export)
 
     s = sub.add_parser("check", help="check this machine's assumptions (selfcheck)")
@@ -460,6 +1043,20 @@ def parser():
     x.add_argument("command", nargs=argparse.REMAINDER)
     x.set_defaults(run=cmd_run)
 
+    x = sub.add_parser("react", help="publish test messages and time the first outputs")
+    x.add_argument("--input", required=True, metavar="TOPIC")
+    x.add_argument("--type", required=True, metavar="PKG/msg/TYPE")
+    source = x.add_mutually_exclusive_group(required=True)
+    source.add_argument("--msg", metavar="YAML")
+    source.add_argument("--bag", metavar="DIR", help="the bag's messages on the input topic")
+    x.add_argument("--output", required=True, action="append", metavar="TOPIC")
+    x.add_argument(
+        "--count", type=int, metavar="N", help=f"default {REACT_COUNT}, or the whole bag"
+    )
+    x.add_argument("--period", type=float, default=1.0, metavar="S")
+    x.add_argument("-o", dest="output_csv", metavar="CSV")
+    x.set_defaults(run=cmd_react)
+
     x = sub.add_parser("env", help="print the method's environment as shell exports")
     x.add_argument("--method", choices=LAUNCH_METHODS, default="preload")
     x.set_defaults(run=cmd_env)
@@ -467,7 +1064,9 @@ def parser():
 
 
 def main(argv=None):
-    args = parser().parse_args(argv)
+    p = parser()
+    argcomplete.autocomplete(p)
+    args = p.parse_args(argv)
     try:
         return args.run(args)
     except (ArmoError, OSError) as e:

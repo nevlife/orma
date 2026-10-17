@@ -1,0 +1,6 @@
+{
+  "hooks": [
+    "share/armo_cli/environment/armo-argcomplete.bash",
+    "share/armo_cli/environment/armo-argcomplete.zsh"
+  ]
+}

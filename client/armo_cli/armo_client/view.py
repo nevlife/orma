@@ -93,6 +93,8 @@ def visible(w, selection=None, infra=False):
         callbacks=callbacks,
         topics=topics,
         subscriptions=subscriptions,
+        spans=[s for s in w.get("spans", []) if s["pid"] in shown_pids],
+        chains=w.get("chains", []),
     )
 
 

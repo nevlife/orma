@@ -32,6 +32,12 @@
 
 #define ARMO_OPTION_MALLOC 1
 
+// CUDA driver calls (design 20.1).
+#define ARMO_OPTION_GPU 2
+
+// DDS write calls (design 20.2).
+#define ARMO_OPTION_DDS 4
+
 // Byte offsets of the OFD locks: the writer holds a read lock on the first while it lives, a
 // reader a write lock on the second while it reads.
 #define ARMO_LOCK_ALIVE 0

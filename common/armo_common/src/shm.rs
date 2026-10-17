@@ -21,6 +21,10 @@ pub const ARMO_BACKEND_SHM: u32 = 1;
 pub const ARMO_BACKEND_LTTNG: u32 = 2;
 
 pub const ARMO_OPTION_MALLOC: u32 = 1;
+/// CUDA driver calls (design 20.1).
+pub const ARMO_OPTION_GPU: u32 = 2;
+/// DDS write calls (design 20.2).
+pub const ARMO_OPTION_DDS: u32 = 4;
 
 /// Byte offsets of the OFD locks: the writer holds a read lock on the first while it lives, a
 /// reader a write lock on the second while it reads.

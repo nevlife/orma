@@ -95,20 +95,34 @@ class Container(Workload):
 
 
 class Fanout(Workload):
-    """One publisher, eight sink processes on one topic: synchronized wakeups (design 8.2)."""
+    """One publisher, eight sink processes on the same topics: synchronized wakeups (design 8.2)."""
 
     name = "fanout"
 
     def procs(self):
+        t = f"topics:={self.topics}"
         out = []
         for k in range(8):
-            params = ros("topics:=1", "in:=/tc/a", f"tag:=sink{k}")
+            params = ros(t, "in:=/tc/a", f"tag:=sink{k}")
             out.append(
                 Proc(f"sink{k}", 4 + k, [f"{LIB}/tc_sink", *params, "-r", f"__node:=tc_sink{k}"])
             )
-        pub = ros("topics:=1", "out:=/tc/a", f"rate_hz:={self.rate}.0")
+        pub = ros(t, "out:=/tc/a", f"rate_hz:={self.rate}.0")
         out.append(Proc("pub", 3, [f"{LIB}/tc_pub", *pub]))
         return out
 
 
-REGISTRY = {w.name: w for w in (CppChain, PyChain, Container, Fanout)}
+class Pair(Workload):
+    """One publisher process and one sink process: one hop per message."""
+
+    name = "pair"
+
+    def procs(self):
+        t = f"topics:={self.topics}"
+        return [
+            Proc("sink", 5, [f"{LIB}/tc_sink", *ros(t, "in:=/tc/a", "tag:=sink")]),
+            Proc("pub", 4, [f"{LIB}/tc_pub", *ros(t, "out:=/tc/a", f"rate_hz:={self.rate}.0")]),
+        ]
+
+
+REGISTRY = {w.name: w for w in (CppChain, PyChain, Container, Fanout, Pair)}

@@ -105,7 +105,7 @@ impl Client {
     fn covers(&self, pid: u32) -> bool {
         self.sets
             .iter()
-            .any(|(s, sel)| *s != Set::Sched && sel.contains(pid))
+            .any(|(s, sel)| !matches!(s, Set::Sched | Set::Futex) && sel.contains(pid))
     }
 
     fn send(&mut self, m: &ArmodMessage) {
@@ -498,7 +498,7 @@ impl Daemon {
         }
         for s in &self.sessions {
             sets.entry(Set::Discovery).or_default().add(&Sel::All);
-            for set in [Set::Hot, Set::RclcppSymbols, Set::Bandwidth] {
+            for set in [Set::Hot, Set::RclcppSymbols, Set::Bandwidth, Set::Dds] {
                 sets.entry(set).or_default().add(&s.target);
             }
             stream.add(&s.target);
@@ -793,6 +793,9 @@ fn set_of(s: ProbeSet) -> Set {
         ProbeSet::Bandwidth => Set::Bandwidth,
         ProbeSet::RclcppSymbols => Set::RclcppSymbols,
         ProbeSet::Names => Set::Names,
+        ProbeSet::Gpu => Set::Gpu,
+        ProbeSet::Dds => Set::Dds,
+        ProbeSet::Futex => Set::Futex,
     }
 }
 

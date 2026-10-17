@@ -36,20 +36,23 @@ static void * lookup(const char * lib, const char * name)
   return f;
 }
 
-// The first loaded object, in load order, that defines `name`, other than this library. Not the
+// Marks libarmo_preload.so and libarmo_lttng.so. With both preloaded, each would otherwise bind
+// the other's intercept as the original of a function from a library loaded later RTLD_LOCAL,
+// and the two would tail-call each other forever.
+ARMO_EXPORT const int armo_shim = 1;
+
+// The first loaded object, in load order, that defines `name` and is not an armo shim. Not the
 // caller's library: a tail call leaves the caller's caller in the return address. dlopen runs
 // after the walk, which holds the loader's list lock.
 static void * search_loaded(const char * name)
 {
-  Dl_info self;
-  dladdr((void *)search_loaded, &self);
   for (int skip = 0;; skip += CHUNK) {
     struct objects o = {.skip = skip};
     dl_iterate_phdr(collect, &o);
     for (int i = 0; i < o.n; i++) {
       void * f = lookup(o.names[i], name);
       Dl_info at;
-      if (f != NULL && dladdr(f, &at) != 0 && at.dli_fbase != self.dli_fbase) return f;
+      if (f != NULL && dladdr(f, &at) != 0 && lookup(at.dli_fname, "armo_shim") == NULL) return f;
     }
     if (o.n < CHUNK) return NULL;
   }

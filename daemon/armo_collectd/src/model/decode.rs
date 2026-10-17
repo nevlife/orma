@@ -88,6 +88,7 @@ pub enum E {
         callback: u64,
     },
     RclcppExecutor,
+    RclcppPublish,
     RclPublish {
         publisher: u64,
         stamp: u64,
@@ -182,6 +183,25 @@ pub enum E {
     },
     SchedWakeup {
         tid: u32,
+    },
+    DdsWrite {
+        duration: u64,
+    },
+    CudaCall {
+        duration: u64,
+        bytes: u64,
+        api: u32,
+        error: bool,
+    },
+    SpanBegin {
+        key: u64,
+        name: String,
+    },
+    SpanEnd {
+        key: u64,
+    },
+    FutexWait {
+        duration: u64,
     },
 }
 
@@ -332,6 +352,7 @@ pub fn decode(r: &Record<'_>) -> Option<E> {
         ARMO_EV_RCLCPP_EXECUTOR_GET_NEXT_READY
         | ARMO_EV_RCLCPP_EXECUTOR_WAIT_FOR_WORK
         | ARMO_EV_RCLCPP_EXECUTOR_EXECUTE => E::RclcppExecutor,
+        ARMO_EV_RCLCPP_PUBLISH => E::RclcppPublish,
         ARMO_EV_RCL_PUBLISH | ARMO_EV_RCLCPP_INTRA_PUBLISH => {
             let p: armo_ev_publish = r.payload();
             if r.header.event == ARMO_EV_RCL_PUBLISH {
@@ -471,6 +492,28 @@ pub fn decode(r: &Record<'_>) -> Option<E> {
         }
         ARMO_EV_SCHED_WAKEUP => E::SchedWakeup {
             tid: r.payload::<armo_ev_sched_wakeup>().tid,
+        },
+        ARMO_EV_DDS_WRITE => E::DdsWrite {
+            duration: r.payload::<armo_ev_dds_write>().duration_ns,
+        },
+        ARMO_EV_CUDA_CALL => {
+            let p: armo_ev_cuda_call = r.payload();
+            E::CudaCall {
+                duration: p.duration_ns,
+                bytes: p.bytes,
+                api: p.api,
+                error: p.result != 0,
+            }
+        }
+        ARMO_EV_SPAN_BEGIN => E::SpanBegin {
+            key: r.payload::<armo_ev_span>().key,
+            name: next(),
+        },
+        ARMO_EV_SPAN_END => E::SpanEnd {
+            key: r.payload::<armo_ev_span>().key,
+        },
+        ARMO_EV_FUTEX_WAIT => E::FutexWait {
+            duration: r.payload::<armo_ev_futex_wait>().duration_ns,
         },
         _ => return None,
     })

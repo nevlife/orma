@@ -5,6 +5,7 @@
 
 mod collectd;
 
+use std::mem::offset_of;
 use std::os::unix::fs::FileExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
@@ -15,7 +16,7 @@ use std::time::Duration;
 
 use armo_collectd::sources::armod::{Plan, Sel, requests};
 use armo_common::events::*;
-use armo_common::shm::ARMO_BACKEND_LTTNG;
+use armo_common::shm::{ARMO_BACKEND_LTTNG, ARMO_OPTION_GPU, armo_shm_header};
 use armo_proto::fake::shm::{FakeShm, Geometry};
 use armo_proto::frame::{self, Kind};
 use armo_proto::msg::*;
@@ -458,6 +459,11 @@ fn armod_windows_end_the_windows() {
         malloc: None,
         pss: None,
         expected_hz: None,
+        gpu: None,
+        dds: None,
+        futex: None,
+        chains: None,
+        latest_nodes: None,
     }))
     .unwrap();
     c.request(ClientOp::Subscribe {
@@ -545,6 +551,30 @@ fn an_lttng_file_lends_its_current_callbacks_and_is_no_source() {
         .unwrap();
     assert_eq!(u64::from_le_bytes(cur), 0x55);
     assert_eq!(c.state.as_ref().unwrap().sources.preload_processes, 0);
+    let options = || {
+        let mut word = [0u8; 4];
+        std::fs::File::open(shm.path())
+            .unwrap()
+            .read_exact_at(&mut word, offset_of!(armo_shm_header, options) as u64)
+            .unwrap();
+        u32::from_le_bytes(word)
+    };
+    assert_eq!(options(), 0);
+    let gpu = Configure {
+        window_s: None,
+        bandwidth: None,
+        sched: None,
+        malloc: Some(true),
+        pss: None,
+        expected_hz: None,
+        gpu: Some(true),
+        dds: None,
+        futex: None,
+        chains: None,
+        latest_nodes: None,
+    };
+    c.request(ClientOp::Configure(gpu)).unwrap();
+    until(|| options() == ARMO_OPTION_GPU);
     c.until(|m| matches!(m, ServerMessage::Window(_)));
     let seen = server.seen.0.lock().unwrap();
     assert!(!seen.records.iter().any(|r| r.0 == Method::Preload));
@@ -619,6 +649,8 @@ fn live(pid: u32, fqn: &str) -> (Process, Node) {
         cold: false,
         overflow: None,
         flux2_gpu_wedged: None,
+        cuda: None,
+        gpu_mem_bytes: None,
     };
     let node = Node {
         id: format!("n:{pid}:0:a0"),
@@ -722,4 +754,68 @@ fn armod_reads_the_executor_only_of_hot_processes_with_unnamed_callbacks() {
         })
     });
     assert!(!fake.has(|o| attached(o, ProbeSet::Names, false, &[OTHER])));
+}
+
+#[test]
+fn gpu_dds_and_futex_probes_follow_the_recordings_that_ask() {
+    let dir = scratch("armod_futex");
+    let server = Server::start(&dir, config(&dir));
+    let fake = FakeArmod::start(&dir.join("armod.sock"));
+    let mut c = server.client("armo");
+    c.until(|m| matches!(m, ServerMessage::State(s) if s.sources.armod == ArmodLink::Connected));
+    let mut recs = Vec::new();
+    for on in [false, true] {
+        let (id, d) = c.start(RecordOptions {
+            method: Some(RecordMethod::Uprobe),
+            targets: Some(Targets {
+                all: false,
+                pids: vec![TRACED],
+                node: None,
+                topic: None,
+                exclude: None,
+            }),
+            name: Some(format!("futex_{on}")),
+            gpu: Some(on),
+            dds: Some(on),
+            futex: Some(on),
+            ..options(&dir)
+        });
+        recs.push((id, d));
+    }
+    for set in [ProbeSet::Gpu, ProbeSet::Dds, ProbeSet::Futex] {
+        until(|| fake.has(|o| attached(o, set, false, &[TRACED])));
+    }
+    {
+        let seen = server.seen.0.lock().unwrap();
+        assert!(seen.gpu);
+        assert_eq!(seen.futex, Sel::pids([TRACED]));
+    }
+    let mut events = batch(TRACED, 2);
+    let wait = armo_ev_futex_wait {
+        uaddr: 0x10,
+        duration_ns: 5000,
+        op: 0,
+        ret: 0,
+    };
+    for i in 0..3 {
+        records::encode_positioned(
+            &mut events,
+            TRACED,
+            TRACED,
+            ARMO_EV_FUTEX_WAIT,
+            i,
+            &wait,
+            &[],
+        );
+    }
+    fake.send(Kind::Events, &events);
+    until(|| server.seen.0.lock().unwrap().records.len() >= 5);
+    for (id, _) in &recs {
+        c.stop(id);
+        c.ended(id);
+    }
+    let entity = format!("p:{TRACED}:0");
+    assert_eq!(meta(&recs[0].1).counts[&entity].events, 2);
+    assert_eq!(meta(&recs[1].1).counts[&entity].events, 5);
+    until(|| !server.seen.0.lock().unwrap().gpu);
 }

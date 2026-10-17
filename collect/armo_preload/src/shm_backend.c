@@ -363,6 +363,10 @@ PLAIN(flux2_py_gil, ARMO_EV_FLUX2_PY_GIL, armo_ev_flux2_py_gil)
 PLAIN(flux2_py_ready, ARMO_EV_FLUX2_PY_READY, armo_ev_flux2_py_ready)
 PLAIN(flux2_record_drop, ARMO_EV_FLUX2_RECORD_DROP, armo_ev_flux2_record_drop)
 PLAIN(flux2_gpu_wedged, ARMO_EV_FLUX2_GPU_WEDGED, armo_ev_flux2_gpu_wedged)
+PLAIN(dds_write, ARMO_EV_DDS_WRITE, armo_ev_dds_write)
+PLAIN(cuda_call, ARMO_EV_CUDA_CALL, armo_ev_cuda_call)
+STRINGS(span_begin, ARMO_EV_SPAN_BEGIN, armo_ev_span, 1, const char * s0)
+PLAIN(span_end, ARMO_EV_SPAN_END, armo_ev_span)
 
 void armo_emit_rclcpp_executor_get_next_ready(void)
 {
@@ -379,8 +383,17 @@ void armo_backend_missing(uint16_t event)
 
 bool armo_backend_malloc_on(void)
 {
-  armo_shm_header * h = __atomic_load_n(&armo_header, __ATOMIC_ACQUIRE);
-  return h != NULL && (LOAD(&h->options) & ARMO_OPTION_MALLOC) != 0;
+  return armo_option(ARMO_OPTION_MALLOC);
+}
+
+bool armo_backend_gpu_on(void)
+{
+  return armo_option(ARMO_OPTION_GPU);
+}
+
+bool armo_backend_dds_on(void)
+{
+  return armo_option(ARMO_OPTION_DDS);
 }
 
 // Charged to the innermost running callback, key 0 outside one (design 15.3).

@@ -83,6 +83,10 @@ void armo_emit_flux2_py_gil(const armo_ev_flux2_py_gil * ev);
 void armo_emit_flux2_py_ready(const armo_ev_flux2_py_ready * ev);
 void armo_emit_flux2_record_drop(const armo_ev_flux2_record_drop * ev);
 void armo_emit_flux2_gpu_wedged(const armo_ev_flux2_gpu_wedged * ev);
+void armo_emit_dds_write(const armo_ev_dds_write * ev);
+void armo_emit_cuda_call(const armo_ev_cuda_call * ev);
+void armo_emit_span_begin(const armo_ev_span * ev, const char * name);
+void armo_emit_span_end(const armo_ev_span * ev);
 
 // The intercept point of `event` found no original function (armo_shm_header.missing).
 void armo_backend_missing(uint16_t event);
@@ -91,5 +95,9 @@ void armo_backend_missing(uint16_t event);
 bool armo_backend_malloc_on(void);
 void armo_backend_alloc(size_t bytes);
 void armo_backend_free(size_t bytes);
+
+// Whether CUDA driver calls (design 20.1) and DDS write calls (20.2) are timed.
+bool armo_backend_gpu_on(void);
+bool armo_backend_dds_on(void);
 
 #endif  // ARMO_PRELOAD_ARMO_EMIT_H

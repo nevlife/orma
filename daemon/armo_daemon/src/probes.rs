@@ -34,7 +34,7 @@ use aya::{
 use crate::{
     libs::{self, FileKey, Lib, LibFile},
     procs::{self, DistroFrom, Mapped},
-    progs::{Cond, PROGS, Prog, SCHED_PROGS, Set, Sym},
+    progs::{Cond, FUTEX_PROGS, PROGS, Prog, SCHED_PROGS, Set, Sym},
     sel::Sel,
     sys,
 };
@@ -331,8 +331,10 @@ fn parse_fdinfo(text: &str) -> HashMap<String, u64> {
         .collect()
 }
 
-/// The sched tracepoint fields armo_ebpf reads, by (event, field, offset, size).
-const SCHED_FIELDS: [(&str, &str, usize, usize); 5] = [
+/// A tracepoint field armo_ebpf reads: event, field, offset, size.
+type Field = (&'static str, &'static str, usize, usize);
+
+const SCHED_FIELDS: [Field; 5] = [
     ("sched_switch", "prev_pid", 24, 4),
     ("sched_switch", "prev_state", 32, 8),
     ("sched_switch", "next_pid", 56, 4),
@@ -340,11 +342,48 @@ const SCHED_FIELDS: [(&str, &str, usize, usize); 5] = [
     ("sched_wakeup", "target_cpu", 32, 4),
 ];
 
+const FUTEX_FIELDS: [Field; 5] = [
+    ("sys_enter_futex", "uaddr", 16, 8),
+    ("sys_enter_futex", "op", 24, 8),
+    ("sys_exit_futex", "ret", 16, 8),
+    ("sys_enter_futex_waitv", "waiters", 16, 8),
+    ("sys_exit_futex_waitv", "ret", 16, 8),
+];
+
+/// The tracepoint programs of one probe set, attached together while the set is wanted.
+pub struct Tracepoints {
+    system: &'static str,
+    progs: &'static [&'static str],
+    /// The collection points `probes_missing` names when the layout differs.
+    points: &'static [&'static str],
+    /// This kernel's layout against the offsets the programs were built with (design 4.2).
+    pub layout: std::result::Result<(), String>,
+    links: Vec<(&'static str, TracePointLinkId)>,
+}
+
+impl Tracepoints {
+    fn new(
+        system: &'static str,
+        progs: &'static [&'static str],
+        points: &'static [&'static str],
+        fields: &[Field],
+    ) -> Self {
+        Tracepoints {
+            system,
+            progs,
+            points,
+            layout: check_layout(system, fields),
+            links: Vec::new(),
+        }
+    }
+}
+
 pub struct Kernel {
     pub events: RingBuf<MapData>,
     config: Array<MapData, u64>,
     stream: BpfHashMap<MapData, u32, u8>,
     sched: BpfHashMap<MapData, u32, u8>,
+    futex: BpfHashMap<MapData, u32, u8>,
     tid_tgid: BpfHashMap<MapData, u32, u32>,
     user_words: BpfHashMap<MapData, u32, u64>,
     agg: BpfHashMap<MapData, AggKey, AggVal>,
@@ -374,9 +413,9 @@ pub struct Kernel {
     applied: u64,
     /// Program fds by name, for the run statistics without the lock the attacher holds.
     prog_fds: Vec<(&'static str, OwnedFd)>,
-    sched_links: Vec<TracePointLinkId>,
+    pub sched_tp: Tracepoints,
+    pub futex_tp: Tracepoints,
     pub missing: BTreeSet<Missing>,
-    pub layout: std::result::Result<(), String>,
     deleted: HashSet<(u32, u64)>,
     pub notes: Vec<Note>,
     // Dropping this detaches the probes, so it lives as long as the maps are read.
@@ -393,11 +432,9 @@ where
     Ok(T::try_from(map)?)
 }
 
-/// The kernel's sched tracepoint layout against the offsets the programs were built with
-/// (design 4.2).
-fn check_layout() -> std::result::Result<(), String> {
-    for (event, field, offset, size) in SCHED_FIELDS {
-        let path = format!("/sys/kernel/tracing/events/sched/{event}/format");
+fn check_layout(system: &str, fields: &[Field]) -> std::result::Result<(), String> {
+    for (event, field, offset, size) in fields {
+        let path = format!("/sys/kernel/tracing/events/{system}/{event}/format");
         let text = fs::read_to_string(&path).map_err(|e| format!("{path}: {e}"))?;
         let want = format!(" {field};\toffset:{offset};\tsize:{size};");
         if !text.lines().any(|l| l.contains(&want)) {
@@ -420,7 +457,7 @@ impl Kernel {
                 .try_into()?;
             u.load().map_err(|e| format!("load {}: {e}", p.name))?;
         }
-        for name in SCHED_PROGS {
+        for name in SCHED_PROGS.iter().chain(&FUTEX_PROGS) {
             let t: &mut TracePoint = ebpf
                 .program_mut(name)
                 .ok_or_else(|| format!("program {name} missing from the object"))?
@@ -449,6 +486,7 @@ impl Kernel {
             .iter()
             .map(|p| p.name)
             .chain(SCHED_PROGS)
+            .chain(FUTEX_PROGS)
             .map(|name| {
                 let p = ebpf.program(name).ok_or("program missing")?;
                 Ok((name, p.fd()?.as_fd().try_clone_to_owned()?))
@@ -470,6 +508,7 @@ impl Kernel {
             config: take(&mut ebpf, "CONFIG")?,
             stream: take(&mut ebpf, "STREAM")?,
             sched: take(&mut ebpf, "SCHED")?,
+            futex: take(&mut ebpf, "FUTEX")?,
             tid_tgid: take(&mut ebpf, "TID_TGID")?,
             user_words: take(&mut ebpf, "USER_WORDS")?,
             agg: take(&mut ebpf, "AGG")?,
@@ -493,9 +532,14 @@ impl Kernel {
             failed: HashMap::new(),
             applied: 0,
             prog_fds,
-            sched_links: Vec::new(),
+            sched_tp: Tracepoints::new(
+                "sched",
+                &SCHED_PROGS,
+                &["sched_switch", "sched_wakeup"],
+                &SCHED_FIELDS,
+            ),
+            futex_tp: Tracepoints::new("syscalls", &FUTEX_PROGS, &["futex_wait"], &FUTEX_FIELDS),
             missing: BTreeSet::new(),
-            layout: check_layout(),
             deleted: HashSet::new(),
             notes: Vec::new(),
             ebpf: {
@@ -727,7 +771,7 @@ impl Kernel {
     }
 
     /// The offsets `prog` attaches to in `file`, or why it does not.
-    fn offsets(&self, prog: &Prog, file: &LibFile) -> std::result::Result<Vec<u64>, String> {
+    pub fn offsets(&self, prog: &Prog, file: &LibFile) -> std::result::Result<Vec<u64>, String> {
         let name = file
             .mapped
             .rsplit('/')
@@ -746,6 +790,18 @@ impl Kernel {
                 .ok_or_else(|| format!("{name} does not export {n}")),
             Sym::Prefix(prefix, overloads) => libs::by_prefix(&file.symbols, prefix, overloads)
                 .map_err(|e| format!("{name}: {e}")),
+            Sym::Names(names) => {
+                let mut offsets: Vec<u64> = names
+                    .iter()
+                    .filter_map(|n| file.symbols.get(*n).copied())
+                    .collect();
+                offsets.sort_unstable();
+                offsets.dedup();
+                if offsets.is_empty() {
+                    return Err(format!("{name} exports none of {}", names.join(" ")));
+                }
+                Ok(offsets)
+            }
             Sym::Debug(prefix) => {
                 let syms = file
                     .debug_symbols
@@ -786,7 +842,7 @@ impl Kernel {
             .into_iter()
             .collect();
         for (set, sel) in want {
-            if *set == Set::Sched {
+            if matches!(set, Set::Sched | Set::Futex) {
                 continue;
             }
             let targets: Vec<(Scope, Vec<FileKey>)> = match sel {
@@ -1000,11 +1056,29 @@ impl Kernel {
             let _ = self.user_words.insert(tid, addr, 0);
         }
 
-        let on = sched != Sel::None;
-        if on && self.sched_links.is_empty() {
-            if let Err(why) = &self.layout {
-                let why = why.clone();
-                for point in ["sched_switch", "sched_wakeup"] {
+        let futex = want.get(&Set::Futex).cloned().unwrap_or_default();
+        let futex_pids: BTreeSet<u32> = match &futex {
+            Sel::None => BTreeSet::new(),
+            Sel::All => self.procs.keys().copied().collect(),
+            Sel::Pids(p) => p.clone(),
+        };
+        sync(&mut self.futex, &futex_pids);
+
+        self.switch(false, sched != Sel::None);
+        self.switch(true, futex != Sel::None);
+    }
+
+    /// Attaches the sched or futex tracepoints when `on`, detaches them when not. Waits for an
+    /// attach in progress, only when they turn on or off.
+    fn switch(&mut self, futex: bool, on: bool) {
+        let tp = if futex {
+            &mut self.futex_tp
+        } else {
+            &mut self.sched_tp
+        };
+        if on && tp.links.is_empty() {
+            if let Err(why) = &tp.layout {
+                for point in tp.points {
                     self.missing.insert(Missing {
                         pid: None,
                         point,
@@ -1013,18 +1087,17 @@ impl Kernel {
                 }
                 return;
             }
-            // Waits for an attach in progress, only when the scheduler probes turn on or off.
             let mut ebpf = self.ebpf.lock().expect("ebpf lock");
-            for name in SCHED_PROGS {
+            for name in tp.progs {
                 let from = sys::mono_ns();
                 let t: &mut TracePoint = ebpf
                     .program_mut(name)
                     .expect("loaded")
                     .try_into()
                     .expect("a tracepoint");
-                match t.attach("sched", name) {
+                match t.attach(tp.system, name) {
                     Ok(id) => {
-                        self.sched_links.push(id);
+                        tp.links.push((name, id));
                         self.reaper.log(change(true, name, Scope::All, 1, from));
                     }
                     Err(e) => self.notes.push(Note {
@@ -1033,12 +1106,9 @@ impl Kernel {
                     }),
                 }
             }
-        } else if !on && !self.sched_links.is_empty() {
+        } else if !on && !tp.links.is_empty() {
             let mut ebpf = self.ebpf.lock().expect("ebpf lock");
-            for (name, id) in SCHED_PROGS
-                .iter()
-                .zip(std::mem::take(&mut self.sched_links))
-            {
+            for (name, id) in std::mem::take(&mut tp.links) {
                 let t: &mut TracePoint = ebpf
                     .program_mut(name)
                     .expect("loaded")
@@ -1099,12 +1169,8 @@ impl Kernel {
             .links
             .keys()
             .map(|(i, _, _)| PROGS[*i].name)
-            .chain(
-                (!self.sched_links.is_empty())
-                    .then_some(SCHED_PROGS)
-                    .into_iter()
-                    .flatten(),
-            )
+            .chain(self.sched_tp.links.iter().map(|(n, _)| *n))
+            .chain(self.futex_tp.links.iter().map(|(n, _)| *n))
             .collect();
         self.prog_fds
             .iter()
@@ -1130,6 +1196,7 @@ impl Kernel {
             ("SEEN", self.seen.keys().count() as u64),
             ("STREAM", self.stream.keys().count() as u64),
             ("SCHED", self.sched.keys().count() as u64),
+            ("FUTEX", self.futex.keys().count() as u64),
             ("TID_TGID", self.tid_tgid.keys().count() as u64),
             ("USER_WORDS", self.user_words.keys().count() as u64),
         ]

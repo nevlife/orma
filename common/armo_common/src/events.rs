@@ -67,6 +67,16 @@ pub const ARMO_EV_RCLCPP_EXECUTOR_ADD_GROUP: u16 = 81;
 /// The entity and node of a callback, read from the rclcpp objects the executor runs, for
 /// processes armod attached to after their entities were made (design 2.1.4).
 pub const ARMO_EV_RCLCPP_CALLBACK_OWNER: u16 = 82;
+/// The DDS write call under `rmw_publish`: Cyclone DDS `dds_write`, `dds_writecdr`, Fast DDS
+/// `DataWriter::write` (design 20.2). Written when the call returns.
+pub const ARMO_EV_DDS_WRITE: u16 = 83;
+
+// CUDA driver API in libcuda.so (design 20.1). Written when the call returns.
+pub const ARMO_EV_CUDA_CALL: u16 = 96;
+
+// libarmo_span.so, the opt-in markers inside callbacks (design 20.5).
+pub const ARMO_EV_SPAN_BEGIN: u16 = 104;
+pub const ARMO_EV_SPAN_END: u16 = 105;
 
 // flux2_trace_* of flux2_trace_contract_2 (design 11.2).
 pub const ARMO_EV_FLUX2_CHANNEL_INIT: u16 = 128;
@@ -91,6 +101,8 @@ pub const ARMO_EV_FLUX2_GPU_WEDGED: u16 = 144;
 // Kernel scheduler (design 2.3).
 pub const ARMO_EV_SCHED_SWITCH: u16 = 192;
 pub const ARMO_EV_SCHED_WAKEUP: u16 = 193;
+/// A futex wait of a selected thread, written when the system call returns (design 20.4).
+pub const ARMO_EV_FUTEX_WAIT: u16 = 194;
 
 /// Event numbers stay below this, so `armo_shm_header.missing` has a bit for each.
 pub const ARMO_EV_LIMIT: u16 = 256;
@@ -139,6 +151,21 @@ pub const ARMO_FLUX2_LANG_CPP: i32 = 0;
 pub const ARMO_FLUX2_LANG_PYTHON: i32 = 1;
 pub const ARMO_FLUX2_NO_SLOT: u32 = u32::MAX;
 pub const ARMO_FLUX2_NO_ENTRY: u32 = u32::MAX;
+
+// Values of `armo_ev_cuda_call.api` (design 20.1).
+pub const ARMO_CUDA_LAUNCH: u32 = 0;
+pub const ARMO_CUDA_GRAPH_LAUNCH: u32 = 1;
+pub const ARMO_CUDA_MEMCPY: u32 = 2;
+pub const ARMO_CUDA_MEMCPY_ASYNC: u32 = 3;
+pub const ARMO_CUDA_SYNC_STREAM: u32 = 4;
+pub const ARMO_CUDA_SYNC_CTX: u32 = 5;
+pub const ARMO_CUDA_SYNC_EVENT: u32 = 6;
+pub const ARMO_CUDA_ALLOC: u32 = 7;
+pub const ARMO_CUDA_FREE: u32 = 8;
+pub const ARMO_CUDA_API_COUNT: u32 = 9;
+
+/// `armo_ev_futex_wait.op` of a `futex_waitv` call, whose `uaddr` is the first waiter's.
+pub const ARMO_FUTEX_WAITV: u32 = u32::MAX;
 
 /// `len` counts this header, the payload and the strings, rounded up to `ARMO_RECORD_ALIGN`.
 #[repr(C)]
@@ -580,6 +607,43 @@ pub struct armo_ev_flux2_record_drop {
 pub struct armo_ev_flux2_gpu_wedged {
     pub result: i32,
     pub pad: u32,
+}
+
+/// `writer` is the DDS writer handle or object the call took.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct armo_ev_dds_write {
+    pub writer: u64,
+    pub duration_ns: u64,
+}
+
+/// `bytes` is the copy size of a memcpy and the size of an alloc, else 0. `result` is the
+/// `CUresult`.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct armo_ev_cuda_call {
+    pub duration_ns: u64,
+    pub bytes: u64,
+    pub api: u32,
+    pub result: i32,
+}
+
+/// `key` is the address of the span's name, the same at its begin and end. Strings: name, on
+/// `ARMO_EV_SPAN_BEGIN` only.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct armo_ev_span {
+    pub key: u64,
+}
+
+/// `op` is the futex command without its flags; `ret` the system call's return value.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct armo_ev_futex_wait {
+    pub uaddr: u64,
+    pub duration_ns: u64,
+    pub op: u32,
+    pub ret: i32,
 }
 
 /// The record's position is the thread leaving the CPU.

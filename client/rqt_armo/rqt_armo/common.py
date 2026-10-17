@@ -2,7 +2,7 @@
 
 import re
 
-from armo_cli.cli import lat, ns, num, size  # noqa: F401  (re-exported for the views)
+from armo_cli.cli import lat, ns, num, p99, size  # noqa: F401  (re-exported for the views)
 from python_qt_binding.QtCore import Qt
 from python_qt_binding.QtWidgets import (
     QAbstractItemView,
@@ -18,8 +18,8 @@ SORT = Qt.UserRole + 1
 UNITS = {"": 1, "ns": 1, "us": 1e3, "ms": 1e6, "s": 1e9, "B": 1}
 UNITS.update({"KiB": 1 << 10, "MiB": 1 << 20, "GiB": 1 << 30})
 NUMBER = re.compile(r"(-?\d+(?:\.\d+)?)([A-Za-z]*)")
-# The order of armo_cli.cli.lat: tail first.
-LAT_HEADS = ["p99", "p99.9", "max", "p50"]
+# The order of armo_cli.cli.lat.
+LAT_HEADS = ["p50", "p90", "p99", "max"]
 STATUS_ICONS = {
     "ok": QStyle.SP_DialogApplyButton,
     "info": QStyle.SP_MessageBoxInformation,

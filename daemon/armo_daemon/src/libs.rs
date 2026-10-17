@@ -25,6 +25,12 @@ pub enum Lib {
     Flux2,
     Fastdds,
     Cyclone,
+    /// Fast DDS itself: libfastrtps.so (2.x) or libfastdds.so (3.x).
+    Fastrtps,
+    /// Cyclone DDS itself.
+    Ddsc,
+    Cuda,
+    Span,
 }
 
 impl Lib {
@@ -39,6 +45,11 @@ impl Lib {
             "librmw_cyclonedds_cpp.so" => Lib::Cyclone,
             // A process maps the file its soname names, libflux2_ffi.so.<abi>.
             n if n.strip_prefix("libflux2_ffi.so").is_some_and(abi) => Lib::Flux2,
+            n if versioned(n, "libfastrtps.so") || versioned(n, "libfastdds.so") => Lib::Fastrtps,
+            n if versioned(n, "libddsc.so") => Lib::Ddsc,
+            // libcuda.so.<driver version>; libcuda.so.1.1 under nvidia/ or tegra/ on Jetson.
+            n if versioned(n, "libcuda.so") => Lib::Cuda,
+            n if versioned(n, "libarmo_span.so") => Lib::Span,
             _ => return None,
         })
     }
@@ -58,6 +69,16 @@ fn abi(suffix: &str) -> bool {
     suffix
         .strip_prefix('.')
         .is_none_or(|v| !v.is_empty() && v.bytes().all(|b| b.is_ascii_digit()))
+}
+
+/// `base` with any `.<number>` suffixes: the file a soname link resolves to.
+fn versioned(name: &str, base: &str) -> bool {
+    name.strip_prefix(base).is_some_and(|v| {
+        v.split('.')
+            .skip(1)
+            .all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()))
+            && (v.is_empty() || v.starts_with('.'))
+    })
 }
 
 pub type FileKey = (u64, u64);
@@ -263,6 +284,29 @@ mod tests {
         assert_eq!(Lib::of("/x/libflux2_ffi.so.3.1"), None);
         assert_eq!(Lib::of("/x/libflux2_ffi.so"), Some(Lib::Flux2));
         assert_eq!(Lib::of("/x/librclcpp_action.so"), None);
+        assert_eq!(
+            Lib::of("/usr/lib/x86_64-linux-gnu/libcuda.so.580.178.04"),
+            Some(Lib::Cuda)
+        );
+        assert_eq!(
+            Lib::of("/usr/lib/aarch64-linux-gnu/nvidia/libcuda.so.1.1"),
+            Some(Lib::Cuda)
+        );
+        assert_eq!(Lib::of("/x/libcudart.so.12"), None);
+        assert_eq!(Lib::of("/x/libcudadebugger.so.1"), None);
+        assert_eq!(Lib::of("/x/libcuda.so."), None);
+        assert_eq!(Lib::of("/x/libcuda.so.1x"), None);
+        assert_eq!(
+            Lib::of("/opt/ros/jazzy/lib/x86_64-linux-gnu/libddsc.so.0.10.5"),
+            Some(Lib::Ddsc)
+        );
+        assert_eq!(
+            Lib::of("/opt/ros/jazzy/lib/libfastrtps.so.2.14.6"),
+            Some(Lib::Fastrtps)
+        );
+        assert_eq!(Lib::of("/x/libfastdds.so.3.2.1"), Some(Lib::Fastrtps));
+        assert_eq!(Lib::of("/x/libfastcdr.so.2"), None);
+        assert_eq!(Lib::of("/x/libarmo_span.so"), Some(Lib::Span));
     }
 
     #[test]

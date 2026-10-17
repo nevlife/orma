@@ -4,8 +4,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use armo_common::shm::ARMO_SRC_FLUX2;
 use armo_proto::msg::{
-    self, Agent, Callback, CpuSource, Drops, Executor, ExecutorKind, Flow, FlowKind, Hist, Node,
-    ProcUse, Process, ShmUse, Subscription, Topic, Transport, Window,
+    self, Agent, Callback, CpuSource, CudaUse, Drops, Executor, ExecutorKind, Flow, FlowKind, Hist,
+    Node, ProcCuda, ProcUse, Process, ShmUse, Span, Subscription, Topic, Window,
 };
 
 use super::*;
@@ -73,12 +73,7 @@ impl Model {
     }
 
     pub(super) fn topic_id(&self, ix: TopicIx) -> String {
-        let t = &self.topics[ix];
-        match t.transport {
-            Transport::Ros => format!("topic:ros:{}", t.name),
-            Transport::Flux => format!("topic:flux:{}", t.name),
-            Transport::Flux2 => format!("topic:flux2:{}:{:016x}", t.name, t.fingerprint),
-        }
+        self.topics[ix].id()
     }
 
     pub(super) fn sub_id(&self, s: &SubKey) -> String {
@@ -90,6 +85,7 @@ impl Model {
             FlowKind::Sync => "sync",
             FlowKind::Stamp => "stamp",
             FlowKind::Blind => "blind",
+            FlowKind::Latest => "latest",
         };
         let input = f.input.map(|i| self.topic_id(i)).unwrap_or_default();
         format!(
@@ -251,6 +247,7 @@ impl Model {
             let cpu_wait = tw.and_then(|w| w.cpu_wait.lat());
             if let Some(w) = tw {
                 keep(&id, "cpu_wait", &w.cpu_wait);
+                keep(&id, "futex", &w.futex);
             }
             let stat = if self.live {
                 self.kept
@@ -274,6 +271,7 @@ impl Model {
                 cpu_pct: cpu.map(|c| pct(c, window_ns)),
                 in_callback_cpu_pct: in_cb.map(|c| pct(c, window_ns)),
                 cpu_wait,
+                futex: tw.and_then(|w| w.futex.lat()),
                 bucket,
                 cpus,
             });
@@ -313,6 +311,8 @@ impl Model {
             keep(&id, "dispatch", &cw.dispatch);
             keep(&id, "age", &cw.age);
             let hot = self.hot.contains(k.pid);
+            let runs = (hot && cw.n > 0).then_some(cw.n);
+            let cuda_proc = self.gpu && self.procs.get(&k.pid).is_some_and(|p| p.cuda);
             callbacks.push(Callback {
                 node: node.map(|n| self.node_id(n)),
                 kind: self.cb_kind(k),
@@ -341,6 +341,16 @@ impl Model {
                 age: cw.age.lat().filter(|_| hot),
                 intra_pct: (cw.starts > 0).then(|| cw.intra as f64 * 100.0 / cw.starts as f64),
                 nested: cw.nested,
+                cuda: runs.filter(|_| cuda_proc).map(|n| CudaUse {
+                    calls: (cw.cuda.calls as f64 * scale) as u64,
+                    launches: (cw.cuda.launches as f64 * scale) as u64,
+                    memcpy_bytes: (cw.cuda.memcpy_bytes as f64 * scale) as u64,
+                    api_mean_ns: cw.cuda.ns / n,
+                    sync_mean_ns: cw.cuda.sync_ns / n,
+                }),
+                futex_mean_ns: runs
+                    .filter(|_| self.futex.contains(k.pid))
+                    .map(|n| cw.futex / n),
                 id,
             });
         }
@@ -397,6 +407,20 @@ impl Model {
                 rss_bytes: p.rss,
                 pss_bytes: p.pss,
                 flux2_gpu_wedged: p.gpu_wedged,
+                cuda: (self.gpu && p.cuda && self.hot.contains(pid)).then(|| {
+                    let empty = CudaWin::default();
+                    let c = self.win.cuda.get(&pid).unwrap_or(&empty);
+                    let scale = self.scale(pid, window_ns);
+                    ProcCuda {
+                        calls_hz: hz(c.calls, window_ns) * scale,
+                        launch_hz: hz(c.launches, window_ns) * scale,
+                        memcpy_bps: hz(c.memcpy_bytes, window_ns) * scale,
+                        alloc_hz: hz(c.allocs, window_ns) * scale,
+                        errors: c.errors,
+                        sync: c.sync.lat(),
+                    }
+                }),
+                gpu_mem_bytes: None,
                 shared_cpu_pct: cpu
                     .filter(|_| self.hot.contains(pid))
                     .map(|c| pct(c.saturating_sub(nodes_sum), window_ns)),
@@ -476,6 +500,8 @@ impl Model {
             keep(&id, "hop", &tw.hop);
             keep(&id, "age_pub", &tw.age_pub);
             keep(&id, "age_take", &tw.age_take);
+            keep(&id, "pub_to_dds", &tw.pub_to_dds);
+            keep(&id, "dds_write", &tw.dds_write);
             topics.push(Topic {
                 transport: t.transport,
                 name: t.name.clone(),
@@ -504,6 +530,8 @@ impl Model {
                     record: tw.drop_record,
                     ambiguous: (t.transport == Transport::Ros).then_some(tw.ambiguous),
                 },
+                pub_to_dds: tw.pub_to_dds.lat(),
+                dds_write: tw.dds_write.lat(),
                 id,
             });
         }
@@ -570,6 +598,24 @@ impl Model {
             });
         }
 
+        let mut spans = Vec::new();
+        for (id, sw) in &self.win.spans {
+            keep(id, "duration", &sw.dur);
+            spans.push(Span {
+                id: id.clone(),
+                name: sw.name.clone(),
+                pid: sw.pid,
+                node: sw
+                    .cb
+                    .and_then(|k| cb_nodes.get(&k).copied().flatten())
+                    .map(|n| self.node_id(n)),
+                callback: sw.cb.map(|k| self.cb_id(&k)),
+                parent: sw.parent.clone(),
+                hz: hz(sw.dur.n, window_ns) * self.scale(sw.pid, window_ns),
+                duration: sw.dur.lat().expect("a span ended to make the row"),
+            });
+        }
+
         self.seq += 1;
         Window {
             seq: self.seq,
@@ -586,6 +632,9 @@ impl Model {
             topics,
             subscriptions,
             flows,
+            spans,
+            chains: self.chains.rows(),
+            host: None,
             agent: Agent {
                 armod: None,
                 collectd: ProcUse {
@@ -631,6 +680,7 @@ impl Model {
     }
 
     pub(super) fn end_window(&mut self) {
+        self.chains.end_window();
         let mut win = std::mem::take(&mut self.win);
         for (key, th) in &mut self.threads {
             let owners = win
@@ -684,6 +734,8 @@ impl Model {
             Owner::Proc(p) => p != pid,
         };
         self.known_subs.retain(|s| alive(&s.owner));
+        self.latest.retain(|n, _| nodes[*n].pid != pid);
+        self.latest_match.retain(|n, _| nodes[*n].pid != pid);
         for c in self.pair.connected.values_mut() {
             c.retain(|s, _| alive(&s.owner));
         }

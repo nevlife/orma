@@ -40,8 +40,9 @@ set(shim_flags ${warnings} -fno-stack-protector)
 # The interception code both backends link whole (design 4.4): libarmo_preload.so here,
 # libarmo_lttng.so in armo_lttng.
 add_library(armo_intercept STATIC
-  src/intercept_flux2.c src/intercept_malloc.c src/intercept_rcl.c src/intercept_rclcpp.c
-  src/intercept_ros.c src/resolve.c)
+  src/intercept_cuda.c src/intercept_dds.c src/intercept_flux2.c src/intercept_malloc.c
+  src/intercept_rcl.c src/intercept_rclcpp.c src/intercept_ros.c src/intercept_span.c
+  src/resolve.c)
 add_dependencies(armo_intercept armo_preload_symbols)
 set_target_properties(armo_intercept PROPERTIES
   POSITION_INDEPENDENT_CODE ON C_STANDARD 17 C_EXTENSIONS ON C_VISIBILITY_PRESET hidden)

@@ -334,6 +334,17 @@ bool armo_backend_malloc_on(void)
   return false;
 }
 
+// Asked for in this library's own file, which appears on the first callback.
+bool armo_backend_gpu_on(void)
+{
+  return armo_option(ARMO_OPTION_GPU);
+}
+
+bool armo_backend_dds_on(void)
+{
+  return armo_option(ARMO_OPTION_DDS);
+}
+
 void armo_backend_alloc(size_t bytes)
 {
   (void)bytes;

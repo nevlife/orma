@@ -18,6 +18,7 @@ use armo_proto::Ingest;
 use armo_proto::frame;
 use armo_proto::msg::*;
 use armo_proto::records::Record;
+use regex::Regex;
 
 pub const WAIT: Duration = Duration::from_secs(10);
 
@@ -56,6 +57,10 @@ pub struct Seen {
     pub processes: Vec<Process>,
     pub nodes: Vec<Node>,
     pub unowned: std::collections::BTreeSet<u32>,
+    pub gpu: bool,
+    pub futex: Sel,
+    pub chains: Vec<ChainSpec>,
+    pub latest_nodes: Vec<String>,
 }
 
 /// An `Ingest` that only counts, the stand-in for WP3b's model.
@@ -96,6 +101,18 @@ impl Model for Counting {
     fn set_expected_hz(&mut self, by_id: BTreeMap<String, f64>) {
         self.0.lock().unwrap().expected_hz = by_id;
     }
+    fn set_probes(&mut self, gpu: bool, futex: Sel) {
+        let mut seen = self.0.lock().unwrap();
+        (seen.gpu, seen.futex) = (gpu, futex);
+    }
+    fn set_flows(&mut self, chains: Vec<ChainSpec>, latest_nodes: Vec<Regex>) {
+        let mut seen = self.0.lock().unwrap();
+        seen.chains = chains;
+        seen.latest_nodes = latest_nodes
+            .iter()
+            .map(|r| r.as_str().to_string())
+            .collect();
+    }
 }
 
 pub fn empty_window(t_mono_ns: u64, t_real_ns: u64, window_ns: u64) -> Window {
@@ -114,6 +131,9 @@ pub fn empty_window(t_mono_ns: u64, t_real_ns: u64, window_ns: u64) -> Window {
         topics: Vec::new(),
         subscriptions: Vec::new(),
         flows: Vec::new(),
+        spans: Vec::new(),
+        chains: Vec::new(),
+        host: None,
         agent: Agent {
             armod: None,
             collectd: ProcUse {

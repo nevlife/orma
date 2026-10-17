@@ -5,7 +5,7 @@ repos:
     hooks:
       - id: clang-format
         types_or: [c, c++]
-        files: ^collect/armo_(preload|lttng)/
+        files: ^collect/armo_(preload|lttng|span)/
         # Generated: armo_common's header test compares them byte for byte with cbindgen's output.
         exclude: ^collect/armo_preload/include/armo_preload/armo_(shm|events)\.h$
 
@@ -89,7 +89,7 @@ repos:
         language: python
         additional_dependencies: [clang-tidy==22.1.8]
         types_or: [c, c++]
-        files: ^collect/armo_(preload|lttng)/
+        files: ^collect/armo_(preload|lttng|span)/
 
       - id: docs-tracked
         name: no untracked files under docs/

@@ -12,7 +12,7 @@ import time
 
 from ament_index_python.packages import get_package_prefix, get_package_share_directory
 
-PROTO = [1, 7]
+PROTO = [1, 8]
 MAX_LENGTH = 16 << 20
 KIND_JSON = 1
 UNIT = "armo-collectd.service"
@@ -34,7 +34,13 @@ RECORD_OPTIONS = (
     "bandwidth",
     "sched",
     "malloc",
+    "gpu",
+    "dds",
+    "futex",
+    "chains",
+    "latest_nodes",
 )
+CHAIN_MODES = ("lineage", "first")
 
 
 class ArmoError(Exception):
@@ -61,6 +67,23 @@ def targets(all=False, pids=(), node=None, topic=None, exclude=None):
     """`node`, `topic` and `exclude` are regular expressions over whole names (design 14.3)."""
     names = {"node": node, "topic": topic, "exclude": exclude}
     return {"all": all, "pids": list(pids), **{k: v for k, v in names.items() if v is not None}}
+
+
+def parse_chain(text):
+    """`NAME=t1,t2,...[:first]` (design 20.6); the mode is `lineage` unless given."""
+    name, sep, rest = text.partition("=")
+    topics, colon, mode = rest.rpartition(":")
+    if not colon:
+        topics, mode = rest, "lineage"
+    topics = [t for t in topics.split(",") if t]
+    if not sep or not name or len(topics) < 2 or mode not in CHAIN_MODES:
+        raise ArmoError(f"chain {text!r}: give NAME=TOPIC,TOPIC,...[:first]")
+    return {"name": name, "topics": topics, "mode": mode}
+
+
+def format_chain(chain):
+    mode = "" if chain["mode"] == "lineage" else f":{chain['mode']}"
+    return f"{chain['name']}={','.join(chain['topics'])}{mode}"
 
 
 def record_start(method=None, targets=None, **options):

@@ -40,7 +40,24 @@
           "threads": 0,
           "table": 3,
           "depth": 0
-        }
+        },
+        "cuda": {
+          "calls_hz": 90.0,
+          "launch_hz": 30.0,
+          "memcpy_bps": 36864000.0,
+          "alloc_hz": 0.0,
+          "errors": 0,
+          "sync": {
+            "n": 30,
+            "mean_ns": 2100000,
+            "p50_ns": 2097152,
+            "p90_ns": 3145728,
+            "p99_ns": 4194304,
+            "p999_ns": 4194304,
+            "max_ns": 3900000
+          }
+        },
+        "gpu_mem_bytes": 94015488
       },
       {
         "id": "p:5100:771999",
@@ -75,6 +92,7 @@
           "n": 1000,
           "mean_ns": 4100,
           "p50_ns": 2048,
+          "p90_ns": 9216,
           "p99_ns": 16384,
           "p999_ns": 32768,
           "max_ns": 51200
@@ -82,7 +100,16 @@
         "bucket": "node:n:4021:771234:5581e0a0",
         "cpus": [
           2
-        ]
+        ],
+        "futex": {
+          "n": 40,
+          "mean_ns": 52000,
+          "p50_ns": 32768,
+          "p90_ns": 147456,
+          "p99_ns": 262144,
+          "p999_ns": 262144,
+          "max_ns": 250000
+        }
       }
     ],
     "nodes": [
@@ -124,6 +151,7 @@
           "n": 30,
           "mean_ns": 24000000,
           "p50_ns": 16777216,
+          "p90_ns": 25165824,
           "p99_ns": 33554432,
           "p999_ns": 33554432,
           "max_ns": 25100000
@@ -132,6 +160,7 @@
           "n": 30,
           "mean_ns": 3100,
           "p50_ns": 2048,
+          "p90_ns": 5120,
           "p99_ns": 8192,
           "p999_ns": 8192,
           "max_ns": 7000
@@ -153,6 +182,7 @@
           "n": 10,
           "mean_ns": 1500000,
           "p50_ns": 1048576,
+          "p90_ns": 1572864,
           "p99_ns": 2097152,
           "p999_ns": 2097152,
           "max_ns": 2001000
@@ -162,6 +192,7 @@
           "n": 10,
           "mean_ns": 3000,
           "p50_ns": 2048,
+          "p90_ns": 3072,
           "p99_ns": 4096,
           "p999_ns": 4096,
           "max_ns": 3900
@@ -170,12 +201,21 @@
           "n": 10,
           "mean_ns": 5200000,
           "p50_ns": 4194304,
+          "p90_ns": 6291456,
           "p99_ns": 8388608,
           "p999_ns": 8388608,
           "max_ns": 6100000
         },
         "intra_pct": 0.0,
-        "nested": false
+        "nested": false,
+        "cuda": {
+          "calls": 30,
+          "launches": 10,
+          "memcpy_bytes": 1228800,
+          "api_mean_ns": 2400000,
+          "sync_mean_ns": 2100000
+        },
+        "futex_mean_ns": 12000
       },
       {
         "id": "c:4021:771234:flux2:5581f000:2",
@@ -213,6 +253,7 @@
           "n": 10,
           "mean_ns": 210000,
           "p50_ns": 131072,
+          "p90_ns": 327680,
           "p99_ns": 524288,
           "p999_ns": 524288,
           "max_ns": 400000
@@ -221,6 +262,7 @@
           "n": 10,
           "mean_ns": 900000,
           "p50_ns": 524288,
+          "p90_ns": 786432,
           "p99_ns": 1048576,
           "p999_ns": 1048576,
           "max_ns": 1000000
@@ -230,6 +272,24 @@
           "publish": 0,
           "record": null,
           "ambiguous": 0
+        },
+        "pub_to_dds": {
+          "n": 10,
+          "mean_ns": 21000,
+          "p50_ns": 16384,
+          "p90_ns": 24576,
+          "p99_ns": 32768,
+          "p999_ns": 32768,
+          "max_ns": 30100
+        },
+        "dds_write": {
+          "n": 10,
+          "mean_ns": 9000,
+          "p50_ns": 8192,
+          "p90_ns": 12288,
+          "p99_ns": 16384,
+          "p999_ns": 16384,
+          "max_ns": 15000
         }
       },
       {
@@ -266,6 +326,7 @@
           "n": 10,
           "mean_ns": 210000,
           "p50_ns": 131072,
+          "p90_ns": 327680,
           "p99_ns": 524288,
           "p999_ns": 524288,
           "max_ns": 400000
@@ -274,6 +335,7 @@
           "n": 10,
           "mean_ns": 260000,
           "p50_ns": 262144,
+          "p90_ns": 393216,
           "p99_ns": 524288,
           "p999_ns": 524288,
           "max_ns": 450000
@@ -292,13 +354,184 @@
           "n": 10,
           "mean_ns": 1200000,
           "p50_ns": 1048576,
+          "p90_ns": 1572864,
           "p99_ns": 2097152,
           "p999_ns": 2097152,
           "max_ns": 1900000
         },
         "ambiguous": 0
+      },
+      {
+        "id": "f:latest:n:4021:771234:5581e0a0#topic:flux2:/image:9f3a0c11d2e4b5a6#topic:ros:/scan_filtered",
+        "kind": "latest",
+        "node": "n:4021:771234:5581e0a0",
+        "input": "topic:flux2:/image:9f3a0c11d2e4b5a6",
+        "output": "topic:ros:/scan_filtered",
+        "count": 10,
+        "dwell": {
+          "n": 10,
+          "mean_ns": 16000000,
+          "p50_ns": 16777216,
+          "p90_ns": 25165824,
+          "p99_ns": 33554432,
+          "p999_ns": 33554432,
+          "max_ns": 33000000
+        },
+        "ambiguous": 0
       }
     ],
+    "spans": [
+      {
+        "id": "span:4021:771234:infer@7f10a0#c:4021:771234:ros:55a0c1d0#",
+        "name": "infer",
+        "pid": 4021,
+        "node": "n:4021:771234:5581e0a0",
+        "callback": "c:4021:771234:ros:55a0c1d0",
+        "parent": null,
+        "hz": 30.0,
+        "duration": {
+          "n": 30,
+          "mean_ns": 900000,
+          "p50_ns": 524288,
+          "p90_ns": 1310720,
+          "p99_ns": 2097152,
+          "p999_ns": 2097152,
+          "max_ns": 1800000
+        }
+      },
+      {
+        "id": "span:4021:771234:nms@7f10b8#c:4021:771234:ros:55a0c1d0#span:4021:771234:infer@7f10a0#c:4021:771234:ros:55a0c1d0#",
+        "name": "nms",
+        "pid": 4021,
+        "node": "n:4021:771234:5581e0a0",
+        "callback": "c:4021:771234:ros:55a0c1d0",
+        "parent": "span:4021:771234:infer@7f10a0#c:4021:771234:ros:55a0c1d0#",
+        "hz": 30.0,
+        "duration": {
+          "n": 30,
+          "mean_ns": 120000,
+          "p50_ns": 131072,
+          "p90_ns": 196608,
+          "p99_ns": 262144,
+          "p999_ns": 262144,
+          "max_ns": 200000
+        }
+      }
+    ],
+    "chains": [
+      {
+        "name": "perception",
+        "mode": "lineage",
+        "topics": [
+          "/scan",
+          "/scan_filtered",
+          "/objects"
+        ],
+        "count": 10,
+        "e2e": {
+          "n": 10,
+          "mean_ns": 6200000,
+          "p50_ns": 4194304,
+          "p90_ns": 6291456,
+          "p99_ns": 8388608,
+          "p999_ns": 8388608,
+          "max_ns": 7900000
+        },
+        "steps": [
+          {
+            "n": 10,
+            "mean_ns": 1500000,
+            "p50_ns": 1048576,
+            "p90_ns": 1572864,
+            "p99_ns": 2097152,
+            "p999_ns": 2097152,
+            "max_ns": 1900000
+          },
+          {
+            "n": 10,
+            "mean_ns": 6200000,
+            "p50_ns": 4194304,
+            "p90_ns": 6291456,
+            "p99_ns": 8388608,
+            "p999_ns": 8388608,
+            "max_ns": 7900000
+          }
+        ],
+        "broken": 2
+      },
+      {
+        "name": "react",
+        "mode": "first",
+        "topics": [
+          "/obstacle",
+          "/trajectory",
+          "/control_cmd"
+        ],
+        "count": 0,
+        "e2e": null,
+        "steps": [
+          null,
+          null
+        ],
+        "broken": 0
+      }
+    ],
+    "host": {
+      "cpu_mhz": [
+        800,
+        2385,
+        null,
+        3434
+      ],
+      "thermal": [
+        {
+          "name": "acpitz",
+          "temp_c": 27.8
+        },
+        {
+          "name": "x86_pkg_temp",
+          "temp_c": 40.0
+        }
+      ],
+      "throttle": {
+        "core": 0,
+        "package": 0
+      },
+      "net": [
+        {
+          "name": "enp5s0",
+          "rx_bps": 2493.4,
+          "tx_bps": 1313.9,
+          "rx_pps": 19.9,
+          "tx_pps": 19.9,
+          "rx_drops": 0,
+          "tx_drops": 0,
+          "rx_errors": 0,
+          "tx_errors": 0
+        }
+      ],
+      "udp": {
+        "in_errors": 0,
+        "rcvbuf_errors": 0,
+        "sndbuf_errors": 0,
+        "no_ports": 0
+      },
+      "gpus": [
+        {
+          "index": 0,
+          "name": "NVIDIA GeForce RTX 4070 SUPER",
+          "util_pct": 7.0,
+          "mem_used_bytes": 1041170432,
+          "mem_total_bytes": 12878610432,
+          "clock_mhz": 210,
+          "temp_c": 36.0,
+          "power_w": 9.772,
+          "throttle": [
+            "idle"
+          ]
+        }
+      ]
+    },
     "agent": {
       "armod": {
         "cpu_pct": 0.4,

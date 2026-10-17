@@ -2,9 +2,10 @@
 """Runs the caller under LD_PRELOAD=libarmo_lttng.so in a private LTTng session and fails unless
 every armo and flux2 event the caller expects arrives exactly as often, the stamps and handles
 come through, and each ROS event also arrives as a ros2 event as often: from libtracetools where it
-has LTTng (Jazzy), from libarmo_lttng.so where it has not (Humble).
+has LTTng (Jazzy), from libarmo_lttng.so where it has not (Humble). Given the stubs, also spans
+(each end keyed as its begin, the name on the begin) and the timed CUDA and DDS calls.
 
-    lttng_events.py LIBRARY CALLER
+    lttng_events.py LIBRARY CALLER [CUDA_STUB DDS_STUB]
 """
 
 import sys
@@ -27,13 +28,13 @@ STAMP = 1700000000 | 5 << 32
 
 
 def main():
-    lib, caller = sys.argv[1], sys.argv[2]
+    lib, caller, stubs = sys.argv[1], sys.argv[2], sys.argv[3:]
     failed = []
     with session.daemon() as env, tempfile.TemporaryDirectory() as tmp:
         trace = Path(tmp) / "trace"
         with session.session(env, trace, "armo:*,flux2:*,ros2:*"):
             run = session.subprocess.run(
-                [caller], env=dict(env, LD_PRELOAD=lib), capture_output=True, text=True
+                [caller, *stubs], env=dict(env, LD_PRELOAD=lib), capture_output=True, text=True
             )
         if run.returncode != 0:
             sys.exit(f"the caller failed: {run.stderr}")
@@ -64,6 +65,18 @@ def main():
     nodes = [f for k, f in got if k == "armo:rcl_node_init"]
     if any((f["s0"], f["s1"]) != ('"node"', '"/ns"') for f in nodes):
         failed.append(f"rcl_node_init strings {nodes}")
+    begins = [(f["s0"], int(f["p"][0], 16)) for k, f in got if k == "armo:span_begin"]
+    ends = sorted(w[0] for w in words("span_end"))
+    if stubs and (
+        {n for n, _ in begins} != {'"outer"', '"inner"'} or sorted(k for _, k in begins) != ends
+    ):
+        failed.append(f"span begins {begins}, ends {ends}")
+    # duration, bytes, then api and result in one word: a 64-byte copy (2), a stream sync (4).
+    cuda = sorted((w[1], w[2]) for w in words("cuda_call"))
+    if stubs and cuda != sorted([(64, 2), (0, 4)] * 3):
+        failed.append(f"cuda_call bytes and api {cuda}")
+    if stubs and sorted(w[0] for w in words("dds_write")) != sorted([0x1234, 0xBEEF] * 3):
+        failed.append(f"dds_write writers {words('dds_write')}")
     if any(f.get("vpid") is None or f.get("vtid") is None for _, f in got):
         failed.append("an event without the vpid and vtid contexts")
     print(dict(kinds))

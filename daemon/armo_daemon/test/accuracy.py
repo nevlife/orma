@@ -12,7 +12,8 @@ PATH, the one colcon installs.
     daemon/armo_daemon/test/accuracy.py [--armod PATH] [--only CASE]... [--humble]
 
 Cases: ros_calls, flux2_calls, flux2_real, cpp_node, cpp_fastdds, py_node, sched, select,
-selfcheck, and with --humble humble_cpp, humble_py (docker image flux-humble).
+gpu_calls, spans, futex, dds_cyclone, dds_fastdds, selfcheck, and with --humble humble_cpp,
+humble_py (docker image flux-humble).
 """
 
 import argparse
@@ -101,9 +102,16 @@ PAYLOAD = {
     "flux2_py_ready": ("<QQ", "channel ticket"),
     "flux2_record_drop": ("<QQIi", "channel ticket count reason"),
     "flux2_gpu_wedged": ("<iI", "result pad"),
+    "dds_write": ("<QQ", "writer duration_ns"),
+    "cuda_call": ("<QQIi", "duration_ns bytes api result"),
+    "span_begin": ("<Q", "key"),
+    "span_end": ("<Q", "key"),
+    "futex_wait": ("<QQIi", "uaddr duration_ns op ret"),
 }
 
 AGG_CALLBACK, AGG_DISPATCH, AGG_WAIT, AGG_OFFCPU, AGG_CPU_WAIT = 1, 2, 3, 4, 5
+CUDA_SYNC = (4, 5, 6)
+FUTEX_WAITV = 0xFFFFFFFF
 SRC_ROS, SRC_FLUX2 = 1, 2
 
 
@@ -646,12 +654,44 @@ def node_env(rmw):
     return dict(os.environ, ROS_DOMAIN_ID=DOMAIN, RMW_IMPLEMENTATION=rmw)
 
 
-def cpp_node(sock, tmp, f, rmw="rmw_cyclonedds_cpp", bandwidth=False):
+def dds_checks(f, c, pid, prefix, said):
+    """Each publish on the topic has its DDS write next to it on its thread (design 20.2): the
+    record after it, or with the tracepoint after the write the one before."""
+    n = dict(zip(said[0::2], map(int, said[1::2])))
+    recs = c.of(pid)
+    topic_pub = {
+        r["rmw_handle"]
+        for r in recs
+        if r.name == "rcl_publisher_init" and r.strings[:1] == [prefix + "/out"]
+    }
+    by_tid = collections.defaultdict(list)
+    for r in recs:
+        by_tid[r.tid].append(r)
+    pairs = []
+    for rs in by_tid.values():
+        for i, r in enumerate(rs):
+            if r.name != "rmw_publish" or r["rmw_publisher"] not in topic_pub:
+                continue
+            near = [x for x in rs[i + 1 : i + 2] + rs[max(i - 1, 0) : i] if x.name == "dds_write"]
+            if near:
+                pairs.append(near[0])
+    f.eq(len(pairs), n["published"], "a DDS write next to each publish")
+    writers = {w["writer"] for w in pairs}
+    f.check(len(writers) == 1 and 0 not in writers, f"one writer for the topic: {writers}")
+    by_writer = [r for r in recs if r.name == "dds_write" and r["writer"] in writers]
+    f.eq(len(by_writer), n["published"], "DDS writes of the topic's writer")
+    f.check(all(w["duration_ns"] > 0 for w in pairs), "DDS write durations")
+    durations = sorted(w["duration_ns"] for w in pairs)
+    return f"DDS writes {len(pairs)}, p50 {durations[len(durations) // 2] if durations else 0} ns"
+
+
+def cpp_node(sock, tmp, f, rmw="rmw_cyclonedds_cpp", bandwidth=False, dds=False):
     exe = build_node(tmp)
     prefix = f"/armo_acc_{os.getpid()}"
     c = Conn(sock)
     p = Proc([exe, prefix, "60"], env=node_env(rmw))
     sets = ["discovery", "hot", "rclcpp_symbols", "names"] + (["bandwidth"] if bandwidth else [])
+    sets += ["dds"] if dds else []
     c.watch(p.pid, sets=sets)
     p.go()
     said = p.line().split()
@@ -678,6 +718,8 @@ def cpp_node(sock, tmp, f, rmw="rmw_cyclonedds_cpp", bandwidth=False):
         # CDR: encapsulation 4, stamp 8, frame_id "f": length 4 + 2 bytes.
         f.eq(set(sizes), {18}, "serialized sizes")
         out += f"; serialized sizes {collections.Counter(sizes)}"
+    if dds:
+        out += "; " + dds_checks(f, c, p.pid, prefix, said)
     p.end()
     c.close()
     return out
@@ -685,6 +727,14 @@ def cpp_node(sock, tmp, f, rmw="rmw_cyclonedds_cpp", bandwidth=False):
 
 def cpp_fastdds(sock, tmp, f):
     return cpp_node(sock, tmp, f, rmw="rmw_fastrtps_cpp", bandwidth=True)
+
+
+def dds_cyclone(sock, tmp, f):
+    return cpp_node(sock, tmp, f, dds=True)
+
+
+def dds_fastdds(sock, tmp, f):
+    return cpp_node(sock, tmp, f, rmw="rmw_fastrtps_cpp", dds=True)
 
 
 def py_node(sock, tmp, f):
@@ -747,6 +797,118 @@ def sched(sock, tmp, f):
         + ", ".join(f"{k:#x} {on[k] / 1e6:.1f}/{off[k] / 1e6:.1f}" for k in off)
         + f" (each {n * ms:.0f}); CPU waits {waits[0]}, mean {waits[1] / max(waits[0], 1):.0f} ns"
     )
+
+
+def missing(c, keep):
+    """The next window's probes_missing entries that `keep` takes."""
+    c.settle(1)
+    with c.lock:
+        return [m for m in c.windows[-1]["probes_missing"] if keep(m)]
+
+
+def gpu_calls(sock, tmp, f):
+    """Every driver function of the gpu set in a stand-in libcuda.so.1 (fake_cuda.c), called a
+    known number of times: api, bytes and result of each call, the synchronize calls' 2 ms, and
+    a second thread's calls among them (design 20.1)."""
+    lib = Path(tmp) / "libcuda.so.1"
+    subprocess.run(["cc", "-shared", "-fPIC", "-O0", "-o", lib, HERE / "fake_cuda.c"], check=True)
+    times = 5
+    c = Conn(sock)
+    p = Proc([sys.executable, HERE / "cuda_caller.py", lib, str(times)])
+    worker = int(p.first[1])
+    c.watch(p.pid, sets=["discovery", "gpu"])
+    f.eq(missing(c, lambda m: m["pid"] == p.pid), [], "probes_missing of the process")
+    p.go()
+    want = {(a, b, r): n for a, b, r, n in json.loads(p.line())}
+    c.op("flush")
+    recs = [r for r in c.of(p.pid) if r.name == "cuda_call"]
+    got = collections.Counter((r["api"], r["bytes"], r["result"]) for r in recs)
+    f.eq(dict(got), want, "cuda_call records by (api, bytes, result)")
+    sync = [r["duration_ns"] for r in recs if r["api"] in CUDA_SYNC]
+    f.check(min(sync, default=0) >= 1_900_000, f"synchronize durations from {min(sync, default=0)}")
+    f.eq(sum(r.tid == worker for r in recs), times, "the second thread's calls")
+    p.end()
+    c.close()
+    return f"{len(recs)} cuda_call records over {len(want)} (api, bytes, result)"
+
+
+def spans(sock, tmp, f):
+    """Nested spans through libarmo_span.so (collect/armo_span when built, else fake_span.c,
+    built -O0 so its two empty bodies keep two addresses): begin and end in order, keyed by the
+    name's address, the name on the begin (design 20.5)."""
+    real = next(
+        (
+            Path(p) / "lib/libarmo_span.so"
+            for p in os.environ.get("AMENT_PREFIX_PATH", "").split(":")
+            if p and (Path(p) / "lib/libarmo_span.so").is_file()
+        ),
+        None,
+    )
+    lib = Path(tmp) / "libarmo_span.so"
+    if real:
+        shutil.copy(real, lib)
+    else:
+        subprocess.run(
+            ["cc", "-shared", "-fPIC", "-O0", "-o", lib, HERE / "fake_span.c"], check=True
+        )
+    n = 200
+    c = Conn(sock)
+    p = Proc([sys.executable, HERE / "span_caller.py", lib, str(n)])
+    outer, inner = int(p.first[1]), int(p.first[2])
+    c.watch(p.pid)
+    p.go()
+    f.eq(p.line(), "done", "span caller")
+    c.op("flush")
+    got = [
+        (r.name, r["key"], r.strings) for r in c.of(p.pid) if r.name in ("span_begin", "span_end")
+    ]
+    want = [
+        ("span_begin", outer, ["outer"]),
+        ("span_begin", inner, ["inner"]),
+        ("span_end", inner, []),
+        ("span_end", outer, []),
+    ] * n
+    f.eq(len(got), len(want), "span records")
+    f.check(got == want, "span records in order, keyed by the name's address")
+    p.end()
+    c.close()
+    return f"{len(got)} span records from {'collect/armo_span' if real else 'fake_span.c'}"
+
+
+def futex(sock, tmp, f):
+    """Futex waits of one thread (futex_caller.c): every FUTEX_WAIT on a word with its result
+    and the 2 ms until the wake, a futex_waitv that times out, a condition variable wait; nothing
+    of other processes (design 20.4)."""
+    exe = Path(tmp) / "futex_caller"
+    subprocess.run(["cc", "-O2", "-pthread", HERE / "futex_caller.c", "-o", exe], check=True)
+    c = Conn(sock)
+    p = Proc([exe, "50"])
+    tid, word, word2 = (int(x) for x in p.first[1:4])
+    c.watch(p.pid, sets=["discovery", "futex"])
+    f.eq(missing(c, lambda m: m["point"] == "futex_wait"), [], "probes_missing of futex_wait")
+    p.go()
+    said = json.loads(p.line())
+    c.op("flush")
+    recs = [r for r in c.of(p.pid) if r.name == "futex_wait" and r.tid == tid]
+    on_word = [r for r in recs if r["uaddr"] == word]
+    f.eq(len(on_word), said["calls"], "futex_wait records on the word")
+    f.eq({r["op"] for r in on_word}, {0}, "FUTEX_WAIT without the private flag")
+    f.eq(sum(r["ret"] == 0 for r in on_word), said["ok"], "woken waits")
+    f.eq(sum(r["ret"] == -11 for r in on_word), said["eagain"], "EAGAIN waits")
+    woken = sorted(r["duration_ns"] for r in on_word if r["ret"] == 0)
+    p50 = woken[len(woken) // 2] if woken else 0
+    f.check(p50 >= 1_500_000, f"woken wait p50 {p50} ns")
+    if said["waitv"] != -38:
+        waitv = [(r["op"], r["ret"]) for r in recs if r["uaddr"] == word2]
+        f.eq(waitv, [(FUTEX_WAITV, said["waitv"])], "futex_waitv")
+    cond = [r for r in recs if r["uaddr"] not in (word, word2) and r["duration_ns"] >= 4_000_000]
+    f.check(cond and all(r["op"] in (0, 9) for r in cond), f"condition variable wait: {len(cond)}")
+    with c.lock:
+        others = [r for r in c.records if r.name == "futex_wait" and r.pid != p.pid]
+    f.eq(len(others), 0, "futex_wait records of other processes")
+    p.end()
+    c.close()
+    return f"{len(recs)} waits; woken p50 {p50 / 1e6:.2f} ms; futex_waitv {said['waitv']}"
 
 
 def instruction(pid, lib, symbol_offset):
@@ -871,6 +1033,9 @@ def selfcheck(sock, tmp, f):
         "probes discovery",
         "probes hot",
         "probes rclcpp_symbols",
+        "probes dds",
+        "futex tracepoint layout",
+        f"dds write pid {a.pid} (node)",
         "rmw topic_name offset 16",
         "rmw_publish timestamp = rmw_take source_timestamp",
         f"distro pid {a.pid} (node)",
@@ -1031,6 +1196,11 @@ CASES = {
     "cpp_fastdds": cpp_fastdds,
     "py_node": py_node,
     "sched": sched,
+    "gpu_calls": gpu_calls,
+    "spans": spans,
+    "futex": futex,
+    "dds_cyclone": dds_cyclone,
+    "dds_fastdds": dds_fastdds,
     "selfcheck": selfcheck,
 }
 HUMBLE = {"humble_cpp": humble_cpp, "humble_py": humble_py}

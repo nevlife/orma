@@ -99,6 +99,11 @@ fn select_and_configure_reach_every_client() {
         malloc: None,
         pss: None,
         expected_hz: None,
+        gpu: None,
+        dds: None,
+        futex: None,
+        chains: None,
+        latest_nodes: None,
     };
     gui.request(ClientOp::Configure(configure)).unwrap();
     cli.until(|m| matches!(m, ServerMessage::State(s) if s.monitor.window_s == 0.5));
@@ -111,6 +116,11 @@ fn select_and_configure_reach_every_client() {
         malloc: None,
         pss: None,
         expected_hz: None,
+        gpu: None,
+        dds: None,
+        futex: None,
+        chains: None,
+        latest_nodes: None,
     };
     assert_eq!(
         gui.request(ClientOp::Configure(bad)).unwrap_err().code,
@@ -268,6 +278,11 @@ fn duration_and_size_limits_end_recordings() {
         malloc: None,
         pss: None,
         expected_hz: None,
+        gpu: None,
+        dds: None,
+        futex: None,
+        chains: None,
+        latest_nodes: None,
     }))
     .unwrap();
 
@@ -365,6 +380,11 @@ fn replay_and_export_read_windows() {
         malloc: None,
         pss: None,
         expected_hz: None,
+        gpu: None,
+        dds: None,
+        futex: None,
+        chains: None,
+        latest_nodes: None,
     }))
     .unwrap();
     let (id, rec) = c.start(RecordOptions {
@@ -466,6 +486,11 @@ fn a_slow_client_is_dropped_not_waited_for() {
         malloc: None,
         pss: None,
         expected_hz: None,
+        gpu: None,
+        dds: None,
+        futex: None,
+        chains: None,
+        latest_nodes: None,
     }))
     .unwrap();
     let (id, _) = c.start(RecordOptions {
@@ -499,6 +524,11 @@ fn out_of_range_values_are_refused_and_the_server_lives_on() {
             malloc: None,
             pss: None,
             expected_hz: None,
+            gpu: None,
+            dds: None,
+            futex: None,
+            chains: None,
+            latest_nodes: None,
         })
     };
     assert_eq!(
@@ -545,4 +575,119 @@ fn out_of_range_values_are_refused_and_the_server_lives_on() {
     .unwrap();
     c.until(|m| matches!(m, ServerMessage::Window(_)));
     c.request(window(1.0)).unwrap();
+}
+
+fn configure_flows(chains: Vec<ChainSpec>, latest_nodes: Vec<String>) -> ClientOp {
+    ClientOp::Configure(Configure {
+        window_s: None,
+        bandwidth: None,
+        sched: None,
+        malloc: None,
+        pss: None,
+        expected_hz: None,
+        gpu: Some(true),
+        dds: Some(true),
+        futex: Some(true),
+        chains: Some(chains),
+        latest_nodes: Some(latest_nodes),
+    })
+}
+
+fn chain_of(name: &str, topics: &[&str]) -> ChainSpec {
+    ChainSpec {
+        name: name.into(),
+        topics: topics.iter().map(|t| t.to_string()).collect(),
+        mode: ChainMode::Lineage,
+    }
+}
+
+#[test]
+fn chains_and_latest_nodes_are_checked_and_reach_the_model() {
+    let dir = scratch("chains");
+    let server = Server::start(&dir, config(&dir));
+    let mut c = server.client("armo");
+    let one = configure_flows(vec![chain_of("short", &["/a"])], Vec::new());
+    assert_eq!(c.request(one).unwrap_err().code, code::BAD_REQUEST);
+    let regex = configure_flows(Vec::new(), vec!["(".into()]);
+    assert_eq!(c.request(regex).unwrap_err().code, code::BAD_REQUEST);
+    assert!(
+        !c.state.as_ref().unwrap().monitor.gpu,
+        "a refused configure changes nothing"
+    );
+
+    let perception = chain_of("perception", &["/camera", "/objects"]);
+    let good = configure_flows(vec![perception.clone()], vec!["/fusion.*".into()]);
+    c.request(good).unwrap();
+    let s = c.state.clone().unwrap();
+    assert!(s.monitor.gpu);
+    assert!(s.monitor.dds && s.monitor.futex);
+    assert_eq!(s.monitor.chains, std::slice::from_ref(&perception));
+    assert_eq!(s.monitor.latest_nodes, ["/fusion.*"]);
+    {
+        let seen = server.seen.0.lock().unwrap();
+        assert!(seen.gpu);
+        assert_eq!(seen.chains, std::slice::from_ref(&perception));
+        assert_eq!(seen.latest_nodes, ["^(?:/fusion.*)$"]);
+    }
+
+    let bad = RecordOptions {
+        chains: Some(vec![chain_of("short", &["/a"])]),
+        ..options(&dir)
+    };
+    assert_eq!(
+        c.request(ClientOp::RecordStart(bad)).unwrap_err().code,
+        code::BAD_REQUEST
+    );
+    let planning = chain_of("planning", &["/objects", "/trajectory"]);
+    let (id, rec) = c.start(RecordOptions {
+        kind: Some(RecordKind::Windows),
+        chains: Some(vec![planning.clone(), perception.clone()]),
+        latest_nodes: Some(vec!["/planner".into()]),
+        ..options(&dir)
+    });
+    {
+        let seen = server.seen.0.lock().unwrap();
+        assert_eq!(seen.chains, [perception.clone(), planning.clone()]);
+        assert_eq!(seen.latest_nodes, ["^(?:/fusion.*)$", "^(?:/planner)$"]);
+    }
+    let meta: RecordMeta =
+        serde_json::from_slice(&std::fs::read(rec.join("meta.json")).unwrap()).unwrap();
+    assert_eq!(
+        meta.options.chains,
+        Some(vec![planning, perception.clone()])
+    );
+    c.stop(&id);
+    until(|| server.seen.0.lock().unwrap().chains.len() == 1);
+}
+
+#[test]
+fn export_flattens_spans_chains_and_host() {
+    let dir = scratch("export_new");
+    let golden = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../common/armo_proto/golden");
+    std::fs::copy(golden.join("meta/meta.json"), dir.join("meta.json")).unwrap();
+    let line: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(golden.join("window_line/line.json")).unwrap())
+            .unwrap();
+    std::fs::write(dir.join("windows.jsonl"), format!("{line}\n")).unwrap();
+    let out = dir.join("out.csv");
+    let metrics = ["spans", "chains", "host"].map(String::from);
+    armo_collectd::record::export::export(&dir, &out, &metrics).unwrap();
+    let csv = std::fs::read_to_string(&out).unwrap();
+    let has = |row: &str| csv.lines().any(|l| l.ends_with(row));
+    assert!(
+        has(",spans,span:4021:771234:infer@7f10a0#c:4021:771234:ros:55a0c1d0#,hz,30.0"),
+        "{csv}"
+    );
+    assert!(has(",chains,perception,steps.0.p99_ns,2097152"), "{csv}");
+    assert!(has(",chains,perception,broken,2"), "{csv}");
+    assert!(has(",host,cpu:2,mhz,"), "{csv}");
+    assert!(has(",host,thermal:x86_pkg_temp,temp_c,40.0"), "{csv}");
+    assert!(has(",host,throttle:package,count,0"), "{csv}");
+    assert!(has(",host,net:enp5s0,rx_bps,2493.4"), "{csv}");
+    assert!(has(",host,udp,rcvbuf_errors,0"), "{csv}");
+    assert!(
+        has(",host,gpu:0,name,NVIDIA GeForce RTX 4070 SUPER"),
+        "{csv}"
+    );
+    assert!(has(",host,gpu:0,throttle,idle"), "{csv}");
 }

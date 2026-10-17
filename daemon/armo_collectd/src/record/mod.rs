@@ -269,6 +269,8 @@ pub fn start(options: RecordOptions, cx: Context<'_>) -> Result<Active, String> 
         ));
     }
     let compression = options.compression.unwrap_or(Compression::None);
+    crate::model::chain::check(options.chains.as_deref().unwrap_or_default())?;
+    crate::model::chain::latest_nodes(options.latest_nodes.as_deref().unwrap_or_default())?;
 
     let dir = make_dir(&parent, options.name.as_deref(), cx.real_ns)?;
     let io_err = |e: io::Error| format!("{}: {e}", dir.display());
@@ -328,6 +330,11 @@ pub fn start(options: RecordOptions, cx: Context<'_>) -> Result<Active, String> 
         bandwidth: Some(options.bandwidth.unwrap_or(false)),
         sched: Some(options.sched.unwrap_or(cx.armod)),
         malloc: Some(options.malloc.unwrap_or(false)),
+        gpu: Some(options.gpu.unwrap_or(false)),
+        dds: Some(options.dds.unwrap_or(false)),
+        futex: Some(options.futex.unwrap_or(false)),
+        chains: options.chains.clone(),
+        latest_nodes: options.latest_nodes.clone(),
     };
     let mut files = events.as_ref().map(|e| e.files.clone()).unwrap_or_default();
     files.push(WINDOWS.into());

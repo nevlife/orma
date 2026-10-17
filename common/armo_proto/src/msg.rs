@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 /// `[major, minor]`.
 pub type Version = [u16; 2];
-pub const PROTO: Version = [1, 7];
+pub const PROTO: Version = [1, 8];
 pub const META_SCHEMA: u32 = 1;
 pub const HIST_LOG2: &str = "log2";
 
@@ -46,13 +46,14 @@ enums! {
     pub enum LttngState { Available, Absent }
     pub enum Level { Info, Warn, Error }
     pub enum CheckStatus { Pass, Fail, Unknown }
-    pub enum ProbeSet { Discovery, Hot, Sched, Bandwidth, RclcppSymbols, Names }
+    pub enum ProbeSet { Discovery, Hot, Sched, Bandwidth, RclcppSymbols, Names, Gpu, Dds, Futex }
     pub enum PublishAbi { Rmw, Rcl }
     pub enum CpuSource { Sched, WallBound }
     pub enum ExecutorKind { Rclcpp, Rclpy, Flux, Flux2 }
     pub enum CallbackKind { Sub, Timer, Service, Flux, Flux2, Unknown }
     pub enum Transport { Ros, Flux, Flux2 }
-    pub enum FlowKind { Sync, Stamp, Blind }
+    pub enum FlowKind { Sync, Stamp, Blind, Latest }
+    pub enum ChainMode { Lineage, First }
 }
 
 types! {
@@ -132,6 +133,29 @@ types! {
         pub pss: Option<bool>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub expected_hz: Option<BTreeMap<String, f64>>,
+        /// CUDA driver calls (design 20.1). Proto 1.8.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub gpu: Option<bool>,
+        /// DDS write calls (design 20.2). Proto 1.8.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub dds: Option<bool>,
+        /// Futex waits of the selected threads (design 20.4). Proto 1.8.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub futex: Option<bool>,
+        /// Replaces the chains measured end to end (design 20.6). Proto 1.8.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub chains: Option<Vec<ChainSpec>>,
+        /// Regular expressions over node names whose outputs link to their latest inputs
+        /// (design 20.7). Proto 1.8.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub latest_nodes: Option<Vec<String>>,
+    }
+
+    /// `topics` in order from the source; at least two. Proto 1.8.
+    pub struct ChainSpec {
+        pub name: String,
+        pub topics: Vec<String>,
+        pub mode: ChainMode,
     }
 
     pub struct Targets {
@@ -178,6 +202,17 @@ types! {
         pub sched: Option<bool>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub malloc: Option<bool>,
+        /// Proto 1.8, as in `Configure`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub gpu: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub dds: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub futex: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub chains: Option<Vec<ChainSpec>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub latest_nodes: Option<Vec<String>>,
     }
 
     #[serde(tag = "type", rename_all = "snake_case")]
@@ -246,6 +281,17 @@ types! {
         /// Proto 1.7.
         #[serde(default)]
         pub pss: bool,
+        /// Proto 1.8.
+        #[serde(default)]
+        pub gpu: bool,
+        #[serde(default)]
+        pub dds: bool,
+        #[serde(default)]
+        pub futex: bool,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        pub chains: Vec<ChainSpec>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        pub latest_nodes: Vec<String>,
     }
 
     pub struct Recording {
@@ -366,6 +412,16 @@ types! {
         pub topics: Vec<Topic>,
         pub subscriptions: Vec<Subscription>,
         pub flows: Vec<Flow>,
+        /// Proto 1.8 (design 20.5).
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        pub spans: Vec<Span>,
+        /// Proto 1.8 (design 20.6).
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        pub chains: Vec<Chain>,
+        /// The host's GPUs, network, temperatures and clocks over the window. Proto 1.8 (design
+        /// 20.3).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub host: Option<HostWindow>,
         pub agent: Agent,
         /// Window records only (14.4): entity id, then latency field name.
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -376,6 +432,9 @@ types! {
         pub n: u64,
         pub mean_ns: u64,
         pub p50_ns: u64,
+        /// Proto 1.8; recordings from before read 0.
+        #[serde(default)]
+        pub p90_ns: u64,
         pub p99_ns: u64,
         pub p999_ns: u64,
         pub max_ns: u64,
@@ -405,6 +464,24 @@ types! {
         /// channels refuse claims, loans and takes from then on. Proto 1.7.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub flux2_gpu_wedged: Option<i32>,
+        /// Proto 1.8 (design 20.1).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub cuda: Option<ProcCuda>,
+        /// Device memory the process holds, from the GPU driver. Proto 1.8.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub gpu_mem_bytes: Option<u64>,
+    }
+
+    /// The process's CUDA driver calls over the window.
+    pub struct ProcCuda {
+        pub calls_hz: f64,
+        pub launch_hz: f64,
+        pub memcpy_bps: f64,
+        pub alloc_hz: f64,
+        /// Calls that returned an error.
+        pub errors: u64,
+        /// Time blocked in the synchronize calls.
+        pub sync: Option<Lat>,
     }
 
     /// What the preload shim could not take, counted since it made its file.
@@ -430,6 +507,9 @@ types! {
         pub cpu_pct: Option<f64>,
         pub in_callback_cpu_pct: Option<f64>,
         pub cpu_wait: Option<Lat>,
+        /// Proto 1.8 (design 20.4).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub futex: Option<Lat>,
         pub bucket: String,
         pub cpus: Vec<u32>,
     }
@@ -484,6 +564,21 @@ types! {
         pub age: Option<Lat>,
         pub intra_pct: Option<f64>,
         pub nested: bool,
+        /// Proto 1.8 (design 20.1).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub cuda: Option<CudaUse>,
+        /// Mean futex wait per run. Proto 1.8 (design 20.4).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub futex_mean_ns: Option<u64>,
+    }
+
+    /// A callback's CUDA driver calls over the window; the means are per run of the callback.
+    pub struct CudaUse {
+        pub calls: u64,
+        pub launches: u64,
+        pub memcpy_bytes: u64,
+        pub api_mean_ns: u64,
+        pub sync_mean_ns: u64,
     }
 
     pub struct Topic {
@@ -499,6 +594,11 @@ types! {
         pub age_pub: Option<Lat>,
         pub age_take: Option<Lat>,
         pub drops: Drops,
+        /// `rclcpp_publish` to the DDS write call, and the call itself. Proto 1.8 (design 20.2).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub pub_to_dds: Option<Lat>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub dds_write: Option<Lat>,
     }
 
     pub struct Drops {
@@ -528,6 +628,81 @@ types! {
         pub count: u64,
         pub dwell: Option<Lat>,
         pub ambiguous: u64,
+    }
+
+    /// One `libarmo_span.so` span (design 20.5). `parent` is the span it ran inside.
+    pub struct Span {
+        pub id: String,
+        pub name: String,
+        pub pid: u32,
+        pub node: Option<String>,
+        pub callback: Option<String>,
+        pub parent: Option<String>,
+        pub hz: f64,
+        pub duration: Lat,
+    }
+
+    /// One configured chain (design 20.6). `steps[k]` is the time from the source's publish to
+    /// the publish on `topics[k + 1]`; the last is `e2e`. `broken` counts the publishes on a
+    /// later topic that did not reach the source.
+    pub struct Chain {
+        pub name: String,
+        pub mode: ChainMode,
+        pub topics: Vec<String>,
+        pub count: u64,
+        pub e2e: Option<Lat>,
+        pub steps: Vec<Option<Lat>>,
+        pub broken: u64,
+    }
+
+    pub struct HostWindow {
+        /// `scaling_cur_freq` by CPU number at the window's end.
+        pub cpu_mhz: Vec<Option<u32>>,
+        pub thermal: Vec<Thermal>,
+        /// Throttle counters' increase over the window, by name.
+        pub throttle: BTreeMap<String, u64>,
+        pub net: Vec<NetIf>,
+        pub udp: Option<Udp>,
+        pub gpus: Vec<Gpu>,
+    }
+
+    pub struct Thermal {
+        pub name: String,
+        pub temp_c: f64,
+    }
+
+    /// `/proc/net/dev` over the window.
+    pub struct NetIf {
+        pub name: String,
+        pub rx_bps: f64,
+        pub tx_bps: f64,
+        pub rx_pps: f64,
+        pub tx_pps: f64,
+        pub rx_drops: u64,
+        pub tx_drops: u64,
+        pub rx_errors: u64,
+        pub tx_errors: u64,
+    }
+
+    /// The UDP rows of `/proc/net/snmp`, increase over the window.
+    pub struct Udp {
+        pub in_errors: u64,
+        pub rcvbuf_errors: u64,
+        pub sndbuf_errors: u64,
+        pub no_ports: u64,
+    }
+
+    pub struct Gpu {
+        pub index: u32,
+        pub name: String,
+        pub util_pct: Option<f64>,
+        pub mem_used_bytes: Option<u64>,
+        pub mem_total_bytes: Option<u64>,
+        pub clock_mhz: Option<u32>,
+        pub temp_c: Option<f64>,
+        pub power_w: Option<f64>,
+        /// Why the clock is held down now, empty when it is not.
+        pub throttle: Vec<String>,
     }
 
     pub struct Agent {

@@ -1,4 +1,5 @@
 find_package(ament_cmake_test REQUIRED)
+find_package(armo_span REQUIRED)
 find_package(rcl REQUIRED)
 
 set(preload LD_PRELOAD=$<TARGET_FILE:armo_preload>)
@@ -6,8 +7,8 @@ set(preload LD_PRELOAD=$<TARGET_FILE:armo_preload>)
 add_executable(armo_preload_caller caller.c)
 target_include_directories(armo_preload_caller PRIVATE ../include ${generated})
 add_dependencies(armo_preload_caller armo_preload_symbols)
-target_link_libraries(armo_preload_caller PRIVATE tracetools::tracetools rcl::rcl ${CMAKE_DL_LIBS}
-  -pthread)
+target_link_libraries(armo_preload_caller PRIVATE tracetools::tracetools rcl::rcl
+  armo_span::armo_span ${CMAKE_DL_LIBS} -pthread)
 
 add_library(flux2_stub SHARED flux2_stub.c)
 target_compile_definitions(flux2_stub PRIVATE STUB_CONTRACT)
@@ -26,6 +27,18 @@ if(EXISTS "${libasan}")
     ENV LD_PRELOAD=${libasan}:$<TARGET_FILE:armo_preload> ARMO_THREADS=8
     GENERATE_RESULT_FOR_RETURN_CODE_ZERO TIMEOUT 60)
 endif()
+# libcuda.so.1 by soname, as armo finds a libcuda that cudart opened RTLD_LOCAL.
+add_library(cuda_stub SHARED cuda_stub.c)
+target_include_directories(cuda_stub PRIVATE ../include)
+set_target_properties(cuda_stub PROPERTIES OUTPUT_NAME cuda SOVERSION 1)
+target_link_options(cuda_stub PRIVATE -Wl,-Bsymbolic-functions)
+add_library(dds_stub SHARED dds_stub.c)
+ament_add_test(preload_collect
+  COMMAND $<TARGET_FILE:armo_preload_caller> collect $<TARGET_FILE:cuda_stub>
+    $<TARGET_FILE:dds_stub>
+  ENV ${preload} ARMO_THREADS=8
+  GENERATE_RESULT_FOR_RETURN_CODE_ZERO TIMEOUT 60)
+
 foreach(mode global local none)
   if(mode STREQUAL "none")
     set(stub $<TARGET_FILE:flux2_stub_none>)

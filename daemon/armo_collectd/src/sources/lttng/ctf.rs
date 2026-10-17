@@ -403,6 +403,32 @@ mod tests {
     }
 
     #[test]
+    fn new_armo_events_come_through_the_generic_payload() {
+        let mut t = Trace::default();
+        let lines = [
+            "[9] h armo:cuda_call: { cpu_id = 1 }, { vpid = 7, vtid = 9 }, { _p_length = 3, p = [ [0] = 2000, [1] = 4096, [2] = 0xFFFFFFFE00000002 ] }",
+            "[10] h armo:span_begin: { cpu_id = 1 }, { vpid = 7, vtid = 9 }, { _p_length = 1, p = [ [0] = 0x5000 ], s0 = \"infer\" }",
+            "[11] h armo:dds_write: { cpu_id = 1 }, { vpid = 7, vtid = 9 }, { _p_length = 2, p = [ [0] = 0x77, [1] = 15000 ] }",
+        ];
+        for l in lines {
+            line(l, &mut t).unwrap();
+        }
+        let records: Vec<_> = armo_proto::records::positioned(&t.records)
+            .map(|r| r.unwrap())
+            .collect();
+        let c: armo_common::events::armo_ev_cuda_call = records[0].payload();
+        assert_eq!(
+            (c.duration_ns, c.bytes, c.api, c.result),
+            (2000, 4096, 2, -2)
+        );
+        let s: armo_common::events::armo_ev_span = records[1].payload();
+        assert_eq!(s.key, 0x5000);
+        assert_eq!(records[1].strings().next(), Some(&b"infer"[..]));
+        let d: armo_common::events::armo_ev_dds_write = records[2].payload();
+        assert_eq!(d.duration_ns, 15000);
+    }
+
+    #[test]
     fn parses_babeltrace_lines() {
         let mut t = Trace::default();
         let lines = [

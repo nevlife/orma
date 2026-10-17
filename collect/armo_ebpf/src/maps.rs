@@ -28,6 +28,10 @@ pub static STREAM: HashMap<u32, u8> = HashMap::with_max_entries(4096, 0);
 #[map]
 pub static SCHED: HashMap<u32, u8> = HashMap::with_max_entries(4096, 0);
 
+/// Processes whose threads' futex waits are recorded (design 20.4).
+#[map]
+pub static FUTEX: HashMap<u32, u8> = HashMap::with_max_entries(4096, 0);
+
 /// Thread to process, for the scheduler programs: `sched_wakeup` names only the woken thread.
 /// armod fills it from /proc, `sched_switch` from the thread leaving the CPU.
 #[map]
@@ -57,6 +61,26 @@ pub static SEEN: LruHashMap<SeenKey, u8> = LruHashMap::with_max_entries(65536, 0
 #[map]
 pub static STASH: LruHashMap<u32, u64> = LruHashMap::with_max_entries(MAX_THREADS, 0);
 
+/// A call an entry program began, for the return program on the same thread: when, an argument
+/// and what kind of call.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct Pending {
+    pub ns: u64,
+    pub arg: u64,
+    pub kind: u32,
+    pub pad: u32,
+}
+
+#[map]
+pub static CUDA_CALLS: LruHashMap<u32, Pending> = LruHashMap::with_max_entries(MAX_THREADS, 0);
+
+#[map]
+pub static DDS_CALLS: LruHashMap<u32, Pending> = LruHashMap::with_max_entries(MAX_THREADS, 0);
+
+#[map]
+pub static FUTEX_WAITS: LruHashMap<u32, Pending> = LruHashMap::with_max_entries(MAX_TIDS, 0);
+
 #[map]
 pub static LOST: Array<u64> = Array::with_max_entries(LOST_SLOTS_ALL, 0);
 
@@ -79,6 +103,15 @@ pub fn lost(slot: u32) {
     if let Some(p) = LOST.get_ptr_mut(slot) {
         add(p, 1);
     }
+}
+
+/// The call this thread began, removed from `map`.
+pub fn take(map: &LruHashMap<u32, Pending>) -> Option<Pending> {
+    let t = tid();
+    // SAFETY: the entry is this thread's own, read once.
+    let p = unsafe { *map.get_ptr(t)? };
+    let _ = map.remove(t);
+    Some(p)
 }
 
 pub fn now() -> u64 {

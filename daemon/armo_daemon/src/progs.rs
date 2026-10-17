@@ -12,6 +12,9 @@ pub enum Set {
     /// The node of each callback, for processes armod attached to late (design 2.1.4).
     Names,
     Sched,
+    Gpu,
+    Dds,
+    Futex,
     Flux1,
 }
 
@@ -25,6 +28,8 @@ pub enum Sym {
     Prefix(&'static str, bool),
     /// A symbol only the dbgsym file has, by the front of its name.
     Debug(&'static str),
+    /// Each of these the library exports; at least one.
+    Names(&'static [&'static str]),
 }
 
 /// Which files of the library get the program.
@@ -81,6 +86,130 @@ const fn cxx(name: &'static str, point: &'static str, sym: Sym, cond: Cond) -> P
 }
 
 use Set::*;
+
+// CUDA driver functions by entry program (design 20.1): the `_v2` names cuda.h maps the API to,
+// with their per-thread default stream variants. The names without `_v2` take 32-bit sizes and
+// serve only binaries built before CUDA 3.2.
+const CUDA_LAUNCH: &[&str] = &[
+    "cuLaunchKernel",
+    "cuLaunchKernel_ptsz",
+    "cuLaunchKernelEx",
+    "cuLaunchKernelEx_ptsz",
+    "cuLaunchCooperativeKernel",
+    "cuLaunchCooperativeKernel_ptsz",
+];
+const CUDA_GRAPH_LAUNCH: &[&str] = &["cuGraphLaunch", "cuGraphLaunch_ptsz"];
+const CUDA_MEMCPY: &[&str] = &[
+    "cuMemcpy",
+    "cuMemcpy_ptds",
+    "cuMemcpyHtoD_v2",
+    "cuMemcpyHtoD_v2_ptds",
+    "cuMemcpyDtoH_v2",
+    "cuMemcpyDtoH_v2_ptds",
+    "cuMemcpyDtoD_v2",
+    "cuMemcpyDtoD_v2_ptds",
+];
+const CUDA_MEMCPY_ASYNC: &[&str] = &[
+    "cuMemcpyAsync",
+    "cuMemcpyAsync_ptsz",
+    "cuMemcpyHtoDAsync_v2",
+    "cuMemcpyHtoDAsync_v2_ptsz",
+    "cuMemcpyDtoHAsync_v2",
+    "cuMemcpyDtoHAsync_v2_ptsz",
+    "cuMemcpyDtoDAsync_v2",
+    "cuMemcpyDtoDAsync_v2_ptsz",
+];
+const CUDA_MEMCPY_PEER: &[&str] = &["cuMemcpyPeer", "cuMemcpyPeer_ptds"];
+const CUDA_MEMCPY_PEER_ASYNC: &[&str] = &["cuMemcpyPeerAsync", "cuMemcpyPeerAsync_ptsz"];
+const CUDA_MEMCPY_2D: &[&str] = &["cuMemcpy2D_v2", "cuMemcpy2D_v2_ptds"];
+const CUDA_MEMCPY_2D_ASYNC: &[&str] = &["cuMemcpy2DAsync_v2", "cuMemcpy2DAsync_v2_ptsz"];
+const CUDA_MEMCPY_3D: &[&str] = &["cuMemcpy3D_v2", "cuMemcpy3D_v2_ptds"];
+const CUDA_MEMCPY_3D_ASYNC: &[&str] = &["cuMemcpy3DAsync_v2", "cuMemcpy3DAsync_v2_ptsz"];
+const CUDA_SYNC_STREAM: &[&str] = &["cuStreamSynchronize", "cuStreamSynchronize_ptsz"];
+const CUDA_SYNC_CTX: &[&str] = &["cuCtxSynchronize", "cuCtxSynchronize_v2"];
+const CUDA_SYNC_EVENT: &[&str] = &["cuEventSynchronize"];
+const CUDA_ALLOC: &[&str] = &[
+    "cuMemAlloc_v2",
+    "cuMemAllocAsync",
+    "cuMemAllocAsync_ptsz",
+    "cuMemAllocManaged",
+    "cuMemHostAlloc",
+    "cuMemAllocHost_v2",
+];
+const CUDA_FREE: &[&str] = &[
+    "cuMemFree_v2",
+    "cuMemFreeAsync",
+    "cuMemFreeAsync_ptsz",
+    "cuMemFreeHost",
+];
+
+const CUDA_ENTRIES: [(&str, &[&str]); 15] = [
+    ("cuda_launch", CUDA_LAUNCH),
+    ("cuda_graph_launch", CUDA_GRAPH_LAUNCH),
+    ("cuda_memcpy", CUDA_MEMCPY),
+    ("cuda_memcpy_async", CUDA_MEMCPY_ASYNC),
+    ("cuda_memcpy_peer", CUDA_MEMCPY_PEER),
+    ("cuda_memcpy_peer_async", CUDA_MEMCPY_PEER_ASYNC),
+    ("cuda_memcpy_2d", CUDA_MEMCPY_2D),
+    ("cuda_memcpy_2d_async", CUDA_MEMCPY_2D_ASYNC),
+    ("cuda_memcpy_3d", CUDA_MEMCPY_3D),
+    ("cuda_memcpy_3d_async", CUDA_MEMCPY_3D_ASYNC),
+    ("cuda_sync_stream", CUDA_SYNC_STREAM),
+    ("cuda_sync_ctx", CUDA_SYNC_CTX),
+    ("cuda_sync_event", CUDA_SYNC_EVENT),
+    ("cuda_alloc", CUDA_ALLOC),
+    ("cuda_free", CUDA_FREE),
+];
+
+const CUDA_ALL_LEN: usize = {
+    let mut n = 0;
+    let mut i = 0;
+    while i < CUDA_ENTRIES.len() {
+        n += CUDA_ENTRIES[i].1.len();
+        i += 1;
+    }
+    n
+};
+
+/// Every function of the entry programs, for `cuda_ret`.
+const CUDA_ALL: [&str; CUDA_ALL_LEN] = {
+    let mut out = [""; CUDA_ALL_LEN];
+    let (mut k, mut i) = (0, 0);
+    while i < CUDA_ENTRIES.len() {
+        let mut j = 0;
+        while j < CUDA_ENTRIES[i].1.len() {
+            out[k] = CUDA_ENTRIES[i].1[j];
+            k += 1;
+            j += 1;
+        }
+        i += 1;
+    }
+    out
+};
+
+const fn cuda(i: usize) -> Prog {
+    Prog {
+        point: "cuda_call",
+        ..p(
+            CUDA_ENTRIES[i].0,
+            Lib::Cuda,
+            Gpu,
+            Sym::Names(CUDA_ENTRIES[i].1),
+        )
+    }
+}
+
+/// Cyclone DDS's writes; `rmw_publish` calls `dds_write_ts`, the serialized publish
+/// `dds_forwardcdr`.
+const CYCLONE_WRITE: &[&str] = &[
+    "dds_write",
+    "dds_write_ts",
+    "dds_writecdr",
+    "dds_forwardcdr",
+];
+/// `DataWriter::write` overloads: `(void*)` and `(void*, WriteParams&)` in Fast DDS 2 (rmw calls
+/// the latter), `(const void*)` and its siblings in Fast DDS 3.
+const FASTDDS_WRITE: Sym = Sym::Prefix("_ZN8eprosima7fastdds3dds10DataWriter5writeE", true);
 
 pub const PROGS: &[Prog] = &[
     // Discovery: init, registration and fini, every process (design 6.1).
@@ -223,6 +352,8 @@ pub const PROGS: &[Prog] = &[
         Hot,
         Sym::Name("flux2_trace_record_drop"),
     ),
+    p("span_begin", Lib::Span, Hot, Sym::Name("armo_span_begin")),
+    p("span_end", Lib::Span, Hot, Sym::Name("armo_span_end")),
     // rclcpp C++ symbols, by rclcpp major (design 2.1.2, 4.5).
     cxx(
         "rclcpp_publisher_setup_intra",
@@ -362,6 +493,51 @@ pub const PROGS: &[Prog] = &[
             Sym::Debug("_ZL23serdata_rmw_from_sample"),
         )
     },
+    // CUDA driver calls, opt-in (design 20.1).
+    cuda(0),
+    cuda(1),
+    cuda(2),
+    cuda(3),
+    cuda(4),
+    cuda(5),
+    cuda(6),
+    cuda(7),
+    cuda(8),
+    cuda(9),
+    cuda(10),
+    cuda(11),
+    cuda(12),
+    cuda(13),
+    cuda(14),
+    Prog {
+        point: "cuda_call",
+        ret: true,
+        ..p("cuda_ret", Lib::Cuda, Gpu, Sym::Names(&CUDA_ALL))
+    },
+    // DDS writes, opt-in (design 20.2).
+    Prog {
+        point: "dds_write",
+        ..p("cyclone_write", Lib::Ddsc, Dds, Sym::Names(CYCLONE_WRITE))
+    },
+    Prog {
+        point: "dds_write",
+        ret: true,
+        ..p(
+            "cyclone_write_ret",
+            Lib::Ddsc,
+            Dds,
+            Sym::Names(CYCLONE_WRITE),
+        )
+    },
+    Prog {
+        point: "dds_write",
+        ..p("fastdds_write", Lib::Fastrtps, Dds, FASTDDS_WRITE)
+    },
+    Prog {
+        point: "dds_write",
+        ret: true,
+        ..p("fastdds_write_ret", Lib::Fastrtps, Dds, FASTDDS_WRITE)
+    },
     // flux v1, text mode only (design D12).
     p(
         "flux_callback_start",
@@ -384,6 +560,13 @@ pub const PROGS: &[Prog] = &[
 ];
 
 pub const SCHED_PROGS: [&str; 2] = ["sched_switch", "sched_wakeup"];
+/// Tracepoints of the `syscalls` system, named as their programs (design 20.4).
+pub const FUTEX_PROGS: [&str; 4] = [
+    "sys_enter_futex",
+    "sys_exit_futex",
+    "sys_enter_futex_waitv",
+    "sys_exit_futex_waitv",
+];
 
 /// Events a process shows once per entity: they name what the hot events carry, so they go to
 /// every client that watches the process, streamed or not.
@@ -442,6 +625,34 @@ mod tests {
     }
 
     #[test]
+    fn every_cuda_function_has_one_entry_program_and_the_return() {
+        let gpu: Vec<&Prog> = PROGS.iter().filter(|p| p.set == Gpu).collect();
+        let names = |p: &Prog| match p.sym {
+            Sym::Names(n) => n.to_vec(),
+            _ => panic!("{} is not attached by names", p.name),
+        };
+        let mut entries: Vec<&str> = gpu
+            .iter()
+            .filter(|p| !p.ret)
+            .flat_map(|p| names(p))
+            .collect();
+        let n = entries.len();
+        entries.sort();
+        entries.dedup();
+        assert_eq!(entries.len(), n, "a function in two entry programs");
+        let rets: Vec<&&Prog> = gpu.iter().filter(|p| p.ret).collect();
+        assert_eq!(rets.len(), 1);
+        let mut all = names(rets[0]);
+        all.sort();
+        assert_eq!(all, entries);
+        assert!(entries.contains(&"cuMemcpyHtoDAsync_v2_ptsz"));
+        assert!(
+            gpu.iter()
+                .all(|p| p.lib == Lib::Cuda && p.point == "cuda_call")
+        );
+    }
+
+    #[test]
     fn naming_events_are_the_rare_ones() {
         assert!(naming(ARMO_EV_RCL_NODE_INIT));
         assert!(naming(ARMO_EV_CALLBACK_CODE));
@@ -454,5 +665,9 @@ mod tests {
         assert!(!naming(ARMO_EV_CALLBACK_START));
         assert!(!naming(ARMO_EV_DDS_SERIALIZED_SIZE));
         assert!(!naming(ARMO_EV_FLUX2_COMMIT));
+        assert!(!naming(ARMO_EV_DDS_WRITE));
+        assert!(!naming(ARMO_EV_CUDA_CALL));
+        assert!(!naming(ARMO_EV_SPAN_BEGIN));
+        assert!(!naming(ARMO_EV_FUTEX_WAIT));
     }
 }

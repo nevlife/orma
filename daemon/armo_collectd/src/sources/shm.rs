@@ -66,7 +66,7 @@ fn parse_name(name: &str) -> Option<(u32, u64, u32)> {
     parts.next().is_none().then_some((pid, starttime, backend))
 }
 
-/// Lowers `armed` in a file without mapping it: the guard's cleanup.
+/// Lowers `armed` and clears `options` in a file without mapping it: the guard's cleanup.
 pub fn disarm(path: &Path) -> io::Result<()> {
     let file = match open_flags().open(path) {
         Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
@@ -75,6 +75,11 @@ pub fn disarm(path: &Path) -> io::Result<()> {
     file.write_all_at(
         &0u32.to_le_bytes(),
         offset_of!(armo_shm_header, armed) as u64,
+    )?;
+    // The shims read some options without looking at `armed`.
+    file.write_all_at(
+        &0u32.to_le_bytes(),
+        offset_of!(armo_shm_header, options) as u64,
     )
 }
 
@@ -230,6 +235,7 @@ impl ShmFile {
             corrupt: None,
         };
         f.store_header(offset_of!(armo_shm_header, armed), 0);
+        f.store_header(offset_of!(armo_shm_header, options), 0);
         // Counts from before this reader are not this reader's windows.
         f.tables(&mut Vec::new(), &mut |_, _| {});
         Ok(Open::File(Box::new(f)))
@@ -689,10 +695,11 @@ impl Shm {
         changes
     }
 
-    /// Sets `armed` and `options` per file from `want` (`None` lowers it).
-    pub fn arm(&mut self, want: &dyn Fn(u32) -> Option<u32>) {
-        for f in self.files.values_mut().filter(|f| f.preload()) {
-            let w = want(f.pid).filter(|_| f.corrupt.is_none());
+    /// Sets `armed` and `options` per file from `want`, which takes the pid and whether the file
+    /// is libarmo_preload.so's (`None` lowers it).
+    pub fn arm(&mut self, want: &dyn Fn(u32, bool) -> Option<u32>) {
+        for f in self.files.values_mut() {
+            let w = want(f.pid, f.preload()).filter(|_| f.corrupt.is_none());
             f.set_armed(w.is_some(), w.unwrap_or(0));
         }
     }

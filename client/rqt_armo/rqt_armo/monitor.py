@@ -1,13 +1,16 @@
 """Entity views of a `window`: process > node > callback, topics, subscriptions, executors,
-threads, and armo's own cost."""
+threads, GPUs, the host, spans, chains, and armo's own cost."""
 
-from python_qt_binding.QtCore import Qt, Signal
+from armo_cli import cli
 from armo_client import view
+from python_qt_binding.QtCore import Qt, Signal
 from python_qt_binding.QtWidgets import (
     QCheckBox,
     QDialog,
     QHeaderView,
+    QLabel,
     QLineEdit,
+    QSplitter,
     QTabWidget,
     QTreeWidget,
     QTreeWidgetItem,
@@ -24,6 +27,7 @@ from .common import (
     make_table,
     ns,
     num,
+    p99,
     row_key,
     set_rows,
     size,
@@ -31,9 +35,10 @@ from .common import (
 )
 
 TREE_HEADS = ["entity", "kind", "Hz", "expected", "loss"] + lat_heads() + ["CPU %"]
+TREE_HEADS += ["CUDA api", "CUDA sync", "futex"]
 ENTITY_WIDTH = 480
 TOPIC_HEADS = ["topic", "transport", "pub Hz", "expected", "bandwidth", "drops", "record drops"]
-TOPIC_HEADS += ["ambiguous"] + lat_heads("hop ") + ["age p99"]
+TOPIC_HEADS += ["ambiguous"] + lat_heads("hop ") + ["age p99", "pub to DDS p99", "DDS write p99"]
 SUB_HEADS = ["topic", "node", "recv Hz", "loss %", "lost", "intra %"] + lat_heads("hop ")
 SUB_HEADS += ["wake p99", "wake max"]
 EXECUTOR_HEADS = ["executor", "kind", "nodes", "callbacks", "busy %", "on-CPU %"]
@@ -41,7 +46,7 @@ EXECUTOR_HEADS += lat_heads("wait ") + lat_heads("dispatch ")
 THREAD_HEADS = ["tid", "process", "name", "policy", "CPU %", "in callback %"] + lat_heads(
     "CPU wait "
 )
-THREAD_HEADS += ["bucket", "cpus"]
+THREAD_HEADS += ["futex p99", "bucket", "cpus"]
 BPF_HEADS = ["program", "pid", "run time", "runs"]
 MAP_HEADS = ["map", "used", "max", "memlock"]
 MISSING_HEADS = ["pid", "method", "point", "reason"]
@@ -60,15 +65,51 @@ def process_cells(p):
     )
     flags = [f for f in ("exited", "cold") if p[f]]
     kind = ", ".join(([p["method"]] if p["method"] else []) + flags) or "-"
-    return [comm, kind, "-", "-", "-"] + ["-"] * 4 + [num(p["cpu_pct"])]
+    return [comm, kind, "-", "-", "-"] + ["-"] * 4 + [num(p["cpu_pct"])] + ["-"] * 3
 
 
 def node_cells(n):
-    return [n["fqn"], "node", num(n["cb_hz"]), "-", "-"] + ["-"] * 4 + [num(n["cpu_pct"])]
+    return (
+        [n["fqn"], "node", num(n["cb_hz"]), "-", "-"] + ["-"] * 4 + [num(n["cpu_pct"])] + ["-"] * 3
+    )
 
 
 def callback_cells(c, label):
-    return [label, c["kind"], num(c["hz"]), num(c["expected_hz"]), "-"] + lat(c["duration"]) + ["-"]
+    return (
+        [label, c["kind"], num(c["hz"]), num(c["expected_hz"]), "-"]
+        + lat(c["duration"])
+        + ["-"]
+        + cli.cuda_cells(c.get("cuda"))
+        + [ns(c.get("futex_mean_ns"))]
+    )
+
+
+def keyed(rows):
+    return [(str(row[0]), row) for row in rows]
+
+
+class HostView(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.cpu = QLabel()
+        self.udp = QLabel()
+        self.thermal = make_table(cli.THERMAL_HEADS)
+        self.throttle = make_table(cli.THROTTLE_HEADS)
+        self.net = make_table(cli.NET_HEADS)
+        split = QSplitter(Qt.Vertical)
+        for table in (self.thermal, self.throttle, self.net):
+            split.addWidget(table)
+        layout = QVBoxLayout(self)
+        layout.addWidget(self.cpu)
+        layout.addWidget(self.udp)
+        layout.addWidget(split)
+
+    def show_window(self, w):
+        self.cpu.setText(cli.cpu_line(w))
+        self.udp.setText(cli.udp_line(w))
+        set_rows(self.thermal, keyed(cli.thermal_rows(w)))
+        set_rows(self.throttle, keyed(cli.throttle_rows(w)))
+        set_rows(self.net, keyed(cli.net_rows(w)))
 
 
 class MonitorView(QTabWidget):
@@ -101,6 +142,14 @@ class MonitorView(QTabWidget):
         threads_layout.setContentsMargins(0, 0, 0, 0)
         threads_layout.addWidget(self.thread_search)
         threads_layout.addWidget(self.threads)
+        self.gpus = make_table(cli.GPU_HEADS)
+        self.cuda = make_table(cli.CUDA_HEADS)
+        gpu_tab = QSplitter(Qt.Vertical)
+        gpu_tab.addWidget(self.gpus)
+        gpu_tab.addWidget(self.cuda)
+        self.host = HostView()
+        self.spans = make_table(cli.SPAN_HEADS)
+        self.chains = make_table(cli.CHAIN_HEADS)
         self.bpf = make_table(BPF_HEADS)
         self.maps = make_table(MAP_HEADS)
         self.missing = make_table(MISSING_HEADS)
@@ -113,6 +162,10 @@ class MonitorView(QTabWidget):
         self.addTab(self.subscriptions, "Subscriptions")
         self.addTab(self.executors, "Executors")
         self.addTab(threads_tab, "Threads")
+        self.addTab(gpu_tab, "GPU")
+        self.addTab(self.host, "Host")
+        self.addTab(self.spans, "Spans")
+        self.addTab(self.chains, "Chains")
         cost = QTabWidget()
         cost.addTab(self.bpf, "eBPF")
         cost.addTab(self.maps, "Maps")
@@ -141,7 +194,8 @@ class MonitorView(QTabWidget):
                     + [warn_if(t["drops"]["publish"]), warn_if(t["drops"]["record"])]
                     + [warn_if(t["drops"]["ambiguous"])]
                     + lat(t["hop"])
-                    + [lat(t["age_pub"])[0]],
+                    + [p99(t["age_pub"]), p99(t.get("pub_to_dds"))]
+                    + [p99(t.get("dds_write"))],
                 )
                 for t in w["topics"]
             ],
@@ -155,7 +209,7 @@ class MonitorView(QTabWidget):
                     + [num(s["recv_hz"]), warn_if(s["loss_pct"], num(s["loss_pct"]))]
                     + [warn_if(s["lost"]), num(s["intra_pct"])]
                     + lat(s["hop"])
-                    + [lat(s["wake"])[0], lat(s["wake"])[2]],
+                    + [p99(s["wake"]), lat(s["wake"])[3]],
                 )
                 for s in w["subscriptions"]
             ],
@@ -187,11 +241,17 @@ class MonitorView(QTabWidget):
                     [t["tid"], comm, t["name"], f"{t['policy']} {t['prio']}", num(t["cpu_pct"])]
                     + [num(t["in_callback_cpu_pct"])]
                     + lat(t["cpu_wait"])
+                    + [p99(t.get("futex"))]
                     + [t["bucket"], ",".join(str(c) for c in t["cpus"])],
                 )
                 for t, comm in threads
             ],
         )
+        set_rows(self.gpus, keyed(cli.gpu_rows(w)))
+        set_rows(self.cuda, keyed(cli.cuda_rows(w)))
+        self.host.show_window(w)
+        set_rows(self.spans, [(s["id"], row) for s, row in zip(w["spans"], cli.span_rows(w))])
+        set_rows(self.chains, keyed(cli.chain_rows(w)))
         a = w["agent"]
         set_rows(
             self.bpf,
@@ -256,7 +316,7 @@ class MonitorView(QTabWidget):
                 parent = process + ":" + view.UNLINKED
                 if parent not in items:
                     label = view.owner_label(w, process)
-                    add(parent, process, [label] + ["-"] * 9)
+                    add(parent, process, [label] + ["-"] * (len(TREE_HEADS) - 1))
             add(c["id"], parent, callback_cells(c, labels[c["id"]]))
         for key, item in items.items():
             item.setExpanded(key not in self.collapsed)

@@ -237,6 +237,44 @@ impl H {
         self.ev(pid, tid, t1, ARMO_EV_RCL_WAIT_EXIT, p, &[]);
     }
 
+    #[allow(clippy::too_many_arguments)]
+    fn cuda(&mut self, pid: u32, tid: u32, t: u64, api: u32, dur: u64, bytes: u64, result: i32) {
+        let p = armo_ev_cuda_call {
+            duration_ns: dur,
+            bytes,
+            api,
+            result,
+        };
+        self.ev(pid, tid, t, ARMO_EV_CUDA_CALL, p, &[]);
+    }
+
+    fn dds_write(&mut self, pid: u32, tid: u32, t: u64, dur: u64) {
+        let p = armo_ev_dds_write {
+            writer: 0x77,
+            duration_ns: dur,
+        };
+        self.ev(pid, tid, t, ARMO_EV_DDS_WRITE, p, &[]);
+    }
+
+    fn futex(&mut self, pid: u32, tid: u32, t: u64, dur: u64) {
+        let p = armo_ev_futex_wait {
+            uaddr: 0x1000,
+            duration_ns: dur,
+            op: 0,
+            ret: 0,
+        };
+        self.ev(pid, tid, t, ARMO_EV_FUTEX_WAIT, p, &[]);
+    }
+
+    fn span(&mut self, pid: u32, tid: u32, t: u64, key: u64, name: &str) {
+        let p = armo_ev_span { key };
+        self.ev(pid, tid, t, ARMO_EV_SPAN_BEGIN, p, &[name.as_bytes()]);
+    }
+
+    fn span_end(&mut self, pid: u32, tid: u32, t: u64, key: u64) {
+        self.ev(pid, tid, t, ARMO_EV_SPAN_END, armo_ev_span { key }, &[]);
+    }
+
     fn switch(&mut self, prev_pid: u32, prev: u32, t: u64, next: u32) {
         let p = armo_ev_sched_switch {
             prev_state: 0,
@@ -1134,8 +1172,16 @@ fn code_addresses_resolve_through_maps_and_elf_symbols() {
 #[test]
 fn std_function_names_shorten_to_their_callable() {
     let long = "std::_Function_handler<void (std::shared_ptr<sensor_msgs::msg::Imu_<std::allocator<void> > >), ImuSub::ImuSub()::{lambda(std::shared_ptr<sensor_msgs::msg::Imu_<std::allocator<void> > >)#1}>::_M_invoke(std::_Any_data const&, std::shared_ptr<sensor_msgs::msg::Imu_<std::allocator<void> > >&&)";
-    assert_eq!(shorten(long), "ImuSub::ImuSub()::{lambda#1}");
-    assert_eq!(shorten("Driver::on_scan(int)"), "Driver::on_scan(int)");
+    assert_eq!(shorten(long), "ImuSub");
+    assert_eq!(shorten("Driver::on_scan(int)"), "Driver::on_scan");
+    let ctor = "demo_nodes_cpp::Talker::Talker(rclcpp::NodeOptions const&)::{lambda()#1}";
+    assert_eq!(shorten(ctor), "Talker");
+    assert_eq!(shorten("Node::setup()::{lambda#2}"), "Node::setup");
+    assert_eq!(shorten("Talker.__init__.<locals>.<lambda>"), "Talker");
+    assert_eq!(shorten("Talker.timer_callback"), "Talker.timer_callback");
+    assert_eq!(shorten("<lambda>"), "<lambda>");
+    assert_eq!(shorten("ns::Cam::operator()(int) const"), "Cam::operator()");
+    assert_eq!(shorten("tick"), "tick");
 }
 
 #[test]
@@ -1185,7 +1231,7 @@ fn analyze_reads_a_recording_and_reports_exact_tails() {
     file.extend_from_slice(&h.batch);
     std::fs::write(dir.join("events/000.armoev"), file).unwrap();
 
-    let report = armo_collectd::analyze::run(&dir).unwrap();
+    let report = armo_collectd::analyze::run(&dir, Vec::new()).unwrap();
     assert!(report.text.contains("transport hop"), "{}", report.text);
     let deliveries = std::fs::read_to_string(dir.join("analysis/deliveries.csv")).unwrap();
     assert_eq!(deliveries.lines().count(), 1 + 3000);
@@ -1195,12 +1241,18 @@ fn analyze_reads_a_recording_and_reports_exact_tails() {
         .find(|l| l.starts_with("transport hop") && l.contains(CHATTER))
         .unwrap();
     let f: Vec<&str> = hop.split(',').collect();
-    assert_eq!(f[2..], ["3000", "50000", "50000", "50000", "50000"]);
+    assert_eq!(
+        f[2..],
+        ["3000", "40000", "50000", "50000", "50000", "50000"]
+    );
     let wake = summary
         .lines()
         .find(|l| l.starts_with("wake latency") && l.contains("#n:300:"))
         .unwrap();
-    assert!(wake.ends_with(",1000,35000,35000,35000,35000"), "{wake}");
+    assert!(
+        wake.ends_with(",1000,35000,35000,35000,35000,35000"),
+        "{wake}"
+    );
     let callbacks = std::fs::read_to_string(dir.join("analysis/callbacks.csv")).unwrap();
     assert_eq!(callbacks.lines().count(), 1 + 3000);
     std::fs::remove_dir_all(&dir).unwrap();
@@ -1297,4 +1349,562 @@ fn a_topic_scales_only_its_lttng_part() {
         "{:?}",
         s.recv_hz
     );
+}
+
+fn process(w: &Window, pid: u32) -> &Process {
+    w.processes.iter().find(|p| p.pid == pid).unwrap()
+}
+
+#[test]
+fn cuda_calls_belong_to_the_callback_they_return_in() {
+    let mut h = H::offline();
+    h.m.set_probes(true, Sel::None);
+    h.node(700, 0xa0, "infer", "/");
+    h.timer(700, 0x50, 100 * MS as i64, 0xa0, 0x51);
+    for i in 0..10 {
+        let t = T0 + i * 100 * MS;
+        h.start(700, 700, t, 0x51, false);
+        h.cuda(700, 700, t + MS, ARMO_CUDA_MEMCPY, 200 * US, 4096, 0);
+        h.cuda(700, 700, t + 2 * MS, ARMO_CUDA_LAUNCH, 10 * US, 0, 0);
+        h.cuda(700, 700, t + 5 * MS, ARMO_CUDA_SYNC_STREAM, 3 * MS, 0, 0);
+        h.end(700, 700, t + 6 * MS, 0x51);
+        let result = if i == 0 { 2 } else { 0 };
+        h.cuda(
+            700,
+            700,
+            t + 7 * MS,
+            ARMO_CUDA_ALLOC,
+            50 * US,
+            1 << 20,
+            result,
+        );
+    }
+    h.cb(800, 800, T0 + MS, T0 + 2 * MS, 0xb1);
+    let w = h.window(T0 + W);
+    assert_eq!(
+        cb(&w, 700, 0x51).cuda,
+        Some(CudaUse {
+            calls: 30,
+            launches: 10,
+            memcpy_bytes: 40960,
+            api_mean_ns: 200 * US + 10 * US + 3 * MS,
+            sync_mean_ns: 3 * MS,
+        })
+    );
+    let p = process(&w, 700).cuda.clone().unwrap();
+    assert_eq!(
+        (p.calls_hz, p.launch_hz, p.memcpy_bps, p.alloc_hz, p.errors),
+        (40.0, 10.0, 40960.0, 10.0, 1)
+    );
+    let sync = p.sync.unwrap();
+    assert_eq!((sync.n, sync.max_ns), (10, 3 * MS));
+    assert_eq!(cb(&w, 800, 0xb1).cuda, None, "no CUDA call ever");
+    assert_eq!(process(&w, 800).cuda, None);
+
+    let w = h.window(T0 + 2 * W);
+    let p = process(&w, 700).cuda.clone().unwrap();
+    assert_eq!((p.calls_hz, p.sync), (0.0, None), "measured, none made");
+    h.m.set_probes(false, Sel::None);
+    let w = h.window(T0 + 3 * W);
+    assert_eq!(process(&w, 700).cuda, None, "not measured");
+}
+
+#[test]
+fn dds_writes_pair_with_their_rmw_publish_in_either_order() {
+    let mut h = H::offline();
+    h.node(100, 0xa0, "talker", "/");
+    h.publisher(100, 0xb0, 0xa0, 0xb1, "/chatter");
+    let publish = |h: &mut H, t: u64| {
+        let p = armo_ev_publish {
+            publisher: 0xb0,
+            message: 1,
+            stamp: 0,
+        };
+        h.ev(100, 100, t, ARMO_EV_RCLCPP_PUBLISH, p, &[]);
+        h.ev(100, 100, t + 10 * US, ARMO_EV_RCL_PUBLISH, p, &[]);
+    };
+    let rmw = |h: &mut H, t: u64, ts: i64| {
+        let p = armo_ev_rmw_publish {
+            rmw_publisher: 0xb1,
+            message: 1,
+            timestamp: ts,
+            stamp: 0,
+        };
+        h.ev(100, 100, t, ARMO_EV_RMW_PUBLISH, p, &[]);
+    };
+    for i in 0..5 {
+        let t = T0 + i * 10 * MS;
+        publish(&mut h, t);
+        rmw(&mut h, t + 20 * US, 100 + i as i64);
+        h.dds_write(100, 100, t + 50 * US, 20 * US);
+        // A write outside any publish is not paired.
+        h.dds_write(100, 100, t + 60 * US, 7 * US);
+    }
+    for i in 5..10 {
+        let t = T0 + i * 10 * MS;
+        publish(&mut h, t);
+        h.dds_write(100, 100, t + 40 * US, 15 * US);
+        rmw(&mut h, t + 45 * US, 100 + i as i64);
+    }
+    let w = h.window(T0 + W);
+    let t = topic(&w, CHATTER);
+    assert_eq!(t.pub_hz, Some(10.0));
+    let dds = t.dds_write.clone().unwrap();
+    assert_eq!((dds.n, dds.mean_ns, dds.max_ns), (10, 17_500, 20 * US));
+    let to = t.pub_to_dds.clone().unwrap();
+    assert_eq!((to.n, to.mean_ns, to.max_ns), (10, 27_500, 30 * US));
+}
+
+#[test]
+fn futex_waits_count_inside_the_callback_from_its_start() {
+    let mut h = H::offline();
+    h.m.set_probes(false, Sel::pids([900]));
+    h.node(900, 0xa0, "worker", "/");
+    h.timer(900, 0x50, 100 * MS as i64, 0xa0, 0x51);
+    h.start(900, 900, T0 + 10 * MS, 0x51, false);
+    h.futex(900, 900, T0 + 12 * MS, 4 * MS);
+    h.futex(900, 900, T0 + 15 * MS, MS);
+    h.end(900, 900, T0 + 20 * MS, 0x51);
+    h.futex(900, 900, T0 + 30 * MS, 5 * MS);
+    h.cb(950, 950, T0 + MS, T0 + 2 * MS, 0xb1);
+    let w = h.window(T0 + W);
+    assert_eq!(cb(&w, 900, 0x51).futex_mean_ns, Some(3 * MS));
+    assert_eq!(cb(&w, 950, 0xb1).futex_mean_ns, None, "not traced");
+    let th = w.threads.iter().find(|t| t.tid == 900).unwrap();
+    let f = th.futex.clone().unwrap();
+    assert_eq!((f.n, f.max_ns), (3, 5 * MS));
+    let p = process(&w, 900);
+    assert_eq!(
+        p.method,
+        Some(Method::Preload),
+        "armod's records keep the method"
+    );
+}
+
+#[test]
+fn one_name_at_two_call_sites_is_two_rows() {
+    let mut h = H::offline();
+    h.node(700, 0xa0, "infer", "/");
+    h.timer(700, 0x50, 100 * MS as i64, 0xa0, 0x51);
+    h.start(700, 700, T0, 0x51, false);
+    h.span(700, 700, T0 + MS, 0x10, "step");
+    h.span_end(700, 700, T0 + 2 * MS, 0x10);
+    h.span(700, 700, T0 + 3 * MS, 0x20, "step");
+    h.span_end(700, 700, T0 + 6 * MS, 0x20);
+    h.end(700, 700, T0 + 7 * MS, 0x51);
+    let w = h.window(T0 + W);
+    let mut maxes: Vec<u64> = w.spans.iter().map(|s| s.duration.max_ns).collect();
+    maxes.sort();
+    assert_eq!(maxes, [MS, 3 * MS]);
+}
+
+#[test]
+fn spans_nest_under_their_callback_and_each_other() {
+    let mut h = H::offline();
+    h.node(700, 0xa0, "infer", "/");
+    h.timer(700, 0x50, 100 * MS as i64, 0xa0, 0x51);
+    for i in 0..10 {
+        let t = T0 + i * 100 * MS;
+        h.start(700, 700, t, 0x51, false);
+        h.span(700, 700, t + MS, 1, "pre");
+        h.span(700, 700, t + 2 * MS, 2, "inner");
+        h.span_end(700, 700, t + 3 * MS, 2);
+        h.span_end(700, 700, t + 4 * MS, 1);
+        h.span_end(700, 700, t + 5 * MS, 9);
+        h.span(700, 700, t + 6 * MS, 3, "lost");
+        h.span(700, 700, t + 6 * MS, 4, "outer");
+        h.span(700, 700, t + 7 * MS, 5, "open");
+        h.span_end(700, 700, t + 8 * MS, 4);
+        h.end(700, 700, t + 9 * MS, 0x51);
+    }
+    h.span(700, 701, T0 + MS, 6, "idle");
+    h.span_end(700, 701, T0 + 2 * MS, 6);
+    let w = h.window(T0 + W);
+    let row = |name: &str| w.spans.iter().find(|s| s.name == name);
+    let pre = row("pre").unwrap();
+    assert_eq!(pre.callback.as_deref(), Some("c:700:0:ros:51"));
+    assert_eq!(pre.node.as_deref(), Some("n:700:0:a0"));
+    assert_eq!((pre.parent.as_deref(), pre.hz), (None, 10.0));
+    assert_eq!(pre.duration.max_ns, 3 * MS);
+    let inner = row("inner").unwrap();
+    assert_eq!(inner.parent.as_ref(), Some(&pre.id));
+    assert_eq!((inner.duration.n, inner.duration.max_ns), (10, MS));
+    let outer = row("outer").unwrap();
+    assert_eq!(
+        outer.parent.as_deref(),
+        Some("span:700:0:lost@3#c:700:0:ros:51#")
+    );
+    assert!(row("lost").is_none(), "its callback ended first");
+    assert_eq!(outer.duration.max_ns, 2 * MS);
+    assert!(row("open").is_none(), "an end above it closed it unmatched");
+    let idle = row("idle").unwrap();
+    assert_eq!((idle.callback.clone(), idle.hz), (None, 1.0));
+    assert_eq!(w.spans.len(), 4);
+}
+
+/// `fuse` with its node chosen for latest links.
+fn fuse_latest(h: &mut H) {
+    fuse(h);
+    let latest = armo_collectd::model::chain::latest_nodes(&["/f.se".into()]).unwrap();
+    h.m.set_flows(Vec::new(), latest);
+}
+
+#[test]
+fn latest_links_only_where_the_stamp_rule_does_not() {
+    let mut h = H::offline();
+    fuse_latest(&mut h);
+    let (s1, s2) = (wall(T0), wall(T0 + MS));
+    h.take(500, 501, T0 + 10 * MS, 0x11, 0, s1);
+    h.take(500, 501, T0 + 12 * MS, 0x21, 0, s2);
+    h.publish(500, 502, T0 + 20 * MS, 0x30, 0x31, 0, s1);
+    h.publish(500, 502, T0 + 30 * MS, 0x30, 0x31, 0, wall(T0 + 29 * MS));
+    h.take(500, 501, T0 + 40 * MS, 0x21, 0, wall(T0 + 39 * MS));
+    h.start(500, 501, T0 + 40 * MS + US, 0x23, false);
+    h.publish(500, 501, T0 + 41 * MS, 0x30, 0x31, 0, wall(T0 + 41 * MS));
+    h.end(500, 501, T0 + 42 * MS, 0x23);
+    h.publish(500, 503, T0 + 50 * MS, 0x40, 0x41, 0, wall(T0 + 50 * MS));
+    let w = h.window(T0 + W);
+    let count = |kind, input: &str| {
+        w.flows
+            .iter()
+            .find(|f| f.kind == kind && f.input == input && f.output == "topic:ros:/out")
+            .map(|f| f.count)
+    };
+    assert_eq!(count(FlowKind::Stamp, "topic:ros:/in1"), Some(1));
+    assert_eq!(count(FlowKind::Latest, "topic:ros:/in1"), Some(2));
+    assert_eq!(count(FlowKind::Latest, "topic:ros:/in2"), Some(1));
+    assert_eq!(count(FlowKind::Sync, "topic:ros:/in2"), Some(1));
+    let l1 = w
+        .flows
+        .iter()
+        .find(|f| f.kind == FlowKind::Latest && f.input == "topic:ros:/in1")
+        .unwrap();
+    assert_eq!(l1.dwell.as_ref().unwrap().max_ns, 31 * MS);
+    assert!(l1.id.starts_with("f:latest:n:500:0:e1#"));
+    assert!(
+        flows(&w, FlowKind::Latest)
+            .iter()
+            .all(|f| f.output != "topic:ros:/out2")
+    );
+}
+
+fn chain(name: &str, topics: &[&str], mode: ChainMode) -> ChainSpec {
+    ChainSpec {
+        name: name.into(),
+        topics: topics.iter().map(|t| t.to_string()).collect(),
+        mode,
+    }
+}
+
+/// Camera (100) -> `/a` -> B (200, sync) -> `/b` -> C (300, stamp) -> `/c` -> D (400, latest)
+/// -> `/d`: each message's steps are 2, 10 and 20 ms after its source publish.
+fn pipeline(h: &mut H, n: u64) {
+    h.node(100, 0xa0, "camera", "/");
+    h.publisher(100, 0xb0, 0xa0, 0xb1, "/a");
+    h.node(200, 0xa0, "b", "/");
+    h.subscription(200, 0x10, 0xa0, "/a");
+    h.publisher(200, 0xb0, 0xa0, 0xb1, "/b");
+    h.node(300, 0xa0, "c", "/");
+    h.subscription(300, 0x10, 0xa0, "/b");
+    h.publisher(300, 0xb0, 0xa0, 0xb1, "/c");
+    h.node(400, 0xa0, "d", "/");
+    h.subscription(400, 0x10, 0xa0, "/c");
+    h.subscription(400, 0x20, 0xa0, "/x");
+    h.publisher(400, 0xb0, 0xa0, 0xb1, "/d");
+    h.timer(400, 0x50, 100 * MS as i64, 0xa0, 0x51);
+    for i in 0..n {
+        let t = T0 + i * 100 * MS;
+        let ts = |k: i64| k * 1000 + i as i64;
+        h.publish(100, 100, t, 0xb0, 0xb1, ts(1), wall(t));
+        h.take(200, 200, t + MS, 0x11, ts(1), wall(t));
+        h.start(200, 200, t + MS + US, 0x13, false);
+        h.publish(200, 200, t + 2 * MS, 0xb0, 0xb1, ts(2), wall(t + 2 * MS));
+        h.end(200, 200, t + 3 * MS, 0x13);
+        h.take(300, 300, t + 3 * MS, 0x11, ts(2), wall(t + 2 * MS));
+        h.publish(300, 301, t + 10 * MS, 0xb0, 0xb1, ts(3), wall(t + 2 * MS));
+        h.take(400, 400, t + 11 * MS, 0x11, ts(3), wall(t + 2 * MS));
+        h.start(400, 401, t + 20 * MS - US, 0x51, false);
+        h.publish(400, 401, t + 20 * MS, 0xb0, 0xb1, ts(4), wall(t + 20 * MS));
+        h.end(400, 401, t + 21 * MS, 0x51);
+    }
+}
+
+#[test]
+fn lineage_chains_follow_messages_through_sync_stamp_and_latest_links() {
+    let mut h = H::offline();
+    let latest = armo_collectd::model::chain::latest_nodes(&["/d".into()]).unwrap();
+    let spec = chain("perception", &["/a", "/b", "/c", "/d"], ChainMode::Lineage);
+    h.m.set_flows(vec![spec], latest);
+    pipeline(&mut h, 9);
+    h.publish(
+        300,
+        301,
+        T0 + 950 * MS,
+        0xb0,
+        0xb1,
+        9999,
+        wall(T0 + 949 * MS),
+    );
+    let w = h.window(T0 + W);
+    let c = &w.chains[0];
+    assert_eq!(
+        (c.name.as_str(), c.mode, c.count),
+        ("perception", ChainMode::Lineage, 9)
+    );
+    let steps: Vec<(u64, u64)> = c
+        .steps
+        .iter()
+        .map(|s| s.as_ref().map(|s| (s.n, s.max_ns)).unwrap())
+        .collect();
+    assert_eq!(steps, [(9, 2 * MS), (9, 10 * MS), (9, 20 * MS)]);
+    assert_eq!(c.e2e.as_ref().unwrap().p50_ns, 20 * MS);
+    assert_eq!(c.broken, 1, "a /c that reached no /b");
+    let w = h.window(T0 + 2 * W);
+    assert_eq!((w.chains[0].count, w.chains[0].e2e.clone()), (0, None));
+}
+
+fn first_mode(h: &mut H) {
+    h.node(100, 0xa0, "perception", "/");
+    h.publisher(100, 0xb0, 0xa0, 0xb1, "/obstacle");
+    h.node(200, 0xa0, "planning", "/");
+    h.publisher(200, 0xb0, 0xa0, 0xb1, "/trajectory");
+    h.node(300, 0xa0, "control", "/");
+    h.publisher(300, 0xb0, 0xa0, 0xb1, "/cmd");
+    let mut ts = 0;
+    let mut publish = |h: &mut H, pid: u32, ms: u64| {
+        ts += 1;
+        h.publish(pid, pid, T0 + ms * MS, 0xb0, 0xb1, ts, 0);
+    };
+    publish(h, 100, 1);
+    publish(h, 200, 6);
+    publish(h, 300, 9);
+    publish(h, 200, 10);
+    publish(h, 100, 100);
+    publish(h, 300, 101);
+    publish(h, 100, 200);
+    publish(h, 200, 210);
+    publish(h, 300, 230);
+}
+
+#[test]
+fn first_chains_take_the_next_publish_and_a_restart_breaks_the_run() {
+    let mut h = H::offline();
+    let spec = chain(
+        "react",
+        &["/obstacle", "/trajectory", "/cmd"],
+        ChainMode::First,
+    );
+    h.m.set_flows(vec![spec], Vec::new());
+    first_mode(&mut h);
+    let w = h.window(T0 + W);
+    let c = &w.chains[0];
+    assert_eq!((c.count, c.broken), (2, 1));
+    let s0 = c.steps[0].clone().unwrap();
+    assert_eq!((s0.n, s0.max_ns), (2, 10 * MS));
+    let e2e = c.e2e.clone().unwrap();
+    assert_eq!((e2e.n, e2e.max_ns, e2e.mean_ns), (2, 30 * MS, 19 * MS));
+}
+
+#[test]
+fn analyze_writes_chain_steps_from_the_meta_or_the_argument() {
+    let dir = scratch("chains");
+    let golden = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../common/armo_proto/golden/meta/meta.json");
+    let mut meta: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(golden).unwrap()).unwrap();
+    meta["ros"] = serde_json::json!([]);
+    meta["started"] = serde_json::json!({"mono_ns": T0, "real_ns": T0 + REAL});
+    meta["methods_by_pid"] = [100, 200, 300]
+        .into_iter()
+        .map(|p| (p.to_string(), serde_json::json!("preload")))
+        .collect();
+    meta["options"]["chains"] = serde_json::json!([{"name": "react", "topics": ["/obstacle", "/trajectory", "/cmd"], "mode": "first"}]);
+    std::fs::write(dir.join("meta.json"), meta.to_string()).unwrap();
+    let line = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../common/armo_proto/golden/window_line/line.json");
+    let line: serde_json::Value = serde_json::from_slice(&std::fs::read(line).unwrap()).unwrap();
+    std::fs::write(dir.join("windows.jsonl"), format!("{line}\n")).unwrap();
+    let mut h = H::offline();
+    first_mode(&mut h);
+    h.span(100, 100, T0 + 300 * MS, 1, "fit");
+    h.span_end(100, 100, T0 + 304 * MS, 1);
+    let header = armo_evfile_header {
+        magic: ARMO_EVFILE_MAGIC,
+        version: armo_common::shm::ARMO_SHM_VERSION,
+        pad: 0,
+    };
+    let mut file = armo_common::bytes_of(&header).to_vec();
+    file.extend_from_slice(&h.batch);
+    std::fs::write(dir.join("events/000.armoev"), file).unwrap();
+
+    let report = armo_collectd::analyze::run(&dir, Vec::new()).unwrap();
+    let rows = std::fs::read_to_string(dir.join("analysis/chains.csv")).unwrap();
+    let rows: Vec<&str> = rows.lines().collect();
+    assert_eq!(rows[0], "chain,mode,step,topic,t_source_ns,latency_ns");
+    assert_eq!(
+        rows[1..],
+        [
+            format!("react,first,1,topic:ros:/trajectory,{},{}", T0 + MS, 5 * MS),
+            format!("react,first,2,topic:ros:/cmd,{},{}", T0 + MS, 8 * MS),
+            format!(
+                "react,first,1,topic:ros:/trajectory,{},{}",
+                T0 + 200 * MS,
+                10 * MS
+            ),
+            format!("react,first,2,topic:ros:/cmd,{},{}", T0 + 200 * MS, 30 * MS),
+        ]
+    );
+    assert!(
+        report.text.contains("         2          1  react"),
+        "{}",
+        report.text
+    );
+    assert!(report.text.contains("span duration"), "{}", report.text);
+    let summary = std::fs::read_to_string(dir.join("analysis/summary.csv")).unwrap();
+    assert!(
+        summary.lines().any(|l| l.starts_with("chain step")
+            && l.ends_with(",2,8000000,30000000,30000000,30000000,30000000")),
+        "{summary}"
+    );
+
+    let only = armo_collectd::analyze::parse_chain("plan=/trajectory,/cmd:first").unwrap();
+    armo_collectd::analyze::run(&dir, vec![only]).unwrap();
+    let rows = std::fs::read_to_string(dir.join("analysis/chains.csv")).unwrap();
+    assert!(
+        rows.lines().skip(1).all(|l| l.starts_with("plan,first,1,")),
+        "{rows}"
+    );
+    assert_eq!(rows.lines().count(), 1 + 3);
+    assert!(armo_collectd::analyze::parse_chain("one=/a").is_err());
+    assert_eq!(
+        armo_collectd::analyze::parse_chain("p=/a,/b").unwrap().mode,
+        ChainMode::Lineage
+    );
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn analyze_times_cuda_futex_and_dds_per_run_with_the_host_around_the_tail() {
+    let dir = scratch("calls");
+    let golden = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../common/armo_proto/golden/meta/meta.json");
+    let mut meta: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(golden).unwrap()).unwrap();
+    meta["ros"] = serde_json::json!([]);
+    meta["started"] = serde_json::json!({"mono_ns": T0, "real_ns": T0 + REAL});
+    meta["methods_by_pid"] = [100, 700]
+        .into_iter()
+        .map(|p| (p.to_string(), serde_json::json!("preload")))
+        .collect();
+    meta["options"]["gpu"] = serde_json::json!(true);
+    meta["options"]["futex"] = serde_json::json!(true);
+    std::fs::write(dir.join("meta.json"), meta.to_string()).unwrap();
+    let line = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../common/armo_proto/golden/window_line/line.json");
+    let line: serde_json::Value = serde_json::from_slice(&std::fs::read(line).unwrap()).unwrap();
+    let mut lines = String::new();
+    for (i, (core, hot)) in [(0, 40.0), (3, 91.5)].into_iter().enumerate() {
+        let mut l = line.clone();
+        l["t_mono_ns"] = serde_json::json!(T0 + (i as u64 + 1) * W);
+        l["snap"]["threads"][0]["tid"] = serde_json::json!(700);
+        l["snap"]["threads"][0]["cpus"] = serde_json::json!([1, 3]);
+        l["snap"]["host"]["throttle"]["core"] = serde_json::json!(core);
+        l["snap"]["host"]["thermal"][1]["temp_c"] = serde_json::json!(hot);
+        lines.push_str(&format!("{l}\n"));
+    }
+    std::fs::write(dir.join("windows.jsonl"), lines).unwrap();
+
+    let mut h = H::offline();
+    h.node(700, 0xa0, "infer", "/");
+    h.timer(700, 0x50, 100 * MS as i64, 0xa0, 0x51);
+    for i in 0..15 {
+        let t = T0 + i * 100 * MS;
+        let sync = if i == 12 { 9 * MS } else { MS };
+        h.start(700, 700, t, 0x51, false);
+        h.cuda(700, 700, t + MS, ARMO_CUDA_LAUNCH, 10 * US, 0, 0);
+        h.cuda(
+            700,
+            700,
+            t + 2 * MS + sync,
+            ARMO_CUDA_SYNC_STREAM,
+            sync,
+            0,
+            0,
+        );
+        h.futex(700, 700, t + 15 * MS, 2 * MS);
+        h.end(700, 700, t + 20 * MS, 0x51);
+    }
+    h.node(100, 0xa1, "talker", "/");
+    h.publisher(100, 0xb0, 0xa1, 0xb1, "/chatter");
+    let p = armo_ev_publish {
+        publisher: 0xb0,
+        message: 1,
+        stamp: 0,
+    };
+    let t = T0 + 5 * MS;
+    h.ev(100, 100, t, ARMO_EV_RCLCPP_PUBLISH, p, &[]);
+    h.ev(100, 100, t + 10 * US, ARMO_EV_RCL_PUBLISH, p, &[]);
+    h.dds_write(100, 100, t + 40 * US, 15 * US);
+    let r = armo_ev_rmw_publish {
+        rmw_publisher: 0xb1,
+        message: 1,
+        timestamp: 1,
+        stamp: 0,
+    };
+    h.ev(100, 100, t + 45 * US, ARMO_EV_RMW_PUBLISH, r, &[]);
+    let header = armo_evfile_header {
+        magic: ARMO_EVFILE_MAGIC,
+        version: armo_common::shm::ARMO_SHM_VERSION,
+        pad: 0,
+    };
+    let mut file = armo_common::bytes_of(&header).to_vec();
+    file.extend_from_slice(&h.batch);
+    std::fs::write(dir.join("events/000.armoev"), file).unwrap();
+
+    let report = armo_collectd::analyze::run(&dir, Vec::new()).unwrap();
+    let callbacks = std::fs::read_to_string(dir.join("analysis/callbacks.csv")).unwrap();
+    let rows: Vec<&str> = callbacks.lines().collect();
+    assert!(
+        rows[0].ends_with(",cuda_ns,cuda_sync_ns,futex_ns"),
+        "{}",
+        rows[0]
+    );
+    assert_eq!(rows.len(), 1 + 15);
+    assert!(
+        rows[1].ends_with(&format!(",{},{},{}", 10 * US + MS, MS, 2 * MS)),
+        "{}",
+        rows[1]
+    );
+    let publishes = std::fs::read_to_string(dir.join("analysis/publishes.csv")).unwrap();
+    assert_eq!(
+        publishes.lines().nth(1).unwrap(),
+        format!("topic:ros:/chatter,100,100,{},25000,15000", t + 40 * US)
+    );
+    let tails = std::fs::read_to_string(dir.join("analysis/tails.csv")).unwrap();
+    let worst = tails
+        .lines()
+        .find(|l| l.starts_with("callback CUDA synchronize,") && l.contains(",1,"))
+        .unwrap();
+    let f: Vec<&str> = worst.split(',').collect();
+    assert_eq!(
+        f[3..],
+        [
+            &(9 * MS).to_string()[..],
+            &(T0 + 1200 * MS).to_string(),
+            "2385",
+            "91.5",
+            "3",
+            "210",
+            "36.0",
+            "idle"
+        ]
+    );
+    assert!(
+        report.text.contains("callback CUDA synchronize: ")
+            && report.text.contains("cpu 2385 MHz, 91.5 C, throttle 3"),
+        "{}",
+        report.text
+    );
+    assert!(report.text.contains("DDS write [us]"), "{}", report.text);
+    std::fs::remove_dir_all(&dir).unwrap();
 }

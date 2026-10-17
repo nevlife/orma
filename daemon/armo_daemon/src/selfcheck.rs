@@ -1,6 +1,6 @@
 //! armod's part of `armo selfcheck` (design 6.7): over a window it attaches discovery, hot,
-//! rclcpp symbol and bandwidth probes to the target, watches the records, and reports whether
-//! the assumptions behind them hold on this machine.
+//! rclcpp symbol, bandwidth and dds probes to the target, watches the records, and reports
+//! whether the assumptions behind them hold on this machine.
 
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
@@ -14,8 +14,15 @@ use armo_proto::{
 };
 
 use crate::{
-    hostcheck, libs::Lib, probes::Kernel, procs, procs::DistroFrom, progs::Set, ring::Head,
-    sel::Sel, sys,
+    hostcheck,
+    libs::Lib,
+    probes::{Kernel, Scope},
+    procs,
+    procs::DistroFrom,
+    progs::{PROGS, Set, Sym},
+    ring::Head,
+    sel::Sel,
+    sys,
 };
 
 const NS: i64 = 1_000_000_000;
@@ -61,6 +68,11 @@ pub struct Session {
     /// Per thread: `rcl_wait` entries and returns. A return the uretprobe missed (the kernel's
     /// nesting limit, a full return instance pool) leaves an entry unmatched.
     waits: BTreeMap<(u32, u32), (u64, u64)>,
+    /// Per thread: the last record's event, and whether it was paired as below.
+    last: HashMap<(u32, u32), (u16, bool)>,
+    /// Per process: `rmw_publish` records, and those next to a DDS write on their thread, the
+    /// pairing armo-collectd relies on (design 20.2).
+    dds: BTreeMap<u32, (u64, u64)>,
 }
 
 impl Session {
@@ -98,6 +110,8 @@ impl Session {
             rclcpp_subs: Vec::new(),
             cxx: BTreeMap::new(),
             waits: BTreeMap::new(),
+            last: HashMap::new(),
+            dds: BTreeMap::new(),
         }
     }
 
@@ -116,6 +130,10 @@ impl Session {
         };
         let pid = head.pid;
         self.tids.entry(pid).or_default().insert(head.tid);
+        // The bandwidth probe's size falls inside Fast DDS's write.
+        if head.event != ARMO_EV_DDS_SERIALIZED_SIZE {
+            self.adjacent(pid, head.tid, head.event);
+        }
         let first = |r: &records::Record| -> String {
             String::from_utf8_lossy(r.strings().next().unwrap_or_default()).into_owned()
         };
@@ -216,6 +234,23 @@ impl Session {
         }
     }
 
+    fn adjacent(&mut self, pid: u32, tid: u32, event: u16) {
+        let publish = |e: u16| matches!(e, ARMO_EV_RMW_PUBLISH | ARMO_EV_RMW_PUBLISH_RCL);
+        let before = self.last.get(&(pid, tid)).copied();
+        let paired = before.is_some_and(|(e, used)| {
+            !used
+                && ((publish(event) && e == ARMO_EV_DDS_WRITE)
+                    || (event == ARMO_EV_DDS_WRITE && publish(e)))
+        });
+        self.last.insert((pid, tid), (event, paired));
+        if publish(event) {
+            self.dds.entry(pid).or_default().0 += 1;
+        }
+        if paired {
+            self.dds.entry(pid).or_default().1 += 1;
+        }
+    }
+
     /// The age test of design 2.1.2 for a wall-clock stamp.
     fn stamp(&mut self, topic: String, stamp: u64, t_mono: u64) {
         let s = self.stamps.entry(topic).or_default();
@@ -238,13 +273,26 @@ impl Session {
             status,
             detail,
         };
-        out.push(match &k.layout {
+        out.push(match &k.sched_tp.layout {
             Ok(()) => check(
                 "tracepoint layout".into(),
                 CheckStatus::Pass,
                 "sched_switch and sched_wakeup fields at the built offsets".into(),
             ),
             Err(e) => check("tracepoint layout".into(), CheckStatus::Fail, e.clone()),
+        });
+        out.push(match &k.futex_tp.layout {
+            Ok(()) => check(
+                "futex tracepoint layout".into(),
+                CheckStatus::Pass,
+                "sys_enter_futex, sys_exit_futex and the futex_waitv pair at the built offsets"
+                    .into(),
+            ),
+            Err(e) => check(
+                "futex tracepoint layout".into(),
+                CheckStatus::Fail,
+                e.clone(),
+            ),
         });
         let stats = k.prog_stats();
         out.push(check(
@@ -273,7 +321,13 @@ impl Session {
                     .count()
             ),
         ));
-        for set in [Set::Discovery, Set::Hot, Set::RclcppSymbols, Set::Bandwidth] {
+        for set in [
+            Set::Discovery,
+            Set::Hot,
+            Set::RclcppSymbols,
+            Set::Bandwidth,
+            Set::Dds,
+        ] {
             let attached: std::collections::BTreeSet<&str> = k
                 .attachments()
                 .filter(|(p, _, _)| p.set == set)
@@ -372,7 +426,26 @@ impl Session {
                 ),
             ));
         }
+        out.extend(self.gpu(k));
         for (pid, p) in k.procs.iter().filter(|(p, _)| self.target.contains(**p)) {
+            let (publishes, paired) = self.dds.get(pid).copied().unwrap_or((0, 0));
+            let dds = k
+                .attachments()
+                .any(|(g, _, s)| g.set == Set::Dds && (s == Scope::All || s == Scope::Pid(*pid)));
+            if dds && publishes > 0 {
+                // A publish at the window's end may have its write after it.
+                out.push(check(
+                    format!("dds write pid {pid} ({})", p.comm),
+                    if paired > 0 && paired + 1 >= publishes {
+                        CheckStatus::Pass
+                    } else {
+                        CheckStatus::Fail
+                    },
+                    format!(
+                        "{paired} of {publishes} rmw_publish next to a DDS write on their thread"
+                    ),
+                ));
+            }
             let maps = std::fs::read_to_string(format!("/proc/{pid}/maps")).unwrap_or_default();
             out.extend(hostcheck::preload(*pid, &p.comm, &maps));
             out.extend(hostcheck::timens(*pid, &p.comm));
@@ -588,6 +661,57 @@ impl Session {
     }
 }
 
+impl Session {
+    /// For each libcuda.so the target maps: the driver functions the gpu programs would attach
+    /// to, without attaching them (a CUDA process has some 100 of them, design 20.1).
+    fn gpu(&self, k: &Kernel) -> Vec<Check> {
+        let mut out = Vec::new();
+        let mut files: Vec<_> = k
+            .procs
+            .iter()
+            .filter(|(pid, _)| self.target.contains(**pid))
+            .flat_map(|(_, p)| p.files.iter())
+            .filter_map(|f| k.files.get(f))
+            .filter(|f| f.lib == Lib::Cuda)
+            .collect();
+        files.sort_by(|a, b| a.mapped.cmp(&b.mapped));
+        files.dedup_by(|a, b| a.mapped == b.mapped);
+        for f in files {
+            let entries = PROGS.iter().filter(|p| p.set == Set::Gpu && !p.ret);
+            let mut none = Vec::new();
+            let (mut have, mut absent) = (0, Vec::new());
+            for p in entries {
+                if k.offsets(p, f).is_err() {
+                    none.push(p.name);
+                }
+                if let Sym::Names(names) = p.sym {
+                    for n in names {
+                        if f.symbols.contains_key(*n) {
+                            have += 1;
+                        } else {
+                            absent.push(*n);
+                        }
+                    }
+                }
+            }
+            out.push(Check {
+                item: format!("gpu symbols {}", f.mapped),
+                status: if none.is_empty() {
+                    CheckStatus::Pass
+                } else {
+                    CheckStatus::Fail
+                },
+                detail: format!(
+                    "{have} driver functions exported; not exported: {}; programs without one: {}",
+                    absent.join(" "),
+                    none.join(" ")
+                ),
+            });
+        }
+        out
+    }
+}
+
 fn opt(v: Option<bool>) -> &'static str {
     match v {
         Some(true) => "yes",
@@ -604,6 +728,9 @@ pub fn set_name(s: Set) -> &'static str {
         Set::RclcppSymbols => "rclcpp_symbols",
         Set::Names => "names",
         Set::Sched => "sched",
+        Set::Gpu => "gpu",
+        Set::Dds => "dds",
+        Set::Futex => "futex",
         Set::Flux1 => "flux1",
     }
 }
@@ -642,6 +769,8 @@ mod tests {
             rclcpp_subs: Vec::new(),
             cxx: BTreeMap::new(),
             waits: BTreeMap::new(),
+            last: HashMap::new(),
+            dds: BTreeMap::new(),
         }
     }
 
@@ -742,6 +871,28 @@ mod tests {
         s.stamp("/t".into(), at(1_700_000_000 - 700), 5 * NS as u64);
         s.stamp("/t".into(), at(1_700_000_002), 5 * NS as u64);
         assert_eq!(s.stamps["/t"], (4, 1));
+    }
+
+    #[test]
+    fn a_publish_pairs_with_the_dds_write_next_to_it_on_its_thread() {
+        let mut s = session();
+        let publish = armo_ev_rmw_publish::default();
+        let write = armo_ev_dds_write::default();
+        let size = armo_ev_dds_serialized_size { size: 18 };
+        // Fast DDS: publish, (size), write. Cyclone with the tracepoint after the write.
+        observe(&mut s, 10, ARMO_EV_RMW_PUBLISH, 1, &publish);
+        observe(&mut s, 10, ARMO_EV_DDS_SERIALIZED_SIZE, 2, &size);
+        observe(&mut s, 10, ARMO_EV_DDS_WRITE, 3, &write);
+        observe(&mut s, 10, ARMO_EV_RMW_PUBLISH, 4, &publish);
+        observe(&mut s, 20, ARMO_EV_DDS_WRITE, 1, &write);
+        observe(&mut s, 20, ARMO_EV_RMW_PUBLISH, 2, &publish);
+        // A service request's write after a publish whose write was not seen.
+        let wait = armo_ev_rcl_wait_enter::default();
+        observe(&mut s, 20, ARMO_EV_RMW_PUBLISH, 3, &publish);
+        observe(&mut s, 20, ARMO_EV_RCL_WAIT_ENTER, 4, &wait);
+        observe(&mut s, 20, ARMO_EV_DDS_WRITE, 5, &write);
+        assert_eq!(s.dds[&10], (2, 1));
+        assert_eq!(s.dds[&20], (2, 1));
     }
 
     #[test]

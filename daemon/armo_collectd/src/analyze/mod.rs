@@ -1,6 +1,7 @@
 //! `armo analyze <dir>`: runs a recording's event files through the offline
-//! model window by window and writes the intervals per message and per callback as CSV,
-//! with exact tail-first summaries (p90, p99, p99.9, max).
+//! model window by window and writes the intervals per message, per callback and per DDS write,
+//! and the chain steps, as CSV, with exact summaries (p50, p90, p99, max; the CSV also p99.9). The tail
+//! samples get the host's state from the recording's windows (design 20.12).
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -12,13 +13,19 @@ use armo_common::events::{ARMO_EVFILE_MAGIC, armo_evfile_header};
 use armo_common::read;
 use armo_common::shm::ARMO_SHM_VERSION;
 use armo_proto::Ingest;
-use armo_proto::msg::{FlowKind, Method, RecordMeta, RecordMethod, Window, WindowLine};
+use armo_proto::msg::{
+    ChainMode, ChainSpec, FlowKind, HostWindow, Method, RecordMeta, RecordMethod, Window,
+    WindowLine,
+};
 use armo_proto::records;
 
-use crate::model::{Model, Sample};
+use crate::model::{Model, Sample, chain};
+use crate::sources::armod::Sel;
 
 /// Windows run after the last record, so pending pairs and callbacks resolve.
 const DRAIN_WINDOWS: u64 = 3;
+/// Samples per entity in `tails.csv`: the largest, down to its p99.
+const TAIL_ROWS: usize = 10;
 
 /// Nearest-rank quantile of sorted values.
 pub fn quantile(sorted: &[u64], q: f64) -> u64 {
@@ -26,16 +33,23 @@ pub fn quantile(sorted: &[u64], q: f64) -> u64 {
     sorted[rank - 1]
 }
 
+/// When a sample happened, and on which thread when it has one.
+type When = (u64, Option<u32>);
+type At = Option<When>;
+type Lat = BTreeMap<String, Vec<(u64, At)>>;
+
 #[derive(Default)]
 struct Tables {
     /// Table title, then entity id, then values in ns.
-    lat: BTreeMap<&'static str, BTreeMap<String, Vec<u64>>>,
+    lat: BTreeMap<&'static str, Lat>,
     sub_takes: BTreeMap<String, (u64, Option<u64>)>,
     topic_ambiguous: BTreeMap<String, u64>,
     topic_drops: BTreeMap<String, (u64, u64)>,
     flows: BTreeMap<String, (u64, u64)>,
     blind: BTreeMap<String, u64>,
     node_cpu: BTreeMap<String, (String, f64, bool)>,
+    /// Per chain: instances that reached the end, and publishes that did not reach the source.
+    chains: BTreeMap<String, (u64, u64)>,
     duration_ns: u64,
 }
 
@@ -47,15 +61,26 @@ const ONCPU: &str = "callback on-CPU";
 const WAIT: &str = "executor wait (wait -> wake)";
 const CPU_WAIT: &str = "CPU wait (wakeup -> on CPU)";
 const DWELL: &str = "flow dwell (take -> publish)";
+const SPAN: &str = "span duration";
+const CHAIN: &str = "chain step (source publish -> publish on the step's topic)";
+const CUDA: &str = "callback CUDA driver calls";
+const CUDA_SYNC: &str = "callback CUDA synchronize";
+const FUTEX: &str = "callback futex wait";
+const PRE_DDS: &str = "publish -> DDS write start";
+const DDS: &str = "DDS write";
+const TABLES: [&str; 15] = [
+    HOP, WAKE, DISPATCH, CALLBACK, ONCPU, CUDA, CUDA_SYNC, FUTEX, WAIT, CPU_WAIT, PRE_DDS, DDS,
+    DWELL, SPAN, CHAIN,
+];
 
 impl Tables {
-    fn add(&mut self, table: &'static str, id: &str, ns: u64) {
+    fn add(&mut self, table: &'static str, id: &str, ns: u64, at: At) {
         self.lat
             .entry(table)
             .or_default()
             .entry(id.to_string())
             .or_default()
-            .push(ns);
+            .push((ns, at));
     }
 
     fn window(&mut self, w: &Window) {
@@ -85,6 +110,11 @@ impl Tables {
                 e.0 += f.count;
                 e.1 += f.ambiguous;
             }
+        }
+        for c in &w.chains {
+            let e = self.chains.entry(c.name.clone()).or_default();
+            e.0 += c.count;
+            e.1 += c.broken;
         }
         for n in &w.nodes {
             let e = self.node_cpu.entry(n.id.clone()).or_default();
@@ -138,14 +168,33 @@ fn event_files(dir: &Path) -> Result<Vec<(String, Vec<u8>)>, String> {
         .collect()
 }
 
+/// `NAME=t1,t2,...[:first]`, the `--chain` of `armo-analyze` and `armo analyze`.
+pub fn parse_chain(spec: &str) -> Result<ChainSpec, String> {
+    let (name, rest) = spec
+        .split_once('=')
+        .ok_or_else(|| format!("--chain {spec:?}: not NAME=t1,t2,...[:first]"))?;
+    let (topics, mode) = match rest.strip_suffix(":first") {
+        Some(t) => (t, ChainMode::First),
+        None => (rest, ChainMode::Lineage),
+    };
+    let c = ChainSpec {
+        name: name.into(),
+        topics: topics.split(',').map(str::to_string).collect(),
+        mode,
+    };
+    chain::check(std::slice::from_ref(&c))?;
+    Ok(c)
+}
+
 pub struct Report {
     pub text: String,
     pub records: u64,
     pub windows: u64,
 }
 
-/// Analyzes the recording in `dir` and writes `dir/analysis/{deliveries,callbacks,summary}.csv`.
-pub fn run(dir: &Path) -> Result<Report, String> {
+/// Analyzes the recording in `dir` and writes `dir/analysis/{deliveries,callbacks,summary}.csv`,
+/// and `chains.csv` for `chains`, or for the recording's own chains when that is empty.
+pub fn run(dir: &Path, chains: Vec<ChainSpec>) -> Result<Report, String> {
     let meta: RecordMeta = serde_json::from_slice(
         &fs::read(dir.join("meta.json")).map_err(|e| format!("meta.json: {e}"))?,
     )
@@ -163,9 +212,13 @@ pub fn run(dir: &Path) -> Result<Report, String> {
     if files.is_empty() {
         return Err("the recording has no event files (a windows-only recording)".into());
     }
-    let window_ns = fs::read_to_string(dir.join("windows.jsonl"))
-        .ok()
-        .and_then(|t| serde_json::from_str::<WindowLine>(t.lines().next()?).ok())
+    let lines: Vec<WindowLine> = fs::read_to_string(dir.join("windows.jsonl"))
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|l| serde_json::from_str(l).ok())
+        .collect();
+    let window_ns = lines
+        .first()
         .ok_or("windows.jsonl has no window, so the window length is unknown")?
         .snap
         .window_ns
@@ -178,17 +231,34 @@ pub fn run(dir: &Path) -> Result<Report, String> {
         .collect();
     let every_pid_uprobe = meta.options.method == Some(RecordMethod::Uprobe);
 
+    let o = &meta.options;
+    let chains = match chains.is_empty() {
+        true => o.chains.clone().unwrap_or_default(),
+        false => chains,
+    };
+    chain::check(&chains)?;
+    let latest = chain::latest_nodes(o.latest_nodes.as_deref().unwrap_or_default())?;
     let mut model = Model::offline();
     for p in &meta.ros {
         model.set_starttime(p.pid, p.starttime);
     }
+    let futex = match o.futex == Some(true) {
+        true => Sel::All,
+        false => Sel::None,
+    };
+    model.set_probes(o.gpu == Some(true), futex);
+    let has_chains = !chains.is_empty();
+    model.set_flows(chains, latest);
     let out = dir.join("analysis");
     fs::create_dir_all(&out).map_err(|e| format!("{}: {e}", out.display()))?;
     let mut deliveries = String::from(
         "topic,subscription,pub_pid,sub_pid,sub_tid,t_pub_ns,t_take_ns,hop_ns,wake_ns,dispatch_ns,callback,callback_ns\n",
     );
-    let mut callbacks =
-        String::from("callback,node,tid,t_start_ns,duration_ns,oncpu_ns,dispatch_ns\n");
+    let mut callbacks = String::from(
+        "callback,node,tid,t_start_ns,duration_ns,oncpu_ns,dispatch_ns,cuda_ns,cuda_sync_ns,futex_ns\n",
+    );
+    let mut publishes = String::from("topic,pid,tid,t_write_end_ns,pub_to_dds_ns,dds_write_ns\n");
+    let mut chain_rows = String::from("chain,mode,step,topic,t_source_ns,latency_ns\n");
     let mut tables = Tables::default();
     let mut windows = 0;
     let mut records = 0;
@@ -201,11 +271,12 @@ pub fn run(dir: &Path) -> Result<Report, String> {
         for s in model.take_samples() {
             match s {
                 Sample::Delivery(d) => {
+                    let at = Some((d.t_take_ns, Some(d.sub_tid)));
                     if let Some(h) = d.hop_ns {
-                        tables.add(HOP, &d.topic, h);
+                        tables.add(HOP, &d.topic, h, at);
                     }
                     if let Some(v) = d.wake_ns {
-                        tables.add(WAKE, &d.subscription, v);
+                        tables.add(WAKE, &d.subscription, v, at);
                     }
                     let _ = writeln!(
                         deliveries,
@@ -232,25 +303,76 @@ pub fn run(dir: &Path) -> Result<Report, String> {
                     duration_ns,
                     oncpu_ns,
                     dispatch_ns,
+                    cuda_ns,
+                    cuda_sync_ns,
+                    futex_ns,
                 } => {
-                    tables.add(CALLBACK, &id, duration_ns);
-                    if let Some(v) = oncpu_ns {
-                        tables.add(ONCPU, &id, v);
-                    }
-                    if let Some(v) = dispatch_ns {
-                        tables.add(DISPATCH, &id, v);
+                    let at = Some((t_ns, Some(tid)));
+                    tables.add(CALLBACK, &id, duration_ns, at);
+                    for (table, v) in [
+                        (ONCPU, oncpu_ns),
+                        (DISPATCH, dispatch_ns),
+                        (CUDA, cuda_ns),
+                        (CUDA_SYNC, cuda_sync_ns),
+                        (FUTEX, futex_ns),
+                    ] {
+                        if let Some(v) = v {
+                            tables.add(table, &id, v, at);
+                        }
                     }
                     let _ = writeln!(
                         callbacks,
-                        "{id},{},{tid},{t_ns},{duration_ns},{},{}",
+                        "{id},{},{tid},{t_ns},{duration_ns},{},{},{},{},{}",
                         node.unwrap_or_default(),
                         csv_opt(oncpu_ns),
                         csv_opt(dispatch_ns),
+                        csv_opt(cuda_ns),
+                        csv_opt(cuda_sync_ns),
+                        csv_opt(futex_ns),
                     );
                 }
-                Sample::Wait { executor, ns } => tables.add(WAIT, &executor, ns),
-                Sample::CpuWait { thread, ns } => tables.add(CPU_WAIT, &thread, ns),
-                Sample::Flow { id, dwell_ns } => tables.add(DWELL, &id, dwell_ns),
+                Sample::Publish {
+                    topic,
+                    pid,
+                    tid,
+                    t_ns,
+                    pub_to_dds_ns,
+                    dds_write_ns,
+                } => {
+                    let at = Some((t_ns, Some(tid)));
+                    tables.add(DDS, &topic, dds_write_ns, at);
+                    if let Some(v) = pub_to_dds_ns {
+                        tables.add(PRE_DDS, &topic, v, at);
+                    }
+                    let _ = writeln!(
+                        publishes,
+                        "{topic},{pid},{tid},{t_ns},{},{dds_write_ns}",
+                        csv_opt(pub_to_dds_ns)
+                    );
+                }
+                Sample::Wait { executor, ns } => tables.add(WAIT, &executor, ns, None),
+                Sample::CpuWait { thread, ns } => tables.add(CPU_WAIT, &thread, ns, None),
+                Sample::Flow { id, dwell_ns } => tables.add(DWELL, &id, dwell_ns, None),
+                Sample::Span { id, duration_ns } => tables.add(SPAN, &id, duration_ns, None),
+                Sample::Chain {
+                    name,
+                    mode,
+                    step,
+                    topic,
+                    t_source_ns,
+                    latency_ns,
+                } => {
+                    let at = Some((t_source_ns + latency_ns, None));
+                    tables.add(CHAIN, &format!("{name}:{step}:{topic}"), latency_ns, at);
+                    let mode = match mode {
+                        ChainMode::Lineage => "lineage",
+                        ChainMode::First => "first",
+                    };
+                    let _ = writeln!(
+                        chain_rows,
+                        "{name},{mode},{step},{topic},{t_source_ns},{latency_ns}"
+                    );
+                }
             }
         }
     };
@@ -286,9 +408,21 @@ pub fn run(dir: &Path) -> Result<Report, String> {
     // The drain windows had no records in them.
     tables.duration_ns -= (DRAIN_WINDOWS - 1) * window_ns;
 
-    let text = render(&tables, &mut out_summary(&out)?)?;
+    let mut text = render(&tables, &mut out_summary(&out)?)?;
+    let hosts = Hosts::new(&lines);
+    if !hosts.0.is_empty() {
+        let (tails, context) = tails(&tables, &hosts);
+        write(&out.join("tails.csv"), &tails)?;
+        text.push_str(&context);
+    }
     write(&out.join("deliveries.csv"), &deliveries)?;
     write(&out.join("callbacks.csv"), &callbacks)?;
+    if publishes.lines().count() > 1 {
+        write(&out.join("publishes.csv"), &publishes)?;
+    }
+    if has_chains {
+        write(&out.join("chains.csv"), &chain_rows)?;
+    }
     Ok(Report {
         text,
         records,
@@ -303,20 +437,20 @@ fn write(path: &Path, text: &str) -> Result<(), String> {
 fn out_summary(out: &Path) -> Result<fs::File, String> {
     let path = out.join("summary.csv");
     let mut f = fs::File::create(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-    writeln!(f, "table,entity,n,p90_ns,p99_ns,p999_ns,max_ns").map_err(|e| e.to_string())?;
+    writeln!(f, "table,entity,n,p50_ns,p90_ns,p99_ns,p999_ns,max_ns").map_err(|e| e.to_string())?;
     Ok(f)
 }
 
 fn render(t: &Tables, csv: &mut fs::File) -> Result<String, String> {
     let mut s = String::new();
-    for table in [HOP, WAKE, DISPATCH, CALLBACK, ONCPU, WAIT, CPU_WAIT, DWELL] {
+    for table in TABLES {
         let Some(rows) = t.lat.get(table) else {
             continue;
         };
         let mut rows: Vec<(&String, Vec<u64>)> = rows
             .iter()
             .map(|(id, v)| {
-                let mut v = v.clone();
+                let mut v: Vec<u64> = v.iter().map(|s| s.0).collect();
                 v.sort_unstable();
                 (id, v)
             })
@@ -325,10 +459,10 @@ fn render(t: &Tables, csv: &mut fs::File) -> Result<String, String> {
         let _ = writeln!(
             s,
             "\n{table} [us]\n{:>10} {:>10} {:>10} {:>10} {:>10}  entity",
-            "n", "p90", "p99", "p99.9", "max"
+            "n", "p50", "p90", "p99", "max"
         );
         for (id, v) in rows {
-            let q = [0.9, 0.99, 0.999].map(|q| quantile(&v, q));
+            let q = [0.5, 0.9, 0.99, 0.999].map(|q| quantile(&v, q));
             let max = *v.last().expect("non-empty");
             let _ = writeln!(
                 s,
@@ -341,11 +475,12 @@ fn render(t: &Tables, csv: &mut fs::File) -> Result<String, String> {
             );
             writeln!(
                 csv,
-                "{table},{id},{},{},{},{},{max}",
+                "{table},{id},{},{},{},{},{},{max}",
                 v.len(),
                 q[0],
                 q[1],
-                q[2]
+                q[2],
+                q[3]
             )
             .map_err(|e| e.to_string())?;
         }
@@ -397,6 +532,12 @@ fn render(t: &Tables, csv: &mut fs::File) -> Result<String, String> {
             let _ = writeln!(s, "{c:>10} {:>10}  {id}", "-");
         }
     }
+    if !t.chains.is_empty() {
+        let _ = writeln!(s, "\nchains\n{:>10} {:>10}  chain", "complete", "broken");
+        for (name, (count, broken)) in &t.chains {
+            let _ = writeln!(s, "{count:>10} {broken:>10}  {name}");
+        }
+    }
     if !t.node_cpu.is_empty() {
         let _ = writeln!(
             s,
@@ -419,4 +560,127 @@ fn render(t: &Tables, csv: &mut fs::File) -> Result<String, String> {
         }
     }
     Ok(s)
+}
+
+/// A recording window that carries the host's state.
+struct HostAt<'a> {
+    end: u64,
+    len: u64,
+    host: &'a HostWindow,
+    cpus: BTreeMap<u32, &'a [u32]>,
+}
+
+struct Hosts<'a>(Vec<HostAt<'a>>);
+
+impl<'a> Hosts<'a> {
+    fn new(lines: &'a [WindowLine]) -> Self {
+        Hosts(
+            lines
+                .iter()
+                .filter_map(|l| {
+                    Some(HostAt {
+                        end: l.t_mono_ns,
+                        len: l.snap.window_ns,
+                        host: l.snap.host.as_ref()?,
+                        cpus: l
+                            .snap
+                            .threads
+                            .iter()
+                            .map(|t| (t.tid, &t.cpus[..]))
+                            .collect(),
+                    })
+                })
+                .collect(),
+        )
+    }
+
+    /// The state of the window around `t`: the lowest clock of the CPUs the thread ran on in it
+    /// (all CPUs when it is not known), the hottest zone, the throttle events, and each GPU's
+    /// clock, temperature and throttle reasons.
+    fn context(&self, t: u64, tid: Option<u32>) -> Option<[String; 6]> {
+        let w = self.0.iter().find(|w| t < w.end && t + w.len >= w.end)?;
+        let h = w.host;
+        let cpus = tid.and_then(|t| w.cpus.get(&t)).filter(|c| !c.is_empty());
+        let mhz = match cpus {
+            Some(c) => c.iter().filter_map(|&i| *h.cpu_mhz.get(i as usize)?).min(),
+            None => h.cpu_mhz.iter().flatten().copied().min(),
+        };
+        let thermal = h.thermal.iter().map(|z| z.temp_c).reduce(f64::max);
+        let gpus = |f: &dyn Fn(&armo_proto::msg::Gpu) -> String| {
+            h.gpus.iter().map(f).collect::<Vec<_>>().join("|")
+        };
+        Some([
+            mhz.map(|m| m.to_string()).unwrap_or_default(),
+            thermal.map(|c| format!("{c:.1}")).unwrap_or_default(),
+            h.throttle.values().sum::<u64>().to_string(),
+            gpus(&|g| g.clock_mhz.map(|m| m.to_string()).unwrap_or_default()),
+            gpus(&|g| g.temp_c.map(|c| format!("{c:.1}")).unwrap_or_default()),
+            gpus(&|g| g.throttle.join("+")),
+        ])
+    }
+}
+
+/// `tails.csv`, and for the summary the max of each table's worst entity with its context.
+fn tails(t: &Tables, hosts: &Hosts) -> (String, String) {
+    let mut csv = String::from(
+        "table,entity,rank,ns,t_ns,cpu_mhz,thermal_max_c,throttle,gpu_clock_mhz,gpu_temp_c,gpu_throttle\n",
+    );
+    let mut text = String::from(
+        "\ntail context (the worst entity's max; CPU MHz of its thread's CPUs, hottest zone, throttle events, GPU clock/temp/throttle)\n",
+    );
+    let mut any = false;
+    for table in TABLES {
+        let Some(rows) = t.lat.get(table) else {
+            continue;
+        };
+        let mut worst: Option<(u64, &String, u64, When)> = None;
+        for (id, v) in rows {
+            let mut s: Vec<(u64, When)> = v
+                .iter()
+                .filter_map(|(ns, at)| Some((*ns, (*at)?)))
+                .collect();
+            if s.is_empty() {
+                continue;
+            }
+            let mut sorted: Vec<u64> = v.iter().map(|x| x.0).collect();
+            sorted.sort_unstable();
+            let p99 = quantile(&sorted, 0.99);
+            s.sort_by_key(|x| std::cmp::Reverse(x.0));
+            if worst.is_none_or(|w| p99 > w.0) {
+                worst = Some((p99, id, s[0].0, s[0].1));
+            }
+            for (rank, (ns, (at, tid))) in s
+                .iter()
+                .take_while(|x| x.0 >= p99)
+                .take(TAIL_ROWS)
+                .enumerate()
+            {
+                let Some(c) = hosts.context(*at, *tid) else {
+                    continue;
+                };
+                let _ = writeln!(csv, "{table},{id},{},{ns},{at},{}", rank + 1, c.join(","));
+            }
+        }
+        if let Some((_, id, ns, (at, tid))) = worst
+            && let Some(c) = hosts.context(at, tid)
+        {
+            any = true;
+            let _ = writeln!(
+                text,
+                "{table}: {id} max {} us | cpu {} MHz, {} C, throttle {} | gpu {} MHz, {} C, {}",
+                us(ns),
+                dash(&c[0]),
+                dash(&c[1]),
+                c[2],
+                dash(&c[3]),
+                dash(&c[4]),
+                dash(&c[5])
+            );
+        }
+    }
+    (csv, if any { text } else { String::new() })
+}
+
+fn dash(s: &str) -> &str {
+    if s.is_empty() { "-" } else { s }
 }

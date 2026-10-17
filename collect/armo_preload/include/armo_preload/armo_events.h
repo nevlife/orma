@@ -117,6 +117,16 @@
 // processes armod attached to after their entities were made (design 2.1.4).
 #define ARMO_EV_RCLCPP_CALLBACK_OWNER 82
 
+// The DDS write call under `rmw_publish`: Cyclone DDS `dds_write`, `dds_writecdr`, Fast DDS
+// `DataWriter::write` (design 20.2). Written when the call returns.
+#define ARMO_EV_DDS_WRITE 83
+
+#define ARMO_EV_CUDA_CALL 96
+
+#define ARMO_EV_SPAN_BEGIN 104
+
+#define ARMO_EV_SPAN_END 105
+
 #define ARMO_EV_FLUX2_CHANNEL_INIT 128
 
 #define ARMO_EV_FLUX2_CLAIM 129
@@ -155,6 +165,9 @@
 #define ARMO_EV_SCHED_SWITCH 192
 
 #define ARMO_EV_SCHED_WAKEUP 193
+
+// A futex wait of a selected thread, written when the system call returns (design 20.4).
+#define ARMO_EV_FUTEX_WAIT 194
 
 // Event numbers stay below this, so `armo_shm_header.missing` has a bit for each.
 #define ARMO_EV_LIMIT 256
@@ -239,6 +252,29 @@
 #define ARMO_FLUX2_NO_SLOT UINT32_MAX
 
 #define ARMO_FLUX2_NO_ENTRY UINT32_MAX
+
+#define ARMO_CUDA_LAUNCH 0
+
+#define ARMO_CUDA_GRAPH_LAUNCH 1
+
+#define ARMO_CUDA_MEMCPY 2
+
+#define ARMO_CUDA_MEMCPY_ASYNC 3
+
+#define ARMO_CUDA_SYNC_STREAM 4
+
+#define ARMO_CUDA_SYNC_CTX 5
+
+#define ARMO_CUDA_SYNC_EVENT 6
+
+#define ARMO_CUDA_ALLOC 7
+
+#define ARMO_CUDA_FREE 8
+
+#define ARMO_CUDA_API_COUNT 9
+
+// `armo_ev_futex_wait.op` of a `futex_waitv` call, whose `uaddr` is the first waiter's.
+#define ARMO_FUTEX_WAITV UINT32_MAX
 
 #define ARMO_OWNER_SUBSCRIPTION 1
 
@@ -583,6 +619,35 @@ typedef struct armo_ev_flux2_gpu_wedged {
   int32_t result;
   uint32_t pad;
 } armo_ev_flux2_gpu_wedged;
+
+// `writer` is the DDS writer handle or object the call took.
+typedef struct armo_ev_dds_write {
+  uint64_t writer;
+  uint64_t duration_ns;
+} armo_ev_dds_write;
+
+// `bytes` is the copy size of a memcpy and the size of an alloc, else 0. `result` is the
+// `CUresult`.
+typedef struct armo_ev_cuda_call {
+  uint64_t duration_ns;
+  uint64_t bytes;
+  uint32_t api;
+  int32_t result;
+} armo_ev_cuda_call;
+
+// `key` is the address of the span's name, the same at its begin and end. Strings: name, on
+// `ARMO_EV_SPAN_BEGIN` only.
+typedef struct armo_ev_span {
+  uint64_t key;
+} armo_ev_span;
+
+// `op` is the futex command without its flags; `ret` the system call's return value.
+typedef struct armo_ev_futex_wait {
+  uint64_t uaddr;
+  uint64_t duration_ns;
+  uint32_t op;
+  int32_t ret;
+} armo_ev_futex_wait;
 
 // The record's position is the thread leaving the CPU.
 typedef struct armo_ev_sched_switch {

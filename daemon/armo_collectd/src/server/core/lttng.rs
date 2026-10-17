@@ -54,7 +54,7 @@ impl Core {
 
     /// Whether monitoring takes `pid`'s LTTng records: chosen with method lttng, or chosen
     /// without a method and not writing shared memory, where LD_PRELOAD comes first.
-    fn lttng_monitors(&self, pid: u32) -> bool {
+    pub(super) fn lttng_monitors(&self, pid: u32) -> bool {
         self.monitoring()
             && self.selected(pid)
             && match self.method_by_pid.get(&pid.to_string()) {

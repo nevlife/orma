@@ -152,7 +152,7 @@ class Ctx:
 
 
 def run_one(out_dir, rep, wl_name, rate, sched, spec, window, env0, topics):
-    tag = f"r{rep}_{wl_name}_{rate}_{sched}_{spec}"
+    tag = f"r{rep}_{wl_name}_{rate}_{sched}_t{topics}_{spec}"
     ctx = Ctx()
     ctx.rundir = os.path.join(out_dir, tag)
     if os.path.exists(os.path.join(ctx.rundir, "meta.json")):

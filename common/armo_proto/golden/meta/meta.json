@@ -49,7 +49,23 @@
     "compression": "none",
     "bandwidth": false,
     "sched": true,
-    "malloc": false
+    "malloc": false,
+    "gpu": true,
+    "dds": false,
+    "futex": true,
+    "chains": [
+      {
+        "name": "perception",
+        "topics": [
+          "/scan",
+          "/scan_filtered"
+        ],
+        "mode": "lineage"
+      }
+    ],
+    "latest_nodes": [
+      "/fusion"
+    ]
   },
   "methods_by_pid": {
     "4021": "preload"

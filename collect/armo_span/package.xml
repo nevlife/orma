@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>armo_span</name>
+  <version>0.0.0</version>
+  <description>
+    libarmo_span.so: armo_span_begin and armo_span_end, empty functions that mark a stretch inside
+    a callback, the C++ armo::Span and the Python decorator armo_span.span around them. armo catches them by name (LD_PRELOAD and
+    LTTng) or attaches to them (uprobe); without armo a span costs its two calls.
+  </description>
+  <maintainer email="nevlife000720@gmail.com">nevlife</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>ament_cmake_python</buildtool_depend>
+
+  <test_depend>ament_cmake_test</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

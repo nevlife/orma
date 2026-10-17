@@ -17,7 +17,7 @@ from qt_dotgraph.dot_to_qt import DotToQtGenerator
 from qt_dotgraph.pydotfactory import PydotFactory
 from rqt_graph.interactive_graphics_view import InteractiveGraphicsView
 
-from .common import lat, lat_heads, make_table, ns, num, set_rows
+from .common import lat, lat_heads, make_table, ns, num, p99, set_rows
 
 HOP_HEADS = ["step", "hop", "where"] + lat_heads() + ["mean", "share"]
 WORK = {"sync": "callback (sync)", "stamp": "dwell (stamp)"}
@@ -151,7 +151,7 @@ class GraphView(QWidget):
                 labels[(n, t["id"])] = f"{num(t['pub_hz'])} Hz"
             for n in t["subscribers"]:
                 hop = (subs.get((t["id"], n)) or {}).get("hop")
-                labels[(t["id"], n)] = f"p99 {lat(hop)[0]}" if hop else ""
+                labels[(t["id"], n)] = f"p99 {p99(hop)}" if hop else ""
         # A dot layout of a hundred nodes takes over a second; only the values change in place.
         # An empty label gets no text item, so an edge gaining or losing one is a new layout.
         layout = (

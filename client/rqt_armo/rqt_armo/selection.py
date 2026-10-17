@@ -2,6 +2,8 @@
 selection lives in armo-collectd and is shared by every client, so this view shows the
 state's selection until the user edits it, and Apply sends it."""
 
+import armo_client
+from armo_client import ArmoError
 from python_qt_binding.QtCore import Qt
 from python_qt_binding.QtWidgets import (
     QCheckBox,
@@ -20,7 +22,7 @@ from python_qt_binding.QtWidgets import (
 from .common import make_table
 
 HEADS = ["pid", "comm", "distro", "methods available", "method"]
-EXTRAS = ("bandwidth", "sched", "malloc", "pss")
+EXTRAS = ("bandwidth", "sched", "malloc", "pss", "gpu", "dds", "futex")
 NAMES = ("node", "topic", "exclude")
 
 
@@ -39,6 +41,8 @@ class SelectionView(QWidget):
         self.window_s.setSuffix(" s")
         self.extras = {name: QCheckBox(name) for name in EXTRAS}
         self.names = {name: QLineEdit() for name in NAMES}
+        self.chains = QLineEdit()
+        self.chains.setPlaceholderText("NAME=TOPIC,TOPIC,...[:first], space-separated")
         self.apply_button = QPushButton("Apply")
         self.revert_button = QPushButton("Revert")
         self.apply_button.clicked.connect(self.apply)
@@ -49,13 +53,14 @@ class SelectionView(QWidget):
         self.window_s.valueChanged.connect(self._edit)
         for box in self.extras.values():
             box.toggled.connect(self._edit)
-        for edit in self.names.values():
+        for edit in [*self.names.values(), self.chains]:
             edit.textEdited.connect(self._edit)
         options = QFormLayout()
         options.addRow("Node regex (--node)", self.names["node"])
         options.addRow("Topic regex (--topic)", self.names["topic"])
         options.addRow("Exclude regex (--exclude)", self.names["exclude"])
         options.addRow("Window", self.window_s)
+        options.addRow("Chains (--chain)", self.chains)
         extras = QHBoxLayout()
         for box in self.extras.values():
             extras.addWidget(box)
@@ -129,10 +134,16 @@ class SelectionView(QWidget):
         self.window_s.setValue(m["window_s"])
         for name, box in self.extras.items():
             box.setChecked(m[name])
+        self.chains.setText(" ".join(armo_client.format_chain(c) for c in m.get("chains", [])))
         self._loading = False
         self._set_edited(False)
 
     def apply(self):
+        try:
+            chains = [armo_client.parse_chain(spec) for spec in self.chains.text().split()]
+        except ArmoError as e:
+            self.status.setText(str(e))
+            return
         pids, method_by_pid = [], {}
         names = {k: e.text() for k, e in self.names.items() if e.text()}
         # The names replace the table: the pids they matched come back checked in the state.
@@ -158,6 +169,8 @@ class SelectionView(QWidget):
         for name, box in self.extras.items():
             if box.isChecked() != self.monitor[name]:
                 changes[name] = box.isChecked()
+        if chains != self.monitor.get("chains", []):
+            changes["chains"] = chains
         if changes:
             self.conn.send("configure", **changes)
         self._set_edited(False)

@@ -53,7 +53,17 @@ if(BUILD_TESTING)
   # armo_tracepoints.h only: linking the interception code would define ros_trace_* here.
   target_include_directories(lttng_caller PRIVATE
     $<TARGET_PROPERTY:armo_preload::armo_intercept,INTERFACE_INCLUDE_DIRECTORIES>)
-  target_link_libraries(lttng_caller PRIVATE tracetools::tracetools)
+  find_package(armo_span REQUIRED)
+  target_link_libraries(lttng_caller PRIVATE tracetools::tracetools armo_span::armo_span
+    ${CMAKE_DL_LIBS})
+  # armo_preload's stand-ins for libcuda.so.1 and the DDS libraries.
+  set(stubs ${CMAKE_CURRENT_SOURCE_DIR}/../armo_preload/test)
+  add_library(lttng_cuda_stub SHARED ${stubs}/cuda_stub.c)
+  target_include_directories(lttng_cuda_stub PRIVATE
+    $<TARGET_PROPERTY:armo_preload::armo_intercept,INTERFACE_INCLUDE_DIRECTORIES>)
+  set_target_properties(lttng_cuda_stub PROPERTIES OUTPUT_NAME cuda SOVERSION 1)
+  target_link_options(lttng_cuda_stub PRIVATE -Wl,-Bsymbolic-functions)
+  add_library(lttng_dds_stub SHARED ${stubs}/dds_stub.c)
   target_compile_definitions(lttng_caller PRIVATE
     ARMO_TRACETOOLS_MAJOR=${tracetools_VERSION_MAJOR} ARMO_FLUX2=$<BOOL:${flux2_ffi_FOUND}>)
   if(flux2_ffi_FOUND)
@@ -67,7 +77,7 @@ if(BUILD_TESTING)
 
   ament_add_test(lttng_events
     COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/test/lttng_events.py $<TARGET_FILE:armo_lttng>
-      $<TARGET_FILE:lttng_caller>
+      $<TARGET_FILE:lttng_caller> $<TARGET_FILE:lttng_cuda_stub> $<TARGET_FILE:lttng_dds_stub>
     GENERATE_RESULT_FOR_RETURN_CODE_ZERO
     TIMEOUT 120)
   ament_add_test(lttng_lifecycle

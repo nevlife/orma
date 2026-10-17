@@ -61,6 +61,7 @@ impl LatAcc {
             n: self.n,
             mean_ns: self.sum / self.n,
             p50_ns: self.quantile(0.5),
+            p90_ns: self.quantile(0.9),
             p99_ns: self.quantile(0.99),
             p999_ns: self.quantile(0.999),
             max_ns: self.max,

@@ -558,6 +558,17 @@
             }
           ]
         },
+        "cuda": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CudaUse"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Proto 1.8 (design 20.1)."
+        },
         "dispatch": {
           "anyOf": [
             {
@@ -588,6 +599,15 @@
           "format": "double",
           "type": [
             "number",
+            "null"
+          ]
+        },
+        "futex_mean_ns": {
+          "description": "Mean futex wait per run. Proto 1.8 (design 20.4).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
             "null"
           ]
         },
@@ -671,6 +691,95 @@
         "unknown"
       ],
       "type": "string"
+    },
+    "Chain": {
+      "description": "One configured chain (design 20.6). `steps[k]` is the time from the source's publish to\nthe publish on `topics[k + 1]`; the last is `e2e`. `broken` counts the publishes on a\nlater topic that did not reach the source.",
+      "properties": {
+        "broken": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "count": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "e2e": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Lat"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mode": {
+          "$ref": "#/$defs/ChainMode"
+        },
+        "name": {
+          "type": "string"
+        },
+        "steps": {
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Lat"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "type": "array"
+        },
+        "topics": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "mode",
+        "topics",
+        "count",
+        "steps",
+        "broken"
+      ],
+      "type": "object"
+    },
+    "ChainMode": {
+      "enum": [
+        "lineage",
+        "first"
+      ],
+      "type": "string"
+    },
+    "ChainSpec": {
+      "description": "`topics` in order from the source; at least two. Proto 1.8.",
+      "properties": {
+        "mode": {
+          "$ref": "#/$defs/ChainMode"
+        },
+        "name": {
+          "type": "string"
+        },
+        "topics": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "topics",
+        "mode"
+      ],
+      "type": "object"
     },
     "Check": {
       "properties": {
@@ -1020,6 +1129,23 @@
             "null"
           ]
         },
+        "chains": {
+          "description": "Replaces the chains measured end to end (design 20.6). Proto 1.8.",
+          "items": {
+            "$ref": "#/$defs/ChainSpec"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "dds": {
+          "description": "DDS write calls (design 20.2). Proto 1.8.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
         "expected_hz": {
           "additionalProperties": {
             "format": "double",
@@ -1027,6 +1153,30 @@
           },
           "type": [
             "object",
+            "null"
+          ]
+        },
+        "futex": {
+          "description": "Futex waits of the selected threads (design 20.4). Proto 1.8.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "gpu": {
+          "description": "CUDA driver calls (design 20.1). Proto 1.8.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "latest_nodes": {
+          "description": "Regular expressions over node names whose outputs link to their latest inputs\n(design 20.7). Proto 1.8.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
             "null"
           ]
         },
@@ -1084,6 +1234,44 @@
         "wall_bound"
       ],
       "type": "string"
+    },
+    "CudaUse": {
+      "description": "A callback's CUDA driver calls over the window; the means are per run of the callback.",
+      "properties": {
+        "api_mean_ns": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "calls": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "launches": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "memcpy_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "sync_mean_ns": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "calls",
+        "launches",
+        "memcpy_bytes",
+        "api_mean_ns",
+        "sync_mean_ns"
+      ],
+      "type": "object"
     },
     "Detail": {
       "properties": {
@@ -1386,7 +1574,8 @@
       "enum": [
         "sync",
         "stamp",
-        "blind"
+        "blind",
+        "latest"
       ],
       "type": "string"
     },
@@ -1414,6 +1603,76 @@
         "to_ns",
         "source",
         "reason"
+      ],
+      "type": "object"
+    },
+    "Gpu": {
+      "properties": {
+        "clock_mhz": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "index": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "mem_total_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "mem_used_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "power_w": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "temp_c": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "throttle": {
+          "description": "Why the clock is held down now, empty when it is not.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "util_pct": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "index",
+        "name",
+        "throttle"
       ],
       "type": "object"
     },
@@ -1489,6 +1748,67 @@
         "kernel",
         "arch",
         "cpus"
+      ],
+      "type": "object"
+    },
+    "HostWindow": {
+      "properties": {
+        "cpu_mhz": {
+          "description": "`scaling_cur_freq` by CPU number at the window's end.",
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "type": "array"
+        },
+        "gpus": {
+          "items": {
+            "$ref": "#/$defs/Gpu"
+          },
+          "type": "array"
+        },
+        "net": {
+          "items": {
+            "$ref": "#/$defs/NetIf"
+          },
+          "type": "array"
+        },
+        "thermal": {
+          "items": {
+            "$ref": "#/$defs/Thermal"
+          },
+          "type": "array"
+        },
+        "throttle": {
+          "additionalProperties": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "description": "Throttle counters' increase over the window, by name.",
+          "type": "object"
+        },
+        "udp": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Udp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "cpu_mhz",
+        "thermal",
+        "throttle",
+        "net",
+        "gpus"
       ],
       "type": "object"
     },
@@ -1598,6 +1918,13 @@
           "type": "integer"
         },
         "p50_ns": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "p90_ns": {
+          "default": 0,
+          "description": "Proto 1.8; recordings from before read 0.",
           "format": "uint64",
           "minimum": 0,
           "type": "integer"
@@ -1744,6 +2071,31 @@
         "bandwidth": {
           "type": "boolean"
         },
+        "chains": {
+          "items": {
+            "$ref": "#/$defs/ChainSpec"
+          },
+          "type": "array"
+        },
+        "dds": {
+          "default": false,
+          "type": "boolean"
+        },
+        "futex": {
+          "default": false,
+          "type": "boolean"
+        },
+        "gpu": {
+          "default": false,
+          "description": "Proto 1.8.",
+          "type": "boolean"
+        },
+        "latest_nodes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "malloc": {
           "type": "boolean"
         },
@@ -1780,6 +2132,62 @@
         "bandwidth",
         "sched",
         "malloc"
+      ],
+      "type": "object"
+    },
+    "NetIf": {
+      "description": "`/proc/net/dev` over the window.",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "rx_bps": {
+          "format": "double",
+          "type": "number"
+        },
+        "rx_drops": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "rx_errors": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "rx_pps": {
+          "format": "double",
+          "type": "number"
+        },
+        "tx_bps": {
+          "format": "double",
+          "type": "number"
+        },
+        "tx_drops": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tx_errors": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tx_pps": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "name",
+        "rx_bps",
+        "tx_bps",
+        "rx_pps",
+        "tx_pps",
+        "rx_drops",
+        "tx_drops",
+        "rx_errors",
+        "tx_errors"
       ],
       "type": "object"
     },
@@ -1976,9 +2384,58 @@
         "sched",
         "bandwidth",
         "rclcpp_symbols",
-        "names"
+        "names",
+        "gpu",
+        "dds",
+        "futex"
       ],
       "type": "string"
+    },
+    "ProcCuda": {
+      "description": "The process's CUDA driver calls over the window.",
+      "properties": {
+        "alloc_hz": {
+          "format": "double",
+          "type": "number"
+        },
+        "calls_hz": {
+          "format": "double",
+          "type": "number"
+        },
+        "errors": {
+          "description": "Calls that returned an error.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "launch_hz": {
+          "format": "double",
+          "type": "number"
+        },
+        "memcpy_bps": {
+          "format": "double",
+          "type": "number"
+        },
+        "sync": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Lat"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Time blocked in the synchronize calls."
+        }
+      },
+      "required": [
+        "calls_hz",
+        "launch_hz",
+        "memcpy_bps",
+        "alloc_hz",
+        "errors"
+      ],
+      "type": "object"
     },
     "ProcUse": {
       "properties": {
@@ -2015,12 +2472,32 @@
             "null"
           ]
         },
+        "cuda": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProcCuda"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Proto 1.8 (design 20.1)."
+        },
         "exited": {
           "type": "boolean"
         },
         "flux2_gpu_wedged": {
           "description": "The `CUresult` that wedged the process's GPU (`flux2_trace_gpu_wedged`); its GPU\nchannels refuse claims, loans and takes from then on. Proto 1.7.",
           "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "gpu_mem_bytes": {
+          "description": "Device memory the process holds, from the GPU driver. Proto 1.8.",
+          "format": "uint64",
+          "minimum": 0,
           "type": [
             "integer",
             "null"
@@ -2393,6 +2870,15 @@
             "null"
           ]
         },
+        "chains": {
+          "items": {
+            "$ref": "#/$defs/ChainSpec"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "compression": {
           "anyOf": [
             {
@@ -2403,9 +2889,28 @@
             }
           ]
         },
+        "dds": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
         "dir": {
           "type": [
             "string",
+            "null"
+          ]
+        },
+        "futex": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "gpu": {
+          "description": "Proto 1.8, as in `Configure`.",
+          "type": [
+            "boolean",
             "null"
           ]
         },
@@ -2417,6 +2922,15 @@
             {
               "type": "null"
             }
+          ]
+        },
+        "latest_nodes": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
           ]
         },
         "malloc": {
@@ -2934,6 +3448,55 @@
       ],
       "type": "object"
     },
+    "Span": {
+      "description": "One `libarmo_span.so` span (design 20.5). `parent` is the span it ran inside.",
+      "properties": {
+        "callback": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "duration": {
+          "$ref": "#/$defs/Lat"
+        },
+        "hz": {
+          "format": "double",
+          "type": "number"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "node": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "parent": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pid": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "pid",
+        "hz",
+        "duration"
+      ],
+      "type": "object"
+    },
     "State": {
       "properties": {
         "monitor": {
@@ -3074,6 +3637,22 @@
       },
       "type": "object"
     },
+    "Thermal": {
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "temp_c": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "name",
+        "temp_c"
+      ],
+      "type": "object"
+    },
     "Thread": {
       "properties": {
         "bucket": {
@@ -3103,6 +3682,17 @@
             "type": "integer"
           },
           "type": "array"
+        },
+        "futex": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Lat"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Proto 1.8 (design 20.4)."
         },
         "id": {
           "type": "string"
@@ -3224,6 +3814,16 @@
             "null"
           ]
         },
+        "dds_write": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Lat"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "drops": {
           "$ref": "#/$defs/Drops"
         },
@@ -3256,6 +3856,17 @@
             "number",
             "null"
           ]
+        },
+        "pub_to_dds": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Lat"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "`rclcpp_publish` to the DDS write call, and the call itself. Proto 1.8 (design 20.2)."
         },
         "publishers": {
           "items": {
@@ -3290,6 +3901,38 @@
         "flux2"
       ],
       "type": "string"
+    },
+    "Udp": {
+      "description": "The UDP rows of `/proc/net/snmp`, increase over the window.",
+      "properties": {
+        "in_errors": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "no_ports": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "rcvbuf_errors": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "sndbuf_errors": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "in_errors",
+        "rcvbuf_errors",
+        "sndbuf_errors",
+        "no_ports"
+      ],
+      "type": "object"
     },
     "VerifyRow": {
       "properties": {
@@ -3428,6 +4071,13 @@
           },
           "type": "array"
         },
+        "chains": {
+          "description": "Proto 1.8 (design 20.6).",
+          "items": {
+            "$ref": "#/$defs/Chain"
+          },
+          "type": "array"
+        },
         "executors": {
           "items": {
             "$ref": "#/$defs/Executor"
@@ -3453,6 +4103,17 @@
             "null"
           ]
         },
+        "host": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HostWindow"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The host's GPUs, network, temperatures and clocks over the window. Proto 1.8 (design\n20.3)."
+        },
         "nodes": {
           "items": {
             "$ref": "#/$defs/Node"
@@ -3472,6 +4133,13 @@
           "format": "uint64",
           "minimum": 0,
           "type": "integer"
+        },
+        "spans": {
+          "description": "Proto 1.8 (design 20.5).",
+          "items": {
+            "$ref": "#/$defs/Span"
+          },
+          "type": "array"
         },
         "subscriptions": {
           "items": {

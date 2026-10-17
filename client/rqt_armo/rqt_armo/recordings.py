@@ -1,6 +1,7 @@
 """Recordings: the list, the start form, stop, and the validation table."""
 
 import armo_client
+from armo_client import ArmoError
 from python_qt_binding.QtCore import QRegularExpression, Qt
 from python_qt_binding.QtGui import QRegularExpressionValidator
 from python_qt_binding.QtWidgets import (
@@ -16,6 +17,7 @@ from python_qt_binding.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QMessageBox,
     QPushButton,
     QSplitter,
     QVBoxLayout,
@@ -124,6 +126,16 @@ class RecordForm(QWidget):
         form.addRow("Bandwidth", self.bandwidth)
         form.addRow("Sched", self.sched)
         form.addRow("Malloc", self.malloc)
+        self.switches = {}
+        for name, label in (("gpu", "GPU"), ("dds", "DDS"), ("futex", "Futex")):
+            self.switches[name] = QCheckBox(f"--{name}")
+            form.addRow(label, self.switches[name])
+        self.chains = QLineEdit()
+        self.chains.setPlaceholderText("NAME=TOPIC,TOPIC,...[:first], space-separated")
+        form.addRow("Chains (--chain)", self.chains)
+        self.latest_nodes = QLineEdit()
+        self.latest_nodes.setPlaceholderText("REGEX, space-separated")
+        form.addRow("Latest-input nodes (--latest-node)", self.latest_nodes)
 
     def _filter(self, text):
         for i in range(self.pids.count()):
@@ -155,7 +167,10 @@ class RecordForm(QWidget):
             bandwidth=True if self.bandwidth.isChecked() else None,
             sched=self.sched.currentData(),
             malloc=True if self.malloc.isChecked() else None,
+            chains=[armo_client.parse_chain(c) for c in self.chains.text().split()] or None,
+            latest_nodes=self.latest_nodes.text().split() or None,
         )
+        options.update((k, True) for k, box in self.switches.items() if box.isChecked())
         return armo_client.record_start(self.method.currentData(), targets, **options)
 
 
@@ -171,6 +186,15 @@ class RecordDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.addWidget(self.form)
         layout.addWidget(buttons)
+        self.fields = None
+
+    def accept(self):
+        try:
+            self.fields = self.form.fields()
+        except ArmoError as e:
+            QMessageBox.warning(self, "New recording", str(e))
+            return
+        super().accept()
 
 
 class ValidationView(QGroupBox):
@@ -314,7 +338,7 @@ class RecordingsView(QWidget):
 
     def open_form(self):
         self.dialog = RecordDialog(self.processes, self)
-        self.dialog.accepted.connect(lambda: self.start(self.dialog.form.fields()))
+        self.dialog.accepted.connect(lambda: self.start(self.dialog.fields))
         self.dialog.open()
 
     def start(self, fields):

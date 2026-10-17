@@ -4,6 +4,16 @@
   "window_s": 0.5,
   "sched": true,
   "pss": true,
+  "gpu": true,
+  "futex": false,
+  "chains": [
+    {
+      "name": "reaction",
+      "topics": ["/obstacle", "/trajectory", "/control_cmd"],
+      "mode": "first"
+    }
+  ],
+  "latest_nodes": ["/planning/.*"],
   "expected_hz": {
     "topic:ros:/scan": 10.0
   }
