@@ -2,7 +2,7 @@
 
 use crate::libs::Lib;
 
-/// Probe sets: those of the protocol plus flux v1, which only the text mode attaches.
+/// Probe sets of the protocol.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Set {
     Discovery,
@@ -15,7 +15,6 @@ pub enum Set {
     Gpu,
     Dds,
     Futex,
-    Flux1,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -538,25 +537,6 @@ pub const PROGS: &[Prog] = &[
         ret: true,
         ..p("fastdds_write_ret", Lib::Fastrtps, Dds, FASTDDS_WRITE)
     },
-    // flux v1, text mode only (design D12).
-    p(
-        "flux_callback_start",
-        Lib::Flux,
-        Flux1,
-        Sym::Name("flux_trace_callback_start"),
-    ),
-    p(
-        "flux_callback_end",
-        Lib::Flux,
-        Flux1,
-        Sym::Name("flux_trace_callback_end"),
-    ),
-    p(
-        "flux_channel_init",
-        Lib::Flux,
-        Flux1,
-        Sym::Name("flux_trace_channel_init"),
-    ),
 ];
 
 pub const SCHED_PROGS: [&str; 2] = ["sched_switch", "sched_wakeup"];
@@ -606,7 +586,7 @@ mod tests {
 
     #[test]
     fn every_point_is_a_catalog_event() {
-        for p in PROGS.iter().filter(|p| p.set != Flux1) {
+        for p in PROGS.iter() {
             assert!(
                 catalog::CATALOG.iter().any(|e| e.name == p.point),
                 "{} is no event",

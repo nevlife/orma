@@ -1,19 +1,4 @@
-use armo_common::{BUCKETS, CallbackStat};
-
-pub fn delta(now: &CallbackStat, before: Option<&CallbackStat>) -> CallbackStat {
-    let Some(b) = before else {
-        return *now;
-    };
-    let mut hist = [0; BUCKETS];
-    for (i, h) in hist.iter_mut().enumerate() {
-        *h = now.hist[i].wrapping_sub(b.hist[i]);
-    }
-    CallbackStat {
-        count: now.count.wrapping_sub(b.count),
-        sum_ns: now.sum_ns.wrapping_sub(b.sum_ns),
-        hist,
-    }
-}
+use armo_common::BUCKETS;
 
 /// Upper bound of the bucket holding the `q` quantile: the true value is at most this, and more
 /// than half of it.
@@ -38,18 +23,12 @@ mod tests {
     use super::*;
     use armo_common::bucket;
 
-    fn stat(samples: &[u64]) -> CallbackStat {
-        let mut s = CallbackStat {
-            count: 0,
-            sum_ns: 0,
-            hist: [0; BUCKETS],
-        };
+    fn hist(samples: &[u64]) -> [u64; BUCKETS] {
+        let mut h = [0; BUCKETS];
         for &ns in samples {
-            s.count += 1;
-            s.sum_ns += ns;
-            s.hist[bucket(ns)] += 1;
+            h[bucket(ns)] += 1;
         }
-        s
+        h
     }
 
     #[test]
@@ -68,28 +47,17 @@ mod tests {
     }
 
     #[test]
-    fn delta_subtracts_the_previous_window() {
-        let before = stat(&[100, 200]);
-        let now = stat(&[100, 200, 5000]);
-        let d = delta(&now, Some(&before));
-        assert_eq!(d.count, 1);
-        assert_eq!(d.sum_ns, 5000);
-        assert_eq!(d.hist[bucket(5000)], 1);
-        assert_eq!(d.hist.iter().sum::<u64>(), 1);
-    }
-
-    #[test]
     fn quantile_bounds_the_sample() {
-        let s = stat(
+        let h = hist(
             &[1000; 99]
                 .iter()
                 .copied()
                 .chain([1_000_000])
                 .collect::<Vec<_>>(),
         );
-        let p50 = quantile_upper_ns(&s.hist, 0.5).unwrap();
+        let p50 = quantile_upper_ns(&h, 0.5).unwrap();
         assert!(p50 >= 1000 && p50 / 2 < 1000);
-        let p100 = quantile_upper_ns(&s.hist, 1.0).unwrap();
+        let p100 = quantile_upper_ns(&h, 1.0).unwrap();
         assert!(p100 >= 1_000_000 && p100 / 2 < 1_000_000);
         assert_eq!(quantile_upper_ns(&[0; BUCKETS], 0.5), None);
     }

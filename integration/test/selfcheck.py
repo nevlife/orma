@@ -50,11 +50,6 @@ def host_procs(prefix, tmp):
         import session
 
         out["flux2"] = common.Caller([session.flux2_caller(tmp)], env)
-    if any(
-        (Path(p) / "lib/libflux_tracetools.so").is_file()
-        for p in os.environ.get("AMENT_PREFIX_PATH", "").split(":")
-    ):
-        out["flux"] = common.Caller([sys.executable, TEST / "flux_caller.py"], env)
     return out
 
 
@@ -81,7 +76,7 @@ ROWS = [
      [r"rmw_publish timestamp = rmw_take source_timestamp|source_timestamp after rmw_publish"]),
     ("header.stamp", [r"header\.stamp {prefix}/out"]),
     ("rclpy handle", [r"rclpy handle"]),
-    ("flux and flux2 contracts", [r"flux2 contract .*libflux2_ffi", r"flux contract"]),
+    ("flux2 contract", [r"flux2 contract .*libflux2_ffi"]),
     ("tracepoint argument layout", [r"tracepoint layout"]),
     ("distro", [r"distro pid {cpp} ", r"distro pid {py} "]),
     ("container pid", [r"container pid|nspid"]),
@@ -172,7 +167,6 @@ def main():
             p
             for p in patterns
             if not (p.startswith("flux2") and "flux2" not in procs)
-            and not (p.startswith("flux ") and "flux" not in procs)
         ]
         for pat in patterns:
             rx = re.compile(pat.format(**fill))

@@ -16,9 +16,7 @@ use std::{
     },
 };
 
-use armo_common::{
-    CallbackKey, CallbackName, CallbackStat, LOST_NAME_FULL, LOST_STAT_FULL, bpf::*,
-};
+use armo_common::bpf::*;
 use armo_proto::msg::ProbeChange;
 use aya::{
     Ebpf, include_bytes_aligned,
@@ -390,9 +388,6 @@ pub struct Kernel {
     seen: BpfHashMap<MapData, SeenKey, u8>,
     lost: Array<MapData, u64>,
     sample: Array<MapData, u64>,
-    flux_stats: BpfHashMap<MapData, CallbackKey, CallbackStat>,
-    flux_names: BpfHashMap<MapData, CallbackKey, CallbackName>,
-    flux_channels: BpfHashMap<MapData, CallbackKey, u64>,
     /// name, fd, max entries of every map.
     maps: Vec<(String, OwnedFd, u32)>,
     /// The BPF_ENABLE_STATS fd, or why the kernel refused it.
@@ -515,9 +510,6 @@ impl Kernel {
             seen: take(&mut ebpf, "SEEN")?,
             lost: take(&mut ebpf, "LOST")?,
             sample: take(&mut ebpf, "SAMPLE")?,
-            flux_stats: take(&mut ebpf, "STATS")?,
-            flux_names: take(&mut ebpf, "NAMES")?,
-            flux_channels: take(&mut ebpf, "FLUX_CHANNELS")?,
             maps,
             stats,
             generation: 1,
@@ -734,19 +726,6 @@ impl Kernel {
             .collect();
         for k in &seen {
             let _ = self.seen.remove(k);
-        }
-        let flux: Vec<CallbackKey> = self
-            .flux_stats
-            .keys()
-            .chain(self.flux_names.keys())
-            .chain(self.flux_channels.keys())
-            .filter_map(|k| k.ok())
-            .filter(|k| gone(k.tgid))
-            .collect();
-        for k in &flux {
-            let _ = self.flux_stats.remove(k);
-            let _ = self.flux_names.remove(k);
-            let _ = self.flux_channels.remove(k);
         }
         dead
     }
@@ -1213,36 +1192,6 @@ impl Kernel {
                 )
             })
             .collect()
-    }
-
-    /// flux v1's per-callback stats, names and channels, for the text mode.
-    #[allow(clippy::type_complexity)]
-    pub fn flux1(
-        &self,
-    ) -> (
-        HashMap<CallbackKey, CallbackStat>,
-        HashMap<CallbackKey, String>,
-        HashMap<CallbackKey, u64>,
-        u64,
-    ) {
-        let stats = self.flux_stats.iter().filter_map(|e| e.ok()).collect();
-        let names = self
-            .flux_names
-            .iter()
-            .filter_map(|e| e.ok())
-            .map(|(k, v)| {
-                let len = v
-                    .bytes
-                    .iter()
-                    .position(|&b| b == 0)
-                    .unwrap_or(v.bytes.len());
-                (k, String::from_utf8_lossy(&v.bytes[..len]).into_owned())
-            })
-            .collect();
-        let channels = self.flux_channels.iter().filter_map(|e| e.ok()).collect();
-        let lost = self.lost.get(&LOST_STAT_FULL, 0).unwrap_or(0)
-            + self.lost.get(&LOST_NAME_FULL, 0).unwrap_or(0);
-        (stats, names, channels, lost)
     }
 }
 

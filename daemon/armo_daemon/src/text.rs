@@ -1,10 +1,9 @@
 //! The text mode: one process (or all), a callback table per window on stdout. A debugging aid
-//! next to the server; flux v1 is visible only here (design D12).
+//! next to the server.
 
 use std::collections::{BTreeSet, HashMap};
 
 use armo_common::{
-    CallbackKey, KIND_FLUX, KIND_FLUX_CHANNEL, NAME_LEN,
     events::*,
     shm::{ARMO_AGG_CALLBACK, ARMO_SRC_FLUX2},
 };
@@ -13,11 +12,8 @@ use armo_proto::{msg::*, records};
 use crate::{
     daemon::{Client, Daemon, Sink},
     flux2,
-    owner::{Owner, topic},
     probes::Scope,
-    progs::Set,
-    sel::Sel,
-    stats::{delta, quantile_upper_ns},
+    stats::quantile_upper_ns,
 };
 
 /// Names from the records: the registered symbol, else the topic the callback took from.
@@ -112,7 +108,6 @@ fn quantile(hist: &[u64], q: f64) -> f64 {
 
 /// Runs until killed. `pid` None watches every process.
 pub fn run(mut d: Daemon, pid: Option<u32>, interval: f64, libs: &[std::path::PathBuf]) -> ! {
-    let sel = pid.map_or(Sel::All, |p| Sel::pids([p]));
     if let Some(p) = pid {
         d.k.scan(Some(&BTreeSet::from([p])));
     }
@@ -121,11 +116,10 @@ pub fn run(mut d: Daemon, pid: Option<u32>, interval: f64, libs: &[std::path::Pa
             eprintln!("armod: {e}");
         }
     }
-    let mut c = Client::new(Sink::Local {
+    let c = Client::new(Sink::Local {
         messages: Vec::new(),
         batches: Vec::new(),
     });
-    c.sets.insert(Set::Flux1, sel.clone());
     let id = d.add(c);
     let req = |op| ArmodRequest { id: 0, op };
     d.request(
@@ -159,7 +153,6 @@ pub fn run(mut d: Daemon, pid: Option<u32>, interval: f64, libs: &[std::path::Pa
     d.request(id, req(ArmodOp::Window { window_s: interval }));
     let mut names = Names::default();
     let mut printed: BTreeSet<(String, Scope)> = BTreeSet::new();
-    let mut flux_before = HashMap::new();
     loop {
         d.tick();
         for (mapped, scope) in d.k.attached_files() {
@@ -184,9 +177,8 @@ pub fn run(mut d: Daemon, pid: Option<u32>, interval: f64, libs: &[std::path::Pa
         for m in messages {
             if let ArmodMessage::Window(w) = m {
                 let secs = w.window_ns as f64 / 1e9;
-                let (stats, fnames, channels, flux_lost) = d.k.flux1();
                 println!(
-                    "-- window {secs:.2} s, lost: {} flux {flux_lost}",
+                    "-- window {secs:.2} s, lost: {}",
                     w.lost
                         .iter()
                         .filter(|(_, v)| **v > 0)
@@ -195,8 +187,6 @@ pub fn run(mut d: Daemon, pid: Option<u32>, interval: f64, libs: &[std::path::Pa
                         .join(" ")
                 );
                 print_window(&w, &names, secs);
-                print_flux1(&stats, &flux_before, &fnames, &channels, secs);
-                flux_before = stats;
             }
         }
         std::thread::sleep(std::time::Duration::from_millis(10));
@@ -274,62 +264,6 @@ fn print_window(w: &ArmodWindow, names: &Names, secs: f64) {
             us(sum) / count as f64,
             quantile(&hist, 0.5),
             quantile(&hist, 0.99),
-            name
-        );
-    }
-}
-
-fn print_flux1(
-    now: &HashMap<CallbackKey, armo_common::CallbackStat>,
-    before: &HashMap<CallbackKey, armo_common::CallbackStat>,
-    names: &HashMap<CallbackKey, String>,
-    channels: &HashMap<CallbackKey, u64>,
-    secs: f64,
-) {
-    let mut owners: HashMap<u32, Option<Owner>> = HashMap::new();
-    let mut rows: Vec<_> = now
-        .iter()
-        .filter(|(k, _)| k.kind == KIND_FLUX)
-        .map(|(k, v)| (k, delta(v, before.get(k))))
-        .filter(|(_, d)| d.count > 0)
-        .collect();
-    rows.sort_by_key(|(k, _)| (k.tgid, k.callback, k.entry));
-    for (k, d) in rows {
-        let owner = owners
-            .entry(k.tgid)
-            .or_insert_with(|| Owner::read(k.tgid))
-            .as_ref();
-        let name = channels.get(k).map_or_else(String::new, |&channel| {
-            let ck = CallbackKey {
-                tgid: k.tgid,
-                kind: KIND_FLUX_CHANNEL,
-                callback: channel,
-                entry: 0,
-                pad: 0,
-            };
-            // A name the probe saw is newer than the owner file's record for a reused address,
-            // unless it was cut at NAME_LEN.
-            let segment = match names.get(&ck) {
-                Some(p) if p.len() < NAME_LEN - 1 => Some(p.as_str()),
-                p => owner
-                    .and_then(|o| o.segment(channel))
-                    .or(p.map(String::as_str)),
-            };
-            segment
-                .filter(|s| !s.is_empty())
-                .map_or_else(String::new, |s| topic(s, owner))
-        });
-        let q = |p| quantile_upper_ns(&d.hist, p).map_or(0.0, us);
-        println!(
-            "{:>8} {:>5} {:>18} {:>8} {:>9.1} {:>10.1} {:>10.1} {:>10.1}  {}",
-            k.tgid,
-            "flux",
-            format!("{:#x}:{}", k.callback, k.entry),
-            d.count,
-            d.count as f64 / secs,
-            us(d.sum_ns) / d.count as f64,
-            q(0.5),
-            q(0.99),
             name
         );
     }

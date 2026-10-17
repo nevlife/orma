@@ -10,10 +10,8 @@ use std::{
 
 use object::{Object as _, ObjectSection as _, ObjectSymbol as _};
 
-/// The event names and arguments the flux programs read. libflux_tracetools.so exports a symbol
-/// of this name for exactly that set (flux/trace.h).
-pub const FLUX_CONTRACT: &str = "flux_trace_contract_2";
-/// The same for flux2, whose events live in libflux2_ffi.so (design 11.1).
+/// The event names and arguments the flux2 programs read. libflux2_ffi.so exports a symbol of this
+/// name for exactly that set (design 11.1).
 pub const FLUX2_CONTRACT: &str = "flux2_trace_contract_2";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -21,7 +19,6 @@ pub enum Lib {
     Tracetools,
     Rcl,
     Rclcpp,
-    Flux,
     Flux2,
     Fastdds,
     Cyclone,
@@ -40,7 +37,6 @@ impl Lib {
             "libtracetools.so" => Lib::Tracetools,
             "librcl.so" => Lib::Rcl,
             "librclcpp.so" => Lib::Rclcpp,
-            "libflux_tracetools.so" => Lib::Flux,
             "librmw_fastrtps_shared_cpp.so" => Lib::Fastdds,
             "librmw_cyclonedds_cpp.so" => Lib::Cyclone,
             // A process maps the file its soname names, libflux2_ffi.so.<abi>.
@@ -58,7 +54,6 @@ impl Lib {
     /// arguments they misread, so one without this symbol is refused.
     pub fn contract(self) -> Option<&'static str> {
         match self {
-            Lib::Flux => Some(FLUX_CONTRACT),
             Lib::Flux2 => Some(FLUX2_CONTRACT),
             _ => None,
         }

@@ -72,7 +72,7 @@ For a quick look without armo-collectd, the text mode prints one row per callbac
 sudo install/armo_daemon/bin/armod --pid PID [--interval 1] [--lib PATH]...
 ```
 
-A ROS callback is named by its registered symbol or by the topic it took from, so it is named even when armod attached after the node started. A flux2 callback is keyed by `executor:entry` and named by the key its channel's signpost holds. flux v1 callbacks appear only here.
+A ROS callback is named by its registered symbol or by the topic it took from, so it is named even when armod attached after the node started. A flux2 callback is keyed by `executor:entry` and named by the key its channel's signpost holds.
 
 ## LTTng
 

@@ -1113,81 +1113,12 @@ def humble_py(sock, tmp, f):
     return docker_node(tmp, f, sock, python=True)
 
 
-def flux1_text(sock, tmp, f, binary=None):
-    """flux v1 in the text mode, the only place it shows (design D12): 300 early callbacks, each
-    with a late one inside, from a process that maps a private copy of libflux_tracetools.so."""
-    lib = next(
-        (
-            Path(p) / "lib/libflux_tracetools.so"
-            for p in os.environ.get("AMENT_PREFIX_PATH", "").split(":")
-            if p and (Path(p) / "lib/libflux_tracetools.so").is_file()
-        ),
-        None,
-    )
-    if lib is None:
-        return f.check(False, "libflux_tracetools.so not under AMENT_PREFIX_PATH")
-    copy = Path(tmp) / "libflux_tracetools.so"
-    shutil.copy(lib, copy)
-    env = dict(os.environ, LD_LIBRARY_PATH=f"{tmp}:{os.environ.get('LD_LIBRARY_PATH', '')}")
-    p = subprocess.Popen(
-        [sys.executable, HERE / "flux_caller.py"],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        text=True,
-        env=env,
-    )
-    keys = p.stdout.readline().split()
-    armod = subprocess.Popen(
-        SUDO + [ARMOD_BIN[0], "--pid", str(p.pid), "--interval", "0.5"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-    # Attaching can take seconds here while other uprobes are being removed, and armod attaches
-    # the three flux probes one at a time: every one must be in before the callbacks run.
-    offs = [
-        symbol_offset(copy, f"flux_trace_{s}")
-        for s in ("callback_start", "callback_end", "channel_init")
-    ]
-    deadline = time.time() + 60
-    while not all(brk(instruction(p.pid, copy, off)) for off in offs) and time.time() < deadline:
-        time.sleep(0.2)
-    p.stdin.write("go\n")
-    p.stdin.flush()
-    f.eq(p.stdout.readline().strip(), "done", "flux caller")
-    # A window prints only once armod has attached everything, seconds on this kernel.
-    lines = []
-    reader = threading.Thread(target=lambda: lines.extend(armod.stdout), daemon=True)
-    reader.start()
-    count, named = collections.Counter(), {}
-    deadline = time.time() + 60
-    while sum(count.values()) < 600 and time.time() < deadline:
-        time.sleep(0.5)
-        count.clear()
-        for line in list(lines):
-            x = line.split()
-            if len(x) >= 8 and x[1] == "flux" and x[2].startswith("0x"):
-                count[x[2]] += int(x[3])
-                if len(x) > 8:
-                    named[x[2]] = x[8]
-    subprocess.run(SUDO + ["kill", "-INT", str(armod.pid)], check=True)
-    err = armod.stderr.read()
-    armod.wait(timeout=10)
-    p.wait(timeout=10)
-    f.check(f"attached to {copy}" in err, f"the private copy was not attached: {err[-300:]}")
-    want = {keys[0]: 300, keys[1]: 300}
-    got = {named.get(k): v for k, v in count.items()}
-    f.eq(got, want, "flux callbacks by name")
-    return f"{sum(count.values())} flux callbacks"
-
-
 ARMOD_BIN = [""]
 
 # Attaching takes about 0.25 s and removing about 1.1 s per uprobe on this RT kernel, one at a
-# time across processes: flux1_text's own armod attaches to every process and select times its
-# detach, so both go before the other cases leave uprobes to remove.
+# time across processes: select times its detach, so it goes before the other cases leave uprobes
+# to remove.
 CASES = {
-    "flux1_text": flux1_text,
     "select": select,
     "ros_calls": ros_calls,
     "flux2_calls": flux2_calls,

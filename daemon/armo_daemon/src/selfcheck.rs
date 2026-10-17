@@ -380,8 +380,7 @@ impl Session {
             let Some(contract) = f.lib.contract() else {
                 continue;
             };
-            let name = if f.lib == Lib::Flux { "flux" } else { "flux2" };
-            let item = format!("{name} contract {}", f.mapped);
+            let item = format!("flux2 contract {}", f.mapped);
             out.push(match &f.refused {
                 None => check(item, CheckStatus::Pass, format!("exports {contract}")),
                 Some(why) => check(item, CheckStatus::Fail, why.clone()),
@@ -731,7 +730,6 @@ pub fn set_name(s: Set) -> &'static str {
         Set::Gpu => "gpu",
         Set::Dds => "dds",
         Set::Futex => "futex",
-        Set::Flux1 => "flux1",
     }
 }
 

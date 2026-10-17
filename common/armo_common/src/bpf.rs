@@ -100,16 +100,16 @@ pub const CONFIG_GEN: u32 = 1;
 pub const CONFIG_SERDATA_SIZE_OFFSET: u32 = 2;
 pub const CONFIG_SLOTS: u32 = 4;
 
-/// `LOST` slots: what the programs could not record. 0 and 1 are the flux v1 slots of lib.rs.
-pub const LOST_RING: u32 = 2;
-pub const LOST_AGG_FULL: u32 = 3;
-pub const LOST_DEPTH: u32 = 4;
-pub const LOST_USER_WORD: u32 = 5;
-pub const LOST_THREAD_FULL: u32 = 6;
+/// `LOST` slots: what the programs could not record.
+pub const LOST_RING: u32 = 0;
+pub const LOST_AGG_FULL: u32 = 1;
+pub const LOST_DEPTH: u32 = 2;
+pub const LOST_USER_WORD: u32 = 3;
+pub const LOST_THREAD_FULL: u32 = 4;
 /// A C++ symbol probe whose argument no tracepoint had named; not a lost measurement.
-pub const LOST_UNVALIDATED: u32 = 7;
-pub const LOST_UNPAIRED: u32 = 8;
-pub const LOST_SLOTS_ALL: u32 = 9;
+pub const LOST_UNVALIDATED: u32 = 5;
+pub const LOST_UNPAIRED: u32 = 6;
+pub const LOST_SLOTS_ALL: u32 = 7;
 
 /// `SAMPLE` slots: diagnostics the selfcheck reads (design 6.7).
 pub const SAMPLE_SERDATA_72: u32 = 0;

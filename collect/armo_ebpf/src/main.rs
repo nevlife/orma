@@ -10,7 +10,6 @@
 mod cuda;
 mod dds;
 mod emit;
-mod flux;
 mod flux2;
 mod futex;
 mod maps;
