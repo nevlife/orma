@@ -63,11 +63,7 @@ pub fn convert(raw: &[u8], gid_len: impl Fn(u32) -> u32, out: &mut Vec<u8>) -> O
 /// The programs read `ARMO_GID_MAX` bytes; the gid is the distro's first `gid_len` of them.
 fn gid(event: u16, payload: &mut [u8], gid_len: u32) {
     let (gid_at, len_at) = match event {
-        ARMO_EV_RMW_PUBLISHER_INIT | ARMO_EV_RMW_SUBSCRIPTION_INIT | ARMO_EV_RMW_CLIENT_INIT => {
-            (8, 32)
-        }
-        ARMO_EV_RMW_TAKE_REQUEST => (24, 48),
-        ARMO_EV_RMW_SEND_RESPONSE => (32, 56),
+        ARMO_EV_RMW_PUBLISHER_INIT | ARMO_EV_RMW_SUBSCRIPTION_INIT => (8, 32),
         _ => return,
     };
     let n = gid_len as usize;

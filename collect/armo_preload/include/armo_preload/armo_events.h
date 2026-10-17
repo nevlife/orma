@@ -65,16 +65,6 @@
 
 #define ARMO_EV_RCLCPP_EXECUTOR_EXECUTE 28
 
-#define ARMO_EV_RMW_CLIENT_INIT 29
-
-#define ARMO_EV_RMW_SEND_REQUEST 30
-
-#define ARMO_EV_RMW_TAKE_REQUEST 31
-
-#define ARMO_EV_RMW_SEND_RESPONSE 32
-
-#define ARMO_EV_RMW_TAKE_RESPONSE 33
-
 #define ARMO_EV_RCL_WAIT_ENTER 64
 
 #define ARMO_EV_RCL_WAIT_EXIT 65
@@ -411,40 +401,6 @@ typedef struct armo_ev_handle {
 typedef struct armo_ev_rclcpp_executor_wait_for_work {
   int64_t timeout;
 } armo_ev_rclcpp_executor_wait_for_work;
-
-typedef struct armo_ev_rmw_send_request {
-  uint64_t rmw_client;
-  uint64_t request;
-  int64_t sequence_number;
-} armo_ev_rmw_send_request;
-
-typedef struct armo_ev_rmw_take_request {
-  uint64_t rmw_service;
-  uint64_t request;
-  int64_t sequence_number;
-  uint8_t client_gid[ARMO_GID_MAX];
-  uint32_t gid_len;
-  uint32_t taken;
-} armo_ev_rmw_take_request;
-
-typedef struct armo_ev_rmw_send_response {
-  uint64_t rmw_service;
-  uint64_t response;
-  int64_t sequence_number;
-  int64_t timestamp;
-  uint8_t client_gid[ARMO_GID_MAX];
-  uint32_t gid_len;
-  uint32_t pad;
-} armo_ev_rmw_send_response;
-
-typedef struct armo_ev_rmw_take_response {
-  uint64_t rmw_client;
-  uint64_t response;
-  int64_t sequence_number;
-  int64_t source_timestamp;
-  uint32_t taken;
-  uint32_t pad;
-} armo_ev_rmw_take_response;
 
 typedef struct armo_ev_rcl_wait_enter {
   uint64_t wait_set;

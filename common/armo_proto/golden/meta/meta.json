@@ -91,7 +91,7 @@
     {
       "pid": 4021,
       "method": "preload",
-      "point": "rmw_send_request",
+      "point": "rclcpp_intra_publish",
       "reason": "not exported"
     }
   ],

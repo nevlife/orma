@@ -2,6 +2,8 @@
 
 Tracing, monitoring and benchmarking for ROS 2 systems, including those that carry data over flux. `armod` loads eBPF probes on ROS 2's tracetools functions, the rcl and rclcpp functions that have none, flux's `flux_trace_*` functions and the scheduler, and serves the records and per-window aggregates to `armo-collectd` over a socket. The processes being watched are not changed or restarted. The name stands for Analysis, Recording, Measurement, Observation; it is unrelated to ARMO, the company behind Kubescape.
 
+armo supports ROS 2 Humble and Jazzy. It does not attach to tracepoints those two distros lack, such as the rmw client and service tracepoints that tracetools has from Kilted on.
+
 How to install, run and troubleshoot armo, in Korean: [`docs/install.md`](docs/install.md), [`docs/usage.md`](docs/usage.md), [`docs/troubleshooting.md`](docs/troubleshooting.md).
 
 The colcon packages and crates are grouped by where they run; colcon and cargo find them at any depth, so the package names do not carry the group.
@@ -53,7 +55,7 @@ To run armod as a system service, as the user `armo` with only the capabilities 
 | Set | Attaches to |
 | --- | --- |
 | `discovery` | the init, registration and fini tracepoints of `libtracetools.so`, `rcl_timer_fini` in `librcl.so`, flux's `channel_init`, `endpoint_init` and `gpu_wedged` (a flux build from before GPU wedging lacks the last, and `probes_missing` says so) |
-| `hot` | publish, take, callback, executor and rmw service tracepoints, `rcl_wait` entry and return, the other `flux_trace_*` functions, `armo_span_begin` and `armo_span_end` in `libarmo_span.so` (the span name is read on the begin) |
+| `hot` | publish, take, callback and executor tracepoints, `rcl_wait` entry and return, the other `flux_trace_*` functions, `armo_span_begin` and `armo_span_end` in `libarmo_span.so` (the span name is read on the begin) |
 | `rclcpp_symbols` | rclcpp's C++ functions that put callbacks in groups and groups in executors, and the intra-process wiring, found by the front of the mangled name for rclcpp 16 or 28 and later |
 | `bandwidth` | the serialized size in Fast DDS (`TypeSupport::serialize`) and Cyclone DDS (`serdata_rmw_from_sample`, only with the dbgsym package) |
 | `sched` | `sched_switch` and `sched_wakeup`: CPU wait of the selected processes' threads and off-CPU time inside a callback |

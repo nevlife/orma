@@ -223,7 +223,6 @@ pub const PROGS: &[Prog] = &[
     tp("rcl_service_init", Discovery),
     tp("rclcpp_service_callback_added", Discovery),
     tp("rcl_client_init", Discovery),
-    tp("rmw_client_init", Discovery),
     tp("rcl_timer_init", Discovery),
     tp("rclcpp_timer_callback_added", Discovery),
     tp("rclcpp_timer_link_node", Discovery),
@@ -274,10 +273,6 @@ pub const PROGS: &[Prog] = &[
     tp("rclcpp_executor_get_next_ready", Hot),
     tp("rclcpp_executor_wait_for_work", Hot),
     tp("rclcpp_executor_execute", Hot),
-    tp("rmw_send_request", Hot),
-    tp("rmw_take_request", Hot),
-    tp("rmw_send_response", Hot),
-    tp("rmw_take_response", Hot),
     Prog {
         point: "rcl_wait_enter",
         ..p("rcl_wait", Lib::Rcl, Hot, Sym::Name("rcl_wait"))
@@ -564,7 +559,6 @@ pub fn naming(event: u16) -> bool {
             | ARMO_EV_RCLCPP_TIMER_CALLBACK_ADDED
             | ARMO_EV_RCLCPP_TIMER_LINK_NODE
             | ARMO_EV_RCLCPP_CALLBACK_REGISTER
-            | ARMO_EV_RMW_CLIENT_INIT
             | ARMO_EV_RCL_TIMER_FINI
             ..=ARMO_EV_RMW_PUBLISHER_TOPIC
                 | ARMO_EV_RCLCPP_EXECUTOR_ADD_GROUP

@@ -97,9 +97,6 @@ call("rclcpp_callback_register", V(0xA0), S(b"known_callback_a"))
 call("rclcpp_executor_get_next_ready")
 call("rclcpp_executor_wait_for_work", I64(1000))
 call("rclcpp_executor_execute", V(0x41))
-for name in ("rmw_client_init",):
-    if have("ros_trace_" + name):
-        call(name, V(0x61), gid)
 # The gated form: armod does not attach to it (design 2.4), so this call leaves no record.
 if have("ros_trace_do_rclcpp_callback_register"):
     getattr(lib, "ros_trace_do_rclcpp_callback_register")(V(0xB0), S(b"gated_b"))

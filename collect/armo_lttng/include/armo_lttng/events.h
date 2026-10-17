@@ -33,11 +33,6 @@
   R0(callback_end, armo_ev_handle)                                               \
   R0(rclcpp_executor_wait_for_work, armo_ev_rclcpp_executor_wait_for_work)       \
   R0(rclcpp_executor_execute, armo_ev_handle)                                    \
-  X0(rmw_client_init, armo_ev_rmw_endpoint_init)                                 \
-  X0(rmw_send_request, armo_ev_rmw_send_request)                                 \
-  X0(rmw_take_request, armo_ev_rmw_take_request)                                 \
-  X0(rmw_send_response, armo_ev_rmw_send_response)                               \
-  X0(rmw_take_response, armo_ev_rmw_take_response)                               \
   X0(rcl_wait_enter, armo_ev_rcl_wait_enter)                                     \
   X0(rcl_wait_exit, armo_ev_rcl_wait_exit)                                       \
   X0(rcl_timer_fini, armo_ev_handle)                                             \

@@ -61,7 +61,6 @@ pub const fn init(event: u16) -> bool {
             | ARMO_EV_RCLCPP_TIMER_CALLBACK_ADDED
             | ARMO_EV_RCLCPP_TIMER_LINK_NODE
             | ARMO_EV_RCLCPP_CALLBACK_REGISTER
-            | ARMO_EV_RMW_CLIENT_INIT
             | ARMO_EV_RCL_TIMER_FINI
             | ARMO_EV_RCLCPP_PUBLISHER_BASE
             | ARMO_EV_RCLCPP_PUBLISHER_SETUP_INTRA
@@ -246,41 +245,6 @@ pub const CATALOG: &[EventInfo] = &[
         ARMO_EV_RCLCPP_EXECUTOR_EXECUTE,
         "rclcpp_executor_execute",
         armo_ev_handle,
-        0,
-        true
-    ),
-    ev!(
-        ARMO_EV_RMW_CLIENT_INIT,
-        "rmw_client_init",
-        armo_ev_rmw_endpoint_init,
-        0,
-        true
-    ),
-    ev!(
-        ARMO_EV_RMW_SEND_REQUEST,
-        "rmw_send_request",
-        armo_ev_rmw_send_request,
-        0,
-        true
-    ),
-    ev!(
-        ARMO_EV_RMW_TAKE_REQUEST,
-        "rmw_take_request",
-        armo_ev_rmw_take_request,
-        0,
-        true
-    ),
-    ev!(
-        ARMO_EV_RMW_SEND_RESPONSE,
-        "rmw_send_response",
-        armo_ev_rmw_send_response,
-        0,
-        true
-    ),
-    ev!(
-        ARMO_EV_RMW_TAKE_RESPONSE,
-        "rmw_take_response",
-        armo_ev_rmw_take_response,
         0,
         true
     ),

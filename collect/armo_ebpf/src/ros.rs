@@ -145,13 +145,6 @@ pub fn rmw_subscription_init(ctx: ProbeContext) -> u32 {
     0
 }
 
-// ros_trace_rmw_client_init(rmw_client_handle, gid)
-#[uprobe]
-pub fn rmw_client_init(ctx: ProbeContext) -> u32 {
-    endpoint_init(&ctx, ARMO_EV_RMW_CLIENT_INIT);
-    0
-}
-
 fn topic_init(ctx: &ProbeContext, event: u16) {
     let ev = armo_ev_rcl_topic_init {
         handle: a(ctx, 0),
@@ -458,71 +451,5 @@ pub fn rclcpp_executor_wait_for_work(ctx: ProbeContext) -> u32 {
 pub fn rclcpp_executor_execute(ctx: ProbeContext) -> u32 {
     let ev = armo_ev_handle { handle: a(&ctx, 0) };
     hot(ARMO_EV_RCLCPP_EXECUTOR_EXECUTE, now(), &ev);
-    0
-}
-
-// ros_trace_rmw_send_request(rmw_client_handle, request, sequence_number)
-#[uprobe]
-pub fn rmw_send_request(ctx: ProbeContext) -> u32 {
-    let ev = armo_ev_rmw_send_request {
-        rmw_client: a(&ctx, 0),
-        request: a(&ctx, 1),
-        sequence_number: a(&ctx, 2) as i64,
-    };
-    hot(ARMO_EV_RMW_SEND_REQUEST, now(), &ev);
-    0
-}
-
-// ros_trace_rmw_take_request(rmw_service_handle, request, client_gid, sequence_number, taken)
-#[uprobe]
-pub fn rmw_take_request(ctx: ProbeContext) -> u32 {
-    let ns = now();
-    if streamed(tgid()) {
-        let ev = armo_ev_rmw_take_request {
-            rmw_service: a(&ctx, 0),
-            request: a(&ctx, 1),
-            sequence_number: a(&ctx, 3) as i64,
-            client_gid: gid(a(&ctx, 2)),
-            gid_len: 0,
-            taken: flag(&ctx, 4),
-        };
-        emit(ARMO_EV_RMW_TAKE_REQUEST, ns, &ev, []);
-    }
-    0
-}
-
-// ros_trace_rmw_send_response(rmw_service_handle, response, client_gid, sequence_number,
-//                             timestamp)
-#[uprobe]
-pub fn rmw_send_response(ctx: ProbeContext) -> u32 {
-    let ns = now();
-    if streamed(tgid()) {
-        let ev = armo_ev_rmw_send_response {
-            rmw_service: a(&ctx, 0),
-            response: a(&ctx, 1),
-            sequence_number: a(&ctx, 3) as i64,
-            timestamp: a(&ctx, 4) as i64,
-            client_gid: gid(a(&ctx, 2)),
-            gid_len: 0,
-            pad: 0,
-        };
-        emit(ARMO_EV_RMW_SEND_RESPONSE, ns, &ev, []);
-    }
-    0
-}
-
-// ros_trace_rmw_take_response(rmw_client_handle, response, sequence_number, source_timestamp,
-//                             taken)
-#[uprobe]
-pub fn rmw_take_response(ctx: ProbeContext) -> u32 {
-    let ev = armo_ev_rmw_take_response {
-        rmw_client: a(&ctx, 0),
-        response: a(&ctx, 1),
-        sequence_number: a(&ctx, 2) as i64,
-        source_timestamp: a(&ctx, 3) as i64,
-        taken: flag(&ctx, 4),
-        pad: 0,
-    };
-    hot(ARMO_EV_RMW_TAKE_RESPONSE, now(), &ev);
     0
 }

@@ -75,9 +75,9 @@ def test_initial_state(gui, fake):
     ]  # fmt: skip
     assert column(gui.monitor.executors, 1) == ["rclcpp"]
     assert column(gui.monitor.threads, 0) == ["4025"]
-    assert column(gui.monitor.missing, 2) == ["rmw_send_request"]
+    assert column(gui.monitor.missing, 2) == ["rclcpp_intra_publish"]
     assert table_texts(gui.events)[0][1:4] == [
-        "warn", "probe_missing", "rmw_send_request not exported by libtracetools.so",
+        "warn", "probe_missing", "rclcpp_intra_publish not exported by libtracetools.so",
     ]  # fmt: skip
 
     selection = gui.selection.table

@@ -145,7 +145,6 @@ static bool init_event(uint16_t event)
     case ARMO_EV_RCLCPP_TIMER_CALLBACK_ADDED:
     case ARMO_EV_RCLCPP_TIMER_LINK_NODE:
     case ARMO_EV_RCLCPP_CALLBACK_REGISTER:
-    case ARMO_EV_RMW_CLIENT_INIT:
     case ARMO_EV_RCL_TIMER_FINI:
     case ARMO_EV_RCLCPP_PUBLISHER_BASE:
     case ARMO_EV_RCLCPP_PUBLISHER_SETUP_INTRA:
@@ -324,11 +323,6 @@ PLAIN(
   rclcpp_executor_wait_for_work, ARMO_EV_RCLCPP_EXECUTOR_WAIT_FOR_WORK,
   armo_ev_rclcpp_executor_wait_for_work)
 PLAIN(rclcpp_executor_execute, ARMO_EV_RCLCPP_EXECUTOR_EXECUTE, armo_ev_handle)
-PLAIN(rmw_client_init, ARMO_EV_RMW_CLIENT_INIT, armo_ev_rmw_endpoint_init)
-PLAIN(rmw_send_request, ARMO_EV_RMW_SEND_REQUEST, armo_ev_rmw_send_request)
-PLAIN(rmw_take_request, ARMO_EV_RMW_TAKE_REQUEST, armo_ev_rmw_take_request)
-PLAIN(rmw_send_response, ARMO_EV_RMW_SEND_RESPONSE, armo_ev_rmw_send_response)
-PLAIN(rmw_take_response, ARMO_EV_RMW_TAKE_RESPONSE, armo_ev_rmw_take_response)
 PLAIN(rcl_timer_fini, ARMO_EV_RCL_TIMER_FINI, armo_ev_handle)
 PLAIN(rclcpp_publisher_base, ARMO_EV_RCLCPP_PUBLISHER_BASE, armo_ev_rclcpp_object)
 PLAIN(rclcpp_publisher_setup_intra, ARMO_EV_RCLCPP_PUBLISHER_SETUP_INTRA, armo_ev_rclcpp_object)

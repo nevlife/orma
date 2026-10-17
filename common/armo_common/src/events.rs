@@ -37,11 +37,6 @@ pub const ARMO_EV_CALLBACK_END: u16 = 25;
 pub const ARMO_EV_RCLCPP_EXECUTOR_GET_NEXT_READY: u16 = 26;
 pub const ARMO_EV_RCLCPP_EXECUTOR_WAIT_FOR_WORK: u16 = 27;
 pub const ARMO_EV_RCLCPP_EXECUTOR_EXECUTE: u16 = 28;
-pub const ARMO_EV_RMW_CLIENT_INIT: u16 = 29;
-pub const ARMO_EV_RMW_SEND_REQUEST: u16 = 30;
-pub const ARMO_EV_RMW_TAKE_REQUEST: u16 = 31;
-pub const ARMO_EV_RMW_SEND_RESPONSE: u16 = 32;
-pub const ARMO_EV_RMW_TAKE_RESPONSE: u16 = 33;
 
 // ROS points without a trace function (design 2.1.2).
 pub const ARMO_EV_RCL_WAIT_ENTER: u16 = 64;
@@ -337,48 +332,6 @@ pub struct armo_ev_handle {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct armo_ev_rclcpp_executor_wait_for_work {
     pub timeout: i64,
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct armo_ev_rmw_send_request {
-    pub rmw_client: u64,
-    pub request: u64,
-    pub sequence_number: i64,
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct armo_ev_rmw_take_request {
-    pub rmw_service: u64,
-    pub request: u64,
-    pub sequence_number: i64,
-    pub client_gid: [u8; ARMO_GID_MAX],
-    pub gid_len: u32,
-    pub taken: u32,
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct armo_ev_rmw_send_response {
-    pub rmw_service: u64,
-    pub response: u64,
-    pub sequence_number: i64,
-    pub timestamp: i64,
-    pub client_gid: [u8; ARMO_GID_MAX],
-    pub gid_len: u32,
-    pub pad: u32,
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct armo_ev_rmw_take_response {
-    pub rmw_client: u64,
-    pub response: u64,
-    pub sequence_number: i64,
-    pub source_timestamp: i64,
-    pub taken: u32,
-    pub pad: u32,
 }
 
 #[repr(C)]

@@ -347,10 +347,10 @@ fn the_writer_follows_the_shared_memory_rules() {
         (cur.cur_cb, cur.cur_src, cur.cur_entry),
         (0x7000, ARMO_SRC_FLUX as u32, 3)
     );
-    shm.set_missing(ARMO_EV_RMW_SEND_REQUEST);
+    shm.set_missing(ARMO_EV_RCLCPP_INTRA_PUBLISH);
     shm.set_missing(ARMO_EV_FLUX_WAKE);
     let missing = reader.header().missing;
-    assert_eq!(missing[0], 1 << ARMO_EV_RMW_SEND_REQUEST);
+    assert_eq!(missing[0], 1 << ARMO_EV_RCLCPP_INTRA_PUBLISH);
     assert_eq!(missing[2], 1 << (ARMO_EV_FLUX_WAKE - 128));
     shm.exit(b);
     assert_eq!(reader.slot(b).state, ARMO_THREAD_EXITED);

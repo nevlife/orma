@@ -3,7 +3,7 @@
   "t_real_ns": 1791473415000000000,
   "level": "warn",
   "kind": "probe_missing",
-  "text": "rmw_send_request not exported by libtracetools.so",
+  "text": "rclcpp_intra_publish not exported by libtracetools.so",
   "ids": [
     "p:4021:771234"
   ]
