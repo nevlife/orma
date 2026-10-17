@@ -5,7 +5,6 @@ from python_qt_binding.QtGui import QPainter, QPalette
 from python_qt_binding.QtWidgets import (
     QComboBox,
     QGraphicsScene,
-    QGraphicsView,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -16,6 +15,7 @@ from python_qt_binding.QtWidgets import (
 from python_qt_binding.QtCore import Qt
 from qt_dotgraph.dot_to_qt import DotToQtGenerator
 from qt_dotgraph.pydotfactory import PydotFactory
+from rqt_graph.interactive_graphics_view import InteractiveGraphicsView
 
 from .common import lat, lat_heads, make_table, ns, num, set_rows
 
@@ -61,9 +61,11 @@ class GraphView(QWidget):
         self.window_msg = None
         self.path = []
         self.topology = None
+        self.drawn = None
+        self.edge_labels = {}
         self.scene = QGraphicsScene(self)
-        self.view = QGraphicsView(self.scene)
-        self.view.setDragMode(QGraphicsView.ScrollHandDrag)
+        self.view = InteractiveGraphicsView()
+        self.view.setScene(self.scene)
         self.view.setRenderHints(QPainter.Antialiasing | QPainter.TextAntialiasing)
         self.dot_to_qt = DotToQtGenerator()
         self.factory = PydotFactory()
@@ -113,8 +115,13 @@ class GraphView(QWidget):
                 break
             valid.append((topic, node))
         self.path = valid
-        self._draw()
-        self._fill_walk()
+        if self.isVisible():
+            self._redraw()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if self.window_msg is not None:
+            self._redraw()
 
     def names(self):
         w = self.window_msg
@@ -137,6 +144,27 @@ class GraphView(QWidget):
 
     def _draw(self):
         w = self.window_msg
+        subs = {(s["topic"], s["node"]): s for s in w["subscriptions"]}
+        labels = {}
+        for t in w["topics"]:
+            for n in t["publishers"]:
+                labels[(n, t["id"])] = f"{num(t['pub_hz'])} Hz"
+            for n in t["subscribers"]:
+                hop = (subs.get((t["id"], n)) or {}).get("hop")
+                labels[(t["id"], n)] = f"p99 {lat(hop)[0]}" if hop else ""
+        # A dot layout of a hundred nodes takes over a second; only the values change in place.
+        # An empty label gets no text item, so an edge gaining or losing one is a new layout.
+        layout = (
+            tuple(self.names().items()),
+            tuple((t["id"], t["name"], t["transport"]) for t in w["topics"]),
+            tuple((key, bool(text)) for key, text in labels.items()),
+            tuple(self.path),
+        )
+        if layout == self.drawn:
+            for key, item in self.edge_labels.items():
+                item.setText(labels[key])
+            return
+        self.drawn = layout
         highlight = self.palette().color(QPalette.Highlight).name()
         on_path = {n for _, n in self.path} | {t for t, _ in self.path if t}
         f = self.factory
@@ -145,7 +173,6 @@ class GraphView(QWidget):
             color = highlight if node in on_path else None
             # pydot leaves an id such as n:1:2:ab unquoted, and dot reads the colons as ports.
             f.add_node_to_graph(graph, node, f'"{name}"', shape="ellipse", color=color)
-        subs = {(s["topic"], s["node"]): s for s in w["subscriptions"]}
         walked = set(self.path[1:])
         walked |= {(a[1], b[0]) for a, b in zip(self.path, self.path[1:])}
         for t in w["topics"]:
@@ -154,15 +181,23 @@ class GraphView(QWidget):
             f.add_node_to_graph(graph, t["id"], f'"{label}"', shape="box", color=color)
             for n in t["publishers"]:
                 width = 3 if (n, t["id"]) in walked else 1
-                label = f"{num(t['pub_hz'])} Hz"
-                f.add_edge_to_graph(graph, n, t["id"], label=label, penwidth=width)
+                f.add_edge_to_graph(graph, n, t["id"], label=labels[(n, t["id"])], penwidth=width)
             for n in t["subscribers"]:
-                hop = (subs.get((t["id"], n)) or {}).get("hop")
                 width = 3 if (t["id"], n) in walked else 1
-                label = f"p99 {lat(hop)[0]}" if hop else ""
-                f.add_edge_to_graph(graph, t["id"], n, label=label, penwidth=width)
+                f.add_edge_to_graph(graph, t["id"], n, label=labels[(t["id"], n)], penwidth=width)
         self.scene.clear()
-        self.dot_to_qt.dotcode_to_qt_items(f.create_dot(graph), highlight_level=3, scene=self.scene)
+        nodes, edges = self.dot_to_qt.dotcode_to_qt_items(
+            f.create_dot(graph), highlight_level=3, scene=self.scene
+        )
+        ids = {
+            nodes[f.escape_name(i)]: i for i in list(self.names()) + [t["id"] for t in w["topics"]]
+        }
+        self.edge_labels = {
+            (ids[e.from_node], ids[e.to_node]): e._label
+            for items in edges.values()
+            for e in items
+            if e._label is not None
+        }
         self.scene.setSceneRect(self.scene.itemsBoundingRect())
         topology = (tuple(self.names()), tuple(t["id"] for t in w["topics"]))
         if topology != self.topology:

@@ -58,6 +58,7 @@ def window():
             {"topic": "topic:ros:/chatter", "node": listener},
             {"topic": "topic:ros:/odom", "node": "p:30:1"},
         ],
+        "threads": [{"id": "t:10:1:11"}, {"id": "t:20:1:21"}, {"id": "t:30:1:31"}],
     }
 
 
@@ -74,12 +75,12 @@ def test_internal_topics_and_services_are_hidden_unless_asked():
     assert len(view.visible(w, infra=True)["callbacks"]) == len(w["callbacks"])
 
 
-def test_labels_name_the_kind_target_and_function():
+def test_labels_name_the_kind_and_target_or_function():
     labels = view.callback_labels(window())
     assert labels["c:10:1:ros:aaaa00000001"] == "timer Talker::tick()"
     assert labels["c:10:1:ros:aaaa00000002"] == "srv(/talker/get_parameters)"
-    assert labels["c:20:1:ros:bbbb00000001"] == "sub(/chatter) on_msg #000001"
-    assert labels["c:20:1:ros:bbbb00000002"] == "sub(/chatter) on_msg #000002"
+    assert labels["c:20:1:ros:bbbb00000001"] == "sub(/chatter) #000001"
+    assert labels["c:20:1:ros:bbbb00000002"] == "sub(/chatter) #000002"
     assert labels["c:30:1:ros:cccc00a7e448"] == "<cb 0xcccc00a7e448>"
     assert labels["c:20:1:ros:bbbb00000004"] == "sub(/odom)"
 
@@ -103,6 +104,7 @@ def test_a_node_name_shows_that_node_and_the_topics_it_uses():
         "c:20:1:ros:bbbb00000004",
     ]
     assert [p["pid"] for p in shown["processes"]] == [20]
+    assert ids(shown["threads"]) == ["t:20:1:21"]
 
 
 def test_a_topic_name_shows_both_ends():

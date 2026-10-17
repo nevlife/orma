@@ -58,7 +58,7 @@ def test_initial_state(gui, fake):
     assert lines == [
         "camera_node (4021)",
         "  /camera/driver",
-        "    sub(/scan) Driver::on_scan(sensor_msgs::msg::LaserScan const&)",
+        "    sub(/scan)",
         "  unlinked",
         "    flux2(/image)",
         "listener (5100/12)",
@@ -225,8 +225,34 @@ def test_select_and_configure(gui, fake):
     assert not gui.selection.edited
 
 
+def test_threads_sort_by_value_and_search_by_name(app):
+    from rqt_armo.monitor import MonitorView
+
+    w = golden("server", "window")
+    base = w["threads"][0]
+    w["threads"] = [
+        dict(base, id=f"t:4021:771234:{tid}", tid=tid, name=name, cpu_pct=cpu)
+        for tid, name, cpu in ((11, "recv", 9.5), (12, "tev", None), (13, "recv", 10.0))
+    ]
+    w["threads"][1]["cpu_wait"] = dict(base["cpu_wait"], p99_ns=2_000_000)
+    monitor = MonitorView()
+    monitor.show_window(w)
+    threads = monitor.threads
+    assert column(threads, 0) == ["11", "12", "13"]
+    threads.sortItems(4, Qt.DescendingOrder)
+    assert column(threads, 0) == ["13", "11", "12"]
+    threads.sortItems(6, Qt.DescendingOrder)
+    assert column(threads, 0)[0] == "12"
+    monitor.show_window(w)
+    assert column(threads, 0)[0] == "12"
+    monitor.thread_search.setText("RECV")
+    assert sorted(column(threads, 0)) == ["11", "13"]
+
+
 def test_graph_walk(gui):
     graph = gui.graph
+    assert not graph.scene.items()
+    gui.tabs.setCurrentWidget(graph)
     assert graph.scene.items()
     publisher = "n:3900:770001:55aa0000"
     graph.start.setCurrentIndex(graph.start.findData(publisher))

@@ -13,6 +13,7 @@
   <exec_depend>armo_cli</exec_depend>
   <exec_depend>python_qt_binding</exec_depend>
   <exec_depend>qt_dotgraph</exec_depend>
+  <exec_depend>rqt_graph</exec_depend>
   <exec_depend>rqt_gui</exec_depend>
   <exec_depend>rqt_gui_py</exec_depend>
 

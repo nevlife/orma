@@ -162,10 +162,10 @@ class RecordForm(QWidget):
 class RecordDialog(QDialog):
     def __init__(self, processes, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Start recording")
+        self.setWindowTitle("New recording")
         self.form = RecordForm(processes)
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        buttons.button(QDialogButtonBox.Ok).setText("Start")
+        buttons.button(QDialogButtonBox.Ok).setText("Start recording")
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout = QVBoxLayout(self)
@@ -229,7 +229,7 @@ class RecordingsView(QWidget):
         self.dialog = None
         self.table = make_table(LIST_HEADS)
         self.table.itemSelectionChanged.connect(self._selection)
-        self.start_button = QPushButton("Start...")
+        self.start_button = QPushButton("New recording...")
         self.stop_button = QPushButton("Stop")
         self.show_button = QPushButton("Validation")
         self.open_button = QPushButton("Open directory...")

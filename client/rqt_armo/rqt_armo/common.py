@@ -1,5 +1,7 @@
 """Qt default icons for status, and the table helpers every view uses."""
 
+import re
+
 from armo_cli.cli import lat, ns, num, size  # noqa: F401  (re-exported for the views)
 from python_qt_binding.QtCore import Qt
 from python_qt_binding.QtWidgets import (
@@ -12,6 +14,10 @@ from python_qt_binding.QtWidgets import (
 )
 
 KEY = Qt.UserRole
+SORT = Qt.UserRole + 1
+UNITS = {"": 1, "ns": 1, "us": 1e3, "ms": 1e6, "s": 1e9, "B": 1}
+UNITS.update({"KiB": 1 << 10, "MiB": 1 << 20, "GiB": 1 << 30})
+NUMBER = re.compile(r"(-?\d+(?:\.\d+)?)([A-Za-z]*)")
 # The order of armo_cli.cli.lat: tail first.
 LAT_HEADS = ["p99", "p99.9", "max", "p50"]
 STATUS_ICONS = {
@@ -37,6 +43,27 @@ def warn_if(value, text=None):
     return (shown, "warn") if value else shown
 
 
+def sort_key(text):
+    """Numbers in the units of `ns` and `size` sort by value, and `-` (not measured) below them."""
+    if text == "-":
+        return (0, 0.0)
+    m = NUMBER.fullmatch(text)
+    if m and m.group(2) in UNITS:
+        return (1, float(m.group(1)) * UNITS[m.group(2)])
+    return (2, text)
+
+
+class SortItem(QTableWidgetItem):
+    def __lt__(self, other):
+        return self.data(SORT) < other.data(SORT)
+
+
+def make_sortable(table):
+    """Unsorted until a header is clicked; the order then holds across `set_rows`."""
+    table.horizontalHeader().setSortIndicator(-1, Qt.AscendingOrder)
+    table.setSortingEnabled(True)
+
+
 def make_table(headers):
     table = QTableWidget(0, len(headers))
     table.setHorizontalHeaderLabels(headers)
@@ -51,15 +78,25 @@ def make_table(headers):
 
 def set_rows(table, rows):
     """`rows` are (key, cells); a cell is text or (text, status). The key goes on every item."""
+    # ResizeToContents measures the column again on every setItem of a visible table.
+    header = table.horizontalHeader()
+    header.setSectionResizeMode(QHeaderView.Interactive)
+    # Sorting while filling moves rows under the indices being written.
+    sortable = table.isSortingEnabled()
+    table.setSortingEnabled(False)
     table.setRowCount(len(rows))
     for r, (key, cells) in enumerate(rows):
         for c, cell in enumerate(cells):
             text, status = cell if isinstance(cell, tuple) else (cell, None)
-            item = QTableWidgetItem(str(text))
+            item = SortItem(str(text)) if sortable else QTableWidgetItem(str(text))
+            if sortable:
+                item.setData(SORT, sort_key(str(text)))
             item.setData(KEY, key)
             if status is not None:
                 item.setIcon(icon(status))
             table.setItem(r, c, item)
+    table.setSortingEnabled(sortable)
+    header.setSectionResizeMode(QHeaderView.ResizeToContents)
 
 
 def row_key(table, row):

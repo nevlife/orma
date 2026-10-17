@@ -140,18 +140,18 @@ armo top node --exclude '/rviz.*'
 
 ```text
 callbacks
-  callback                                                                                  node       pid     Hz   expected  p99      p99.9    max      p50      dispatch p99
-  sub(/chatter) demo_nodes_cpp::Listener::Listener(rclcpp::NodeOptions const&)::{lambda#1}  /listener  393740  1.0  -         69.1us   69.1us   69.1us   69.1us   88.4us
-  <timer 0xaaaacbc8a330>                                                                    /talker    393739  1.0  1.0       279.4us  279.4us  279.4us  279.4us  47.8us
+  callback                node       pid     Hz   expected  p99      p99.9    max      p50      dispatch p99
+  sub(/chatter)           /listener  393740  1.0  -         69.1us   69.1us   69.1us   69.1us   88.4us
+  <timer 0xaaaacbc8a330>  /talker    393739  1.0  1.0       279.4us  279.4us  279.4us  279.4us  47.8us
 ```
 
 콜백 이름:
 
 | 형식 | 뜻 |
 | --- | --- |
-| `sub(/chatter) on_message` | 구독 콜백. 괄호 안이 토픽, 뒤가 함수 이름 |
-| `srv(/add) handle` | 서비스 콜백 |
-| `timer cb_fn` | 타이머 콜백 |
+| `sub(/chatter)` | 구독 콜백. 괄호 안이 토픽이다 |
+| `srv(/add)` | 서비스 콜백 |
+| `timer cb_fn` | 타이머 콜백. 대상이 없어 함수 이름을 붙인다 |
 | `flux2(/image)` | flux2 채널 콜백 |
 | `<timer 0xaaaacbc8a330>` | 함수 이름을 찾지 못했다. 콜백 객체의 주소다 |
 | `... #a7e448` | 한 노드 안에 같은 이름이 둘 이상이다. 주소의 끝 여섯 자리로 구분한다 |

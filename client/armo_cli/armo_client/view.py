@@ -77,6 +77,8 @@ def visible(w, selection=None, infra=False):
         shown = {pid_of(c["id"]) for c in callbacks} | {n["pid"] for n in nodes}
         processes = [p for p in processes if p["pid"] in shown]
         owners = keep_nodes | {o for o in _process_owners(w) if pid_of(o) in pids}
+    shown_pids = {p["pid"] for p in processes}
+    threads = [t for t in w["threads"] if pid_of(t["id"]) in shown_pids]
     shown_topics = {t["id"] for t in topics}
     subscriptions = [
         s
@@ -86,6 +88,7 @@ def visible(w, selection=None, infra=False):
     return dict(
         w,
         processes=processes,
+        threads=threads,
         nodes=nodes,
         callbacks=callbacks,
         topics=topics,
@@ -110,9 +113,10 @@ def owner_label(w, owner_id):
 
 
 def callback_labels(w):
-    """`sub(/chatter) on_message`, `srv(/add) handle`, `timer cb_fn`; without a name, the
-    handle (`<timer 0xaaab...>`). Labels that repeat within a node get `#` and the handle's last
-    six digits."""
+    """`sub(/chatter)`, `srv(/add)`; a timer has no target and shows its function (`timer cb_fn`),
+    or without one the handle (`<timer 0xaaab...>`). The function of a sub or srv is left out: a
+    std::bind callback names only its type. Labels that repeat within a node get `#` and the
+    handle's last six digits."""
     topic_names = {t["id"]: t["name"] for t in w["topics"]}
     labels = {}
     for c in w["callbacks"]:
@@ -122,10 +126,10 @@ def callback_labels(w):
             head = kind
         else:
             head = f"{kind}({target})" if target else kind
-        if c["symbol"]:
-            labels[c["id"]] = f"{head} {c['symbol']}"
-        elif target:
+        if target:
             labels[c["id"]] = head
+        elif c["symbol"]:
+            labels[c["id"]] = f"{head} {c['symbol']}"
         else:
             labels[c["id"]] = f"<{head} 0x{handle_of(c['id'])}>"
     seen = {}

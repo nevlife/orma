@@ -7,10 +7,12 @@ from python_qt_binding.QtWidgets import (
     QCheckBox,
     QDialog,
     QHeaderView,
+    QLineEdit,
     QTabWidget,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
+    QWidget,
 )
 
 from .common import (
@@ -18,6 +20,7 @@ from .common import (
     icon,
     lat,
     lat_heads,
+    make_sortable,
     make_table,
     ns,
     num,
@@ -28,13 +31,16 @@ from .common import (
 )
 
 TREE_HEADS = ["entity", "kind", "Hz", "expected", "loss"] + lat_heads() + ["CPU %"]
+ENTITY_WIDTH = 480
 TOPIC_HEADS = ["topic", "transport", "pub Hz", "expected", "bandwidth", "drops", "record drops"]
 TOPIC_HEADS += ["ambiguous"] + lat_heads("hop ") + ["age p99"]
 SUB_HEADS = ["topic", "node", "recv Hz", "loss %", "lost", "intra %"] + lat_heads("hop ")
 SUB_HEADS += ["wake p99", "wake max"]
 EXECUTOR_HEADS = ["executor", "kind", "nodes", "callbacks", "busy %", "on-CPU %"]
 EXECUTOR_HEADS += lat_heads("wait ") + lat_heads("dispatch ")
-THREAD_HEADS = ["tid", "name", "policy", "CPU %", "in callback %"] + lat_heads("CPU wait ")
+THREAD_HEADS = ["tid", "process", "name", "policy", "CPU %", "in callback %"] + lat_heads(
+    "CPU wait "
+)
 THREAD_HEADS += ["bucket", "cpus"]
 BPF_HEADS = ["program", "pid", "run time", "runs"]
 MAP_HEADS = ["map", "used", "max", "memlock"]
@@ -72,7 +78,10 @@ class MonitorView(QTabWidget):
         super().__init__(parent)
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels(TREE_HEADS)
-        self.tree.header().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self._fit_value_columns()
+        # Callback names run to hundreds of characters of C++ type; the full name is the tooltip.
+        self.tree.header().setSectionResizeMode(0, QHeaderView.Interactive)
+        self.tree.header().resizeSection(0, ENTITY_WIDTH)
         self.tree.itemDoubleClicked.connect(
             lambda item, _: self.detail_requested.emit(item.data(0, KEY))
         )
@@ -80,6 +89,18 @@ class MonitorView(QTabWidget):
         self.subscriptions = make_table(SUB_HEADS)
         self.executors = make_table(EXECUTOR_HEADS)
         self.threads = make_table(THREAD_HEADS)
+        make_sortable(self.threads)
+        self.thread_search = QLineEdit()
+        self.thread_search.setPlaceholderText("Search tid, process or thread name")
+        self.thread_search.setClearButtonEnabled(True)
+        self.thread_search.textChanged.connect(
+            lambda _: self._last and self.show_window(self._last)
+        )
+        threads_tab = QWidget()
+        threads_layout = QVBoxLayout(threads_tab)
+        threads_layout.setContentsMargins(0, 0, 0, 0)
+        threads_layout.addWidget(self.thread_search)
+        threads_layout.addWidget(self.threads)
         self.bpf = make_table(BPF_HEADS)
         self.maps = make_table(MAP_HEADS)
         self.missing = make_table(MISSING_HEADS)
@@ -91,7 +112,7 @@ class MonitorView(QTabWidget):
         self.addTab(self.topics, "Topics")
         self.addTab(self.subscriptions, "Subscriptions")
         self.addTab(self.executors, "Executors")
-        self.addTab(self.threads, "Threads")
+        self.addTab(threads_tab, "Threads")
         cost = QTabWidget()
         cost.addTab(self.bpf, "eBPF")
         cost.addTab(self.maps, "Maps")
@@ -152,17 +173,23 @@ class MonitorView(QTabWidget):
                 for e in w["executors"]
             ],
         )
+        comms = {p["pid"]: f"{p['comm']} ({p['pid']})" for p in w["processes"]}
+        search = self.thread_search.text().strip().lower()
+        threads = [(t, comms.get(view.pid_of(t["id"]), "-")) for t in w["threads"]]
+        threads = [
+            (t, comm) for t, comm in threads if search in f"{t['tid']} {comm} {t['name']}".lower()
+        ]
         set_rows(
             self.threads,
             [
                 (
                     t["id"],
-                    [t["tid"], t["name"], f"{t['policy']} {t['prio']}", num(t["cpu_pct"])]
+                    [t["tid"], comm, t["name"], f"{t['policy']} {t['prio']}", num(t["cpu_pct"])]
                     + [num(t["in_callback_cpu_pct"])]
                     + lat(t["cpu_wait"])
                     + [t["bucket"], ",".join(str(c) for c in t["cpus"])],
                 )
-                for t in w["threads"]
+                for t, comm in threads
             ],
         )
         a = w["agent"]
@@ -188,6 +215,10 @@ class MonitorView(QTabWidget):
             ],
         )
 
+    def _fit_value_columns(self):
+        for column in range(1, self.tree.columnCount()):
+            self.tree.header().setSectionResizeMode(column, QHeaderView.ResizeToContents)
+
     def _fill_tree(self, w):
         """Rebuilt every window; expansion, selection and scroll carry over by entity id."""
         tree = self.tree
@@ -198,6 +229,7 @@ class MonitorView(QTabWidget):
                 self.collapsed.discard(key)
         selected = tree.currentItem().data(0, KEY) if tree.currentItem() else None
         scroll = tree.verticalScrollBar().value()
+        tree.header().setSectionResizeMode(QHeaderView.Interactive)
         tree.clear()
         items = {}
 
@@ -206,6 +238,7 @@ class MonitorView(QTabWidget):
                 tree if parent is None else items[parent], [str(c) for c in cells]
             )
             item.setData(0, KEY, key)
+            item.setToolTip(0, str(cells[0]))
             if status:
                 item.setIcon(0, icon(status))
             items[key] = item
@@ -229,6 +262,7 @@ class MonitorView(QTabWidget):
             item.setExpanded(key not in self.collapsed)
             if key == selected:
                 tree.setCurrentItem(item)
+        self._fit_value_columns()
         tree.verticalScrollBar().setValue(scroll)
         self._items = items
 
