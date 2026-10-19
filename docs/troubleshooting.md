@@ -12,7 +12,7 @@
 | `sudo armod`가 "another armod serves it"로 끝난다 | 서비스가 떠 있다. 빌드 트리의 armod를 쓰려면 `sudo systemctl stop armod` 뒤에 띄운다 |
 | 고친 armod가 반영되지 않는다 | 서비스는 `/usr/local/sbin/armod` 사본을 쓴다. `daemon/armo_daemon/systemd/install.sh` 뒤에 `sudo systemctl restart armod` |
 | 로그에 `the scheduler probes stay off` | tracefs를 읽지 못했다. 서비스 유닛의 권한에 `CAP_DAC_READ_SEARCH`가 있는지 본다 |
-| 방식과 Hz가 `-`다 | `--pid` 없이 모니터링하면 uprobe를 붙이지 않는다([usage.md](usage.md) 4절). `--pid`로 고른다. 그래도 없으면 `journalctl -u armod`에 `attached to` 줄이 있는지 본다. 없으면 다른 사용자 프로세스의 `/proc/<pid>/maps`를 못 읽은 것이다(`CAP_SYS_PTRACE`) |
+| 방식과 Hz가 `-`다 | `--pid` 없이 모니터링하면 uprobe를 붙이지 않는다([usage.md](usage.md) 4절). `--pid`로 고른다. 그래도 없으면 `journalctl -u armod`에 `not attached to` 줄이 있는지 본다. 그 줄은 이유를 함께 적는다. 그 줄도 없으면 다른 사용자 프로세스의 `/proc/<pid>/maps`를 못 읽은 것이다(`CAP_SYS_PTRACE`) |
 | `bpf stats`가 fail | `BPF_ENABLE_STATS`가 거부됐다(`CAP_SYS_ADMIN`). eBPF 실행 시간이 0으로 남는다 |
 
 ## armo-collectd
@@ -64,8 +64,8 @@
 | 항목 | `fail`이나 `unknown`일 때 |
 | --- | --- |
 | `probes <묶음>` | 지점마다 붙은 수와 실제로 불린 수다. `not fired`는 검사 동안 그 일이 없었다는 뜻이다. 검사 중에 노드를 새로 띄우면 init 지점이 불린다 |
-| `missing <지점>` | 그 라이브러리가 함수를 내보내지 않는다. Jazzy의 rmw 서비스 트레이스포인트, uprobe의 `rclcpp_callback_register`(게이트 때문)는 늘 `unknown`이다 |
+| `missing <지점>` | 그 라이브러리가 함수를 내보내지 않는다. Jazzy에서 uprobe의 `rclcpp_callback_register`(게이트 때문)는 늘 `unknown`이다 |
 | `distro pid N` | `fail`이면 publish ABI 판정이 틀렸다. `unknown`(no publish after a publisher init)은 armod가 그 프로세스보다 늦게 떠 비교할 init이 없다는 뜻이다 |
 | `cyclone serdata_rmw::m_size offset` | `unknown`이면 Cyclone의 dbgsym 패키지가 없다. Cyclone 대역폭만 빠진다 |
-| `flux contract`, `flux contract` | `fail`이면 라이브러리의 트레이스 계약 버전이 armo와 다르다. armo는 그 라이브러리에 붙지 않는다. 같은 커밋의 flux, flux로 다시 빌드한다 |
+| `flux contract <라이브러리>` | `fail`이면 라이브러리의 트레이스 계약 버전이 armo와 다르다. armo는 그 라이브러리에 붙지 않는다. 같은 커밋의 flux로 다시 빌드한다 |
 | `container pid N` | 컨테이너 안 pid와 호스트 pid의 대응을 본다. `fail`이면 armo가 그 컨테이너의 스레드를 다른 프로세스로 셌다는 뜻이다 |

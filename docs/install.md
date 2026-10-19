@@ -21,8 +21,8 @@ eBPF 프로그램을 빌드하려면 nightly 툴체인과 `bpf-linker`가 필요
 
 ```bash
 rustup toolchain install nightly-2026-09-28 --profile minimal --component rust-src
-curl -LO https://github.com/aya-rs/bpf-linker/releases/download/v0.11.1/bpf-linker-aarch64-unknown-linux-musl.tar.zst
-tar -xpf bpf-linker-aarch64-unknown-linux-musl.tar.zst -C ~/.local/bin
+curl -LO https://github.com/aya-rs/bpf-linker/releases/download/v0.11.1/bpf-linker-$(uname -m)-unknown-linux-musl.tar.zst
+tar -xpf bpf-linker-$(uname -m)-unknown-linux-musl.tar.zst -C ~/.local/bin
 sudo apt install liblttng-ust-dev lttng-tools babeltrace
 
 cd ~/flux_devel/flux_ws
@@ -51,7 +51,7 @@ sudo systemctl enable --now armod
 
 - 복사하는 이유: 홈 디렉터리(`0750`) 아래의 워크스페이스에는 서비스 사용자 `armo`가 들어가지 못한다.
 - 그룹은 다음 로그인부터 적용된다. 모든 세션에서 로그아웃한 뒤 다시 로그인한다. 그 전에는 armo-collectd가 armod에 붙지 못한다(`armo status`의 `armod: denied`).
-- `sg armo`로 armo-collectd를 띄우면 armod에는 붙지만 쓰지 않는다. 주 그룹이 바뀌어 커널이 같은 사용자 프로세스의 `smaps_rollup`도 막고, `--pss`를 켜도 PSS가 `-`로 나온다.
+- `sg armo`로 armo-collectd를 띄우면 armod에는 붙지만 쓰지 않는다. 주 그룹이 바뀌어 커널이 같은 사용자 프로세스의 `smaps_rollup`도 막고, rqt의 `pss` 체크를 켜도 PSS가 `-`로 나온다.
 
 서비스가 받는 권한은 다섯이다. 설계 문서 5.1에 근거가 있다.
 

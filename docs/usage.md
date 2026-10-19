@@ -188,7 +188,7 @@ callbacks
 armo: collectd cpu 1.0% rss 6.9MiB, armod cpu 0.4% rss 22.5MiB, shm files 0 ring drops 0, probes missing 6, collect 1.7ms
 ```
 
-`probes missing`은 붙지 않은 지점 수다. 그 함수가 없는 라이브러리(예: Jazzy의 rmw 서비스 트레이스포인트)도 센다. 자세한 이유는 `armo check`가 보인다.
+`probes missing`은 붙지 않은 지점 수다. 그 함수가 없는 라이브러리도 센다. 자세한 이유는 `armo check`가 보인다.
 
 preload 프로세스의 표가 넘치면 `armo node cpu`의 표 바로 아래에 경고가 나온다.
 
@@ -226,7 +226,7 @@ window 381  1s
 | 명령 | 값 |
 | --- | --- |
 | `list` | 관측 중인 프로세스의 토픽 이름. 창 하나를 받고 끝난다 |
-| `info` | 전송(`ros`, `flux`, `flux`), 발행 노드와 구독 노드. 창 하나를 받고 끝난다 |
+| `info` | 전송(`ros`, `flux`), 발행 노드와 구독 노드. 창 하나를 받고 끝난다 |
 | `hz` | 발행 Hz, 기대 Hz, 발행 버림 수 |
 | `bw` | 발행 바이트율 |
 | `delay` | 홉 지연(발행에서 take까지) p50, p90, p99, max. `--dds`를 주면 `pub to dds p99`(`rclcpp_publish`에서 DDS write 시작까지), `dds write p99`(write 호출 시간) 열이 붙는다 |
@@ -246,7 +246,7 @@ armo record [--pid PID]... [--method M] [--kind events|windows] [옵션]
 
 | 옵션 | 뜻 | 기본 |
 | --- | --- | --- |
-| `--all`, `--pid PID`..., `--node RE`, `--topic RE`, `--exclude RE` | 대상(4절) | `--all` |
+| `--all`, `--pid PID`..., `--node RE`, `--topic RE`, `--exclude RE` | 대상 | `--all` |
 | `--method auto\|uprobe\|preload\|lttng` | `auto`는 프로세스마다 preload, lttng, uprobe 순 | `auto` |
 | `--kind events\|windows` | 이벤트 전부, 또는 창 스냅샷만 | `events` |
 | `-o DIR`, `--name NAME` | 위치와 이름 | `~/.local/share/armo/records/armo-<시작 시각>` |
@@ -265,7 +265,7 @@ armo record [--pid PID]... [--method M] [--kind events|windows] [옵션]
 - 한도는 늘 있다. 0이나 무한은 받지 않는다. 길이 상한은 `~/.config/armo/collectd.toml`의 `max_duration_s`(기본 7일)다.
 - 디스크 여유가 하한(기본 max(2 GiB, 파일시스템의 5%), `disk_floor_bytes`)보다 내려가면 기록이 `disk_floor`로 끝난다. 시작할 때 여유가 하한 + 1 GiB보다 작으면 시작하지 않는다.
 - 기록은 동시에 4개까지다.
-- `--node`, `--topic`, `--exclude`는 모니터링과 같은 뜻이다. 기록 중에 새로 뜬 노드도 이름이 맞으면 들어온다. 한 번 들어온 프로세스는 기록이 끝날 때까지 남는다.
+- `--node`, `--topic`, `--exclude`는 이름 전체에 맞추는 정규식이고, rqt Selection 탭의 같은 칸과 뜻이 같다. 기록 중에 새로 뜬 노드도 이름이 맞으면 들어온다. 한 번 들어온 프로세스는 기록이 끝날 때까지 남는다.
 
 ```bash
 armo record list                 # 진행 중인 기록과 최근 기록

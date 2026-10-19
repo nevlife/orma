@@ -31,8 +31,8 @@ The colcon packages and crates are grouped by where they run; colcon and cargo f
 ```bash
 rustup toolchain install nightly-2026-09-28 --profile minimal --component rust-src
 # bpf-linker needs LLVM 23, which Ubuntu 24.04 does not package; the release binary carries it.
-curl -LO https://github.com/aya-rs/bpf-linker/releases/download/v0.11.1/bpf-linker-aarch64-unknown-linux-musl.tar.zst
-tar -xpf bpf-linker-aarch64-unknown-linux-musl.tar.zst -C ~/.local/bin
+curl -LO https://github.com/aya-rs/bpf-linker/releases/download/v0.11.1/bpf-linker-$(uname -m)-unknown-linux-musl.tar.zst
+tar -xpf bpf-linker-$(uname -m)-unknown-linux-musl.tar.zst -C ~/.local/bin
 
 cd ~/ros2_ws   # the colcon workspace with armo under src/
 colcon build --symlink-install --packages-select armo_daemon armo_lttng
