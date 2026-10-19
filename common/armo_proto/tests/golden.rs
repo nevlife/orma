@@ -96,6 +96,29 @@ fn every_golden_round_trips() {
 }
 
 #[test]
+fn records_made_before_the_flux2_rename_still_read() {
+    let old = |rel: &str| {
+        let text = std::fs::read_to_string(dir().join("golden").join(rel)).unwrap();
+        let text = text
+            .replace("\"flux_contract\"", "\"flux2_contract\"")
+            .replace("\"transport\": \"flux\"", "\"transport\": \"flux2\"")
+            .replace("\"kind\": \"flux\"", "\"kind\": \"flux2\"");
+        assert!(
+            text.contains("flux2"),
+            "{rel} no longer carries a renamed name"
+        );
+        serde_json::from_str::<Value>(&text).unwrap()
+    };
+    let meta = read_json(&dir().join("golden/meta/meta.json"));
+    assert_eq!(reread::<RecordMeta>(&old("meta/meta.json")), meta);
+    let line = read_json(&dir().join("golden/window_line/line.json"));
+    assert_eq!(reread::<WindowLine>(&old("window_line/line.json")), line);
+    let mut wedged = line["snap"]["processes"][0].clone();
+    wedged["flux2_gpu_wedged"] = 700.into();
+    assert_eq!(reread::<Process>(&wedged)["flux_gpu_wedged"], 700);
+}
+
+#[test]
 fn every_client_op_has_a_golden() {
     for op in CLIENT_OPS {
         let found = goldens()
