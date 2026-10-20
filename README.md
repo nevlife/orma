@@ -1,94 +1,206 @@
-# orma
+# orma(Observation, Recording, Measurement, Analysis)
 
-Tracing, monitoring and benchmarking for ROS 2 systems, including those that carry data over flux. `ormad` loads eBPF probes on ROS 2's tracetools functions, the rcl and rclcpp functions that have none, flux's `flux_trace_*` functions and the scheduler, and serves the records and per-window aggregates to `orma-collectd` over a socket. The processes being watched are not changed or restarted. The name stands for Observation, Recording, Measurement, Analysis.
+ROS 2 시스템의 tracing, monitoring 도구다. flux 시스템도 대상이다. 관측 대상 process는 고치지 않는다.
 
-orma supports ROS 2 Humble and Jazzy. It does not attach to tracepoints those two distros lack, such as the rmw client and service tracepoints that tracetools has from Kilted on.
+지원 distro는 Humble과 Jazzy다. 두 distro에 없는 tracepoint(Kilted부터 tracetools에 있는 rmw client, service tracepoint 등)에는 붙지 않는다.
 
-How to install, run and troubleshoot orma, in Korean: [`docs/install.md`](docs/install.md), [`docs/usage.md`](docs/usage.md), [`docs/troubleshooting.md`](docs/troubleshooting.md).
+## 개요
 
-The colcon packages and crates are grouped by where they run; colcon and cargo find them at any depth, so the package names do not carry the group.
+| 기능 | 보는 것 | 명령 |
+| --- | --- | --- |
+| monitoring | topic과 flux channel의 rate, latency, loss, callback duration, node별 CPU, 장비 상태 | `orma node`, `orma topic`, `orma span`, `orma top`, rqt plugin |
+| tracing | message가 늦어진 segment(transport, wakeup, dispatch, callback, scheduling) | `orma record`, `orma analyze` |
+| chain, reaction time | topic 순서의 단계별 latency와 e2e, test message에 대한 첫 출력까지의 시간 | `orma record --chain`, `orma analyze --chain`, `orma react`, rqt |
+| 경보 | window마다 threshold 규칙 검사, `/diagnostics` 발행 | `orma_diagnostics` node |
 
-| Directory | Contents |
+- ROS topic과 flux channel을 같은 latency segment로 측정
+- collection method 셋(`preload`, `lttng`, `uprobe`). 어느 method든 같은 event, 같은 segment
+- 추가 수집(opt-in): CUDA driver API 호출(`--gpu`), DDS write(`--dds`), futex 대기(`--futex`). 코드에 표시한 구간(span)은 늘 수집
+
+| 문서 | 내용 |
 | --- | --- |
-| `collect/orma_ebpf` | The eBPF programs (Rust, aya-ebpf, pinned nightly) |
-| `collect/orma_preload` | `liborma_preload.so`, the LD_PRELOAD backend: it intercepts the ROS, rcl, rclcpp and flux functions in the process, the `orma_span` markers and, when a client asks, the CUDA driver calls and DDS writes, and writes records and aggregates to its shared memory file (C). cudart reaches libcuda through `dlsym` on its own handle and `cuGetProcAddress`, so the shim also wraps those two and hands out its CUDA functions in place of libcuda's. `include/orma_preload` holds the C headers: `orma_shm.h` and `orma_events.h`, generated from `orma_common` by cbindgen, `orma_emit.h`, the functions a backend defines, and `cuda_api.h`, the CUDA functions orma times with their prototypes, so that orma builds without the CUDA toolkit |
-| `collect/orma_lttng` | `liborma_lttng.so`, the LTTng backend: orma_preload's interception code with LTTng-UST providers `orma`, `flux` and, on Humble, `ros2` (C) |
-| `collect/orma_span` | `liborma_span.so` and `orma_span/span.h`: `orma_span_begin(name)`, `orma_span_end(name)` the C++ `orma::Span` and the Python decorator `orma_span.span`, empty functions that mark a stretch inside a callback; the name must be a string with static storage, since its address pairs the begin with its end |
-| `collect/orma_rclpy` | Calls the `ros_trace_*` functions rclpy does not call, loaded at Python start-up through `orma run` and `OrmaTrace` |
-| `daemon/orma_daemon` | `ormad` (Rust stable, aya), the colcon package; `systemd/`, the service files; `test/accuracy.py` and its callers and nodes |
-| `daemon/orma_collectd` | `orma-collectd`, the per-user daemon that collects from ormad, the shared memory files and LTTng, serves the clients and owns the recordings; `orma-analyze` |
-| `client/orma_cli` | The `orma` command (including `orma react`, which publishes test messages and times the first outputs), the `OrmaTrace` launch action and the Python client of orma-collectd |
-| `client/rqt_orma` | The rqt plugin: a client of orma-collectd |
-| `client/orma_diagnostics` | A ROS node and client of orma-collectd that checks each window against threshold rules (YAML) and publishes `/diagnostics` |
-| `common/orma_common` | Map keys and values shared by the eBPF programs and `ormad`; the event records every collection method writes and the LD_PRELOAD shared memory layout (`no_std`) |
-| `common/orma_proto` | Frames, JSON messages and their schema (`schema/v1.json`), golden messages, positioned records, and test doubles: `orma-fake-server` and a fake shared memory writer |
-| `integration` | The package `orma_integration`: integration tests against the real ormad, orma-collectd, shim and LTTng backend, their test nodes (rclcpp and rclpy chains, CPU burners), and `cost/`, the tool that measures each method's cost under ROS 2 load; `scripts/run_root_tests.sh` runs the tests |
-| `docs` | How to install, run and troubleshoot orma (Korean) |
-| `scripts` | Header generation and the pre-commit checks |
+| [`docs/install.md`](docs/install.md) | 빌드, ormad service, orma-collectd |
+| [`docs/usage.md`](docs/usage.md) | 명령별 사용법과 출력 |
+| [`docs/troubleshooting.md`](docs/troubleshooting.md) | 증상별 원인과 조치 |
+| [`docs/instrumentation.md`](docs/instrumentation.md) | execution flow별 instrumentation point, latency segment, distro와 method별 차이 |
 
-## Building
+## 빌드
 
 ```bash
 rustup toolchain install nightly-2026-09-28 --profile minimal --component rust-src
 # bpf-linker needs LLVM 23, which Ubuntu 24.04 does not package; the release binary carries it.
 curl -LO https://github.com/aya-rs/bpf-linker/releases/download/v0.11.1/bpf-linker-$(uname -m)-unknown-linux-musl.tar.zst
 tar -xpf bpf-linker-$(uname -m)-unknown-linux-musl.tar.zst -C ~/.local/bin
+sudo apt install liblttng-ust-dev lttng-tools babeltrace
 
 cd ~/ros2_ws   # the colcon workspace with orma under src/
-colcon build --symlink-install --packages-select orma_daemon orma_lttng
+colcon build --symlink-install --packages-up-to orma_cli rqt_orma orma_daemon orma_collectd orma_preload orma_lttng orma_rclpy orma_diagnostics
 ```
 
-`orma_lttng` needs `liblttng-ust-dev`; the LTTng method needs `lttng-tools`, `babeltrace` (1.5) and `setpriv` at run time.
+- 아키텍처: `aarch64`, `x86_64`(bpf-linker release 둘 다 제공). 측정과 테스트는 aarch64(Jetson Orin)에서만 수행
+- `liblttng-ust-dev`: `orma_lttng` 빌드에 필요
+- CUDA toolkit 불필요. orma가 시간을 재는 CUDA 함수의 prototype을 `orma_preload`가 가진다
+- `lttng-tools`, `babeltrace`(1.5), `setpriv`: `lttng` method 전용
+- ormad service 설치와 capability: [`docs/install.md`](docs/install.md)
 
-## Running
+## 수집 대상
 
-The probes need `CAP_BPF` and `CAP_PERFMON`; the eBPF run-time statistics also need `CAP_SYS_ADMIN`, and so does attaching a uprobe on some kernels (Ubuntu 7.0 refused it without). ormad serves `orma-collectd` on a unix socket that only root and the members of one group can open:
+| source | instrumentation point |
+| --- | --- |
+| ROS tracetools | `libtracetools.so`의 `ros_trace_*`(rcl, rclcpp, rmw가 호출) |
+| tracepoint 없는 ROS 함수 | `librcl.so`의 `rcl_wait`(entry, return), `rcl_timer_fini`. `librclcpp.so`의 C++ 함수(callback group, executor 소속, intra-process 연결). DDS serialized size |
+| rclpy | rclpy가 부르지 않는 callback event를 `orma_rclpy`가 대신 호출 |
+| flux | `libflux_ffi.so`의 `flux_trace_*`(trace contract 2) |
+| span | `liborma_span.so`의 `orma_span_begin`, `orma_span_end`(C, C++ `orma::Span`, Python `@span`) |
+| CUDA(opt-in) | `libcuda.so`의 driver 함수: kernel과 graph launch, 동기·비동기 copy, stream·context·event synchronize, 할당과 해제. Jetson의 `nvidia/`, `tegra/` 아래 library 포함 |
+| DDS write(opt-in) | Cyclone DDS의 `dds_write`, `dds_write_ts`, `dds_writecdr`, `dds_forwardcdr`. Fast DDS의 `DataWriter::write`(`libfastrtps.so` 2.x, `libfastdds.so` 3.x) |
+| kernel | `sched_switch`, `sched_wakeup`. futex 대기(opt-in): `sys_enter_futex`/`sys_exit_futex`, `futex_waitv` |
+
+| method | 부착 방법 | 부착 시점 |
+| --- | --- | --- |
+| `preload` | `liborma_preload.so`가 같은 이름의 함수로 가로챈 뒤 원래 함수 호출 | process 시작 시 `LD_PRELOAD` |
+| `lttng` | `liborma_lttng.so`가 같은 방법으로 가로채 LTTng event 생성 | process 시작 시 `LD_PRELOAD`. session은 orma-collectd가 관리 |
+| `uprobe` | kernel이 함수 입구에 breakpoint, eBPF 프로그램이 수신 | 실행 중인 process에 즉시 |
+
+```text
+ROS/flux process --uprobe-----------------> ormad --/run/orma/ormad.sock--> orma-collectd --> orma, rqt_orma, orma_diagnostics
+ROS/flux process --shared memory, LTTng-------------------------------> orma-collectd --> recording directory
+kernel           --sched_switch, sched_wakeup, futex--> ormad
+```
+
+| process | 역할 |
+| --- | --- |
+| `ormad` | system service. eBPF probe 부착, record와 window별 aggregate를 orma-collectd에 전달. 시스템은 바꾸지 않는다 |
+| `orma-collectd` | 사용자별 daemon. ormad, shared memory 파일, LTTng에서 수집하고 window마다 aggregate, recording 저장. client가 닫혀도 recording 유지 |
+| `orma`, `rqt_orma`, `orma_diagnostics` | orma-collectd의 client |
+
+## 사용
+
+workspace를 source한 shell에서 실행한다. 옵션과 출력은 [`docs/usage.md`](docs/usage.md)에 있다.
+
+### 상태 확인
 
 ```bash
-sudo install/orma_daemon/bin/ormad [--socket /run/orma/ormad.sock] [--group orma]
+orma status     # orma-collectd, ormad, selection, recordings
+orma check      # this machine's assumptions; exit code 1 on any fail
 ```
 
-To run ormad as a system service, as the user `orma` with only the capabilities it needs (`CAP_BPF`, `CAP_PERFMON`, `CAP_SYS_ADMIN`, plus `CAP_SYS_PTRACE` for other users' `/proc/<pid>/maps` and `CAP_DAC_READ_SEARCH` for tracefs), run `daemon/orma_daemon/systemd/install.sh` from a shell that sourced the workspace, then `sudo systemctl enable --now ormad`. The unit also sandboxes ormad: a read-only file system, no network sockets, no namespaces, a system call allow list (`systemd-analyze security ormad` scores it 3.4, from 7.2 without). The script copies ormad to `/usr/local/sbin`, so run it again and restart the service after a rebuild. It adds you to the group `orma`, which applies from your next login.
+### 관측 대상 실행
 
-`orma-collectd` asks it for probe sets per process (`discovery` on every process; `hot`, `rclcpp_symbols`, `bandwidth`, `sched`, `names`, `gpu`, `dds` and `futex` on the selected ones), for the records of some processes and for a window of aggregates. When the connection closes, ormad takes away what that connection asked for. Without the group ormad does not start.
+```bash
+orma run -- ros2 run demo_nodes_cpp talker               # preload (default)
+orma run --method lttng -- ros2 launch my_pkg my.launch.py
+eval "$(orma env)"                                       # into this shell
+```
 
-| Set | Attaches to |
-| --- | --- |
-| `discovery` | the init, registration and fini tracepoints of `libtracetools.so`, `rcl_timer_fini` in `librcl.so`, flux's `channel_init`, `endpoint_init` and `gpu_wedged` (a flux build from before GPU wedging lacks the last, and `probes_missing` says so) |
-| `hot` | publish, take, callback and executor tracepoints, `rcl_wait` entry and return, the other `flux_trace_*` functions, `orma_span_begin` and `orma_span_end` in `liborma_span.so` (the span name is read on the begin) |
-| `rclcpp_symbols` | rclcpp's C++ functions that put callbacks in groups and groups in executors, and the intra-process wiring, found by the front of the mangled name for rclcpp 16 or 28 and later |
-| `bandwidth` | the serialized size in Fast DDS (`TypeSupport::serialize`) and Cyclone DDS (`serdata_rmw_from_sample`, only with the dbgsym package) |
-| `sched` | `sched_switch` and `sched_wakeup`: CPU wait of the selected processes' threads and off-CPU time inside a callback |
-| `gpu` | entry and return of the CUDA driver functions in `libcuda.so`: kernel and graph launches, synchronous and asynchronous copies (`_v2` names and their `_ptds`/`_ptsz` variants; the byte count from the arguments, width times height (times depth) for 2D and 3D copies), stream, context and event synchronize, allocation and free; one record per call with its duration, bytes and `CUresult` |
-| `dds` | entry and return of Cyclone DDS's `dds_write`, `dds_write_ts`, `dds_writecdr` and `dds_forwardcdr` (`libddsc.so`) and Fast DDS's `DataWriter::write` overloads (`libfastrtps.so` 2.x, `libfastdds.so` 3.x); one record per call with the writer and its duration |
-| `futex` | `syscalls:sys_enter_futex`/`sys_exit_futex` and the `futex_waitv` pair, for the selected processes' threads: each wait command (`FUTEX_WAIT`, `FUTEX_WAIT_BITSET`, `FUTEX_LOCK_PI`, `FUTEX_LOCK_PI2`, `FUTEX_WAIT_REQUEUE_PI`) and each `futex_waitv`, recorded at the return with the address, duration, command and return value |
-| `names` | rclcpp's `Executor::execute_any_executable`, read for the node of each callback; only on selected processes ormad attached to after their nodes were made, until their callbacks have nodes |
+launch 파일에서는 `OrmaTrace` action을 node보다 앞에 둔다.
 
-ormad finds the libraries itself: it reads `/proc/<pid>/maps` and attaches to each `libtracetools.so`, `librcl.so`, `librclcpp.so`, `libflux_ffi.so.<abi>`, DDS library, `libcuda.so` (also Jetson's under `nvidia/` or `tegra/`) and `liborma_span.so` the processes have loaded, through `/proc/<pid>/root`, so a build-tree copy, another install or a container's own file is traced as that file. It decides each process's ROS distro from `ROS_DISTRO` or the library path, and attaches Humble's `ros_trace_rmw_publish(message)` form there. A library rebuilt while the process runs is reported and skipped.
+```python
+from orma_cli.launch import OrmaTrace
+from launch import LaunchDescription
+from launch_ros.actions import Node
 
-ormad attaches only to a `libflux_ffi.so` that exports `flux_trace_contract_2`. A library from another flux version carries other arguments, and ormad refuses it rather than misreading them.
 
-For a quick look without orma-collectd, the text mode prints one row per callback each window:
+def generate_launch_description():
+    return LaunchDescription([
+        OrmaTrace(method="preload", record=True, max_duration_s=600),
+        Node(package="demo_nodes_cpp", executable="talker"),
+    ])
+```
+
+`uprobe` method는 환경변수 불필요. 실행 중인 process를 `--pid`, `--node`, `--topic`으로 고르면 부착된다.
+
+### monitoring
+
+```bash
+orma node cpu                       # CPU, busy time, callback rate and RSS per node
+orma node cb /talker                # callbacks of a node
+orma node sub /listener /chatter    # subscriptions of a node
+orma topic hz /scan                 # publish rate, measured in the publishers
+orma topic delay /scan --dds        # publish to take, and to the DDS write
+orma span                           # spans marked in code
+orma top                            # the machine: CPU clocks, temperatures, network, GPUs
+```
+
+- `ros2 node`, `ros2 topic`처럼 대상을 이름으로 지정
+- window(기본 1초)마다 표 출력
+
+### recording과 분석
+
+```bash
+orma record --node '/camera/.*' --max-duration 60
+orma record list
+orma analyze ~/.local/share/orma/records/orma-<start time>
+orma export ~/.local/share/orma/records/orma-<start time> -o out.csv
+```
+
+- `orma record`: event 전부(`--kind events`) 또는 window snapshot만(`--kind windows`). 길이와 크기 한도 필수
+- `orma analyze`: transport, wakeup, dispatch, callback segment로 나눈 tail 요약과 CSV
+
+### chain과 reaction time
+
+```bash
+orma record --max-duration 60 --chain perception=/camera/image,/detections,/tracks
+orma react --input /obstacle --type my_msgs/msg/Obstacle --msg '{x: 1.0}' --output /trajectory
+```
+
+- chain: 원천 topic의 publish부터 뒤 topic의 publish까지 단계별 시간. 마지막 단계가 e2e
+- `orma react`: 입력 topic에 test message를 publish하고 출력 topic마다 첫 publish까지의 시간 측정. orma가 topic에 publish하는 유일한 명령
+
+### span
+
+```cpp
+#include <orma_span/span.h>
+
+orma::Span s("preprocess");   // begin at construction, end at destruction
+```
+
+- callback 안의 구간을 코드에 표시하면 `orma span`에 그 길이가 나온다
+- orma가 붙지 않은 process에서는 빈 함수. 호출 비용만 든다
+
+### /diagnostics
+
+```bash
+ros2 launch orma_diagnostics orma_diagnostics.launch.py rules:=/path/rules.yaml
+```
+
+window마다 threshold 규칙(YAML)을 검사해 `/diagnostics`를 publish한다.
+
+### rqt
+
+```bash
+rqt --standalone rqt_orma.plugin.Orma
+```
+
+CLI와 같은 orma-collectd에 붙으므로 선택, recording, 상태를 공유한다.
+
+### ormad 단독
+
+orma-collectd 없이 callback 표만 볼 때 쓴다. window마다 callback당 한 줄.
 
 ```bash
 sudo install/orma_daemon/bin/ormad --pid PID [--interval 1] [--lib PATH]...
 ```
 
-A ROS callback is named by its registered symbol or by the topic it took from, so it is named even when ormad attached after the node started. A flux callback is keyed by `executor:entry` and named by the key its channel's signpost holds.
-
 ## LTTng
 
-`liborma_lttng.so` catches the same functions as `liborma_preload.so` (the interception code is one static library) and turns each call into an LTTng event:
+`liborma_lttng.so`는 `liborma_preload.so`와 같은 함수를 가로채고(같은 정적 library), 호출마다 LTTng event를 낸다.
 
-| Provider | Events |
+| provider | event |
 | --- | --- |
-| `orma` | every orma event of a ROS function and of the rcl and rclcpp functions without one, the spans (`span_begin`, `span_end`), and the CUDA driver calls (`cuda_call`) and DDS writes (`dds_write`) while the options word of the process's `.lttng` file asks for them; the payload is the orma record's payload as 64-bit words (`p`) and its strings (`s0`, `s1`), so orma-collectd reads them back without a table per event. `orma:missing` names an intercept point whose original function was not found |
-| `flux` | each `flux_trace_*` function of trace contract 2, its arguments as fields |
-| `ros2` | only where `libtracetools.so` has no LTTng (Humble): the ROS events in tracetools 4.1's own layout, so ros2_tracing's tools read them. Elsewhere `libtracetools.so` emits them |
+| `orma` | ROS 함수와 tracepoint 없는 rcl·rclcpp 함수의 orma event 전부, span(`span_begin`, `span_end`). CUDA driver 호출(`cuda_call`)과 DDS write(`dds_write`)는 client가 켰을 때만. payload는 64비트 word(`p`)와 문자열(`s0`, `s1`). `orma:missing`은 원래 함수를 찾지 못한 point |
+| `flux` | trace contract 2의 `flux_trace_*` 함수 각각. 인자가 field |
+| `ros2` | `libtracetools.so`에 LTTng가 없는 Humble 전용. tracetools 4.1 layout이라 ros2_tracing 도구로 읽힌다 |
 
-`orma run --method lttng` and `orma env --method lttng` put the library in `LD_PRELOAD` and set `LTTNG_HOME=$XDG_RUNTIME_DIR/orma/lttng`, where orma-collectd runs its session daemon as a child. orma-collectd keeps at most one session, rotates it once a window, copies each chunk into the `ctf/` directory of every recording with method `lttng`, reads the chunk with babeltrace into orma records for monitoring and deletes it. Events the tracer discarded are counted from the session's channel statistics. `orma-analyze` reads a recording's `ctf/` the same way.
+`orma run --method lttng`, `orma env --method lttng`:
 
-Without orma-collectd, any session works:
+- `LD_PRELOAD`에 `liborma_lttng.so` 추가
+- `LTTNG_HOME=$XDG_RUNTIME_DIR/orma/lttng` 설정. orma-collectd가 이 위치에 session daemon을 자식으로 실행
+- session은 하나. window마다 rotate
+- chunk는 `lttng` method인 recording의 `ctf/`에 복사하고, babeltrace로 읽어 monitoring에 쓴 뒤 삭제
+- tracer가 버린 event는 channel 통계로 집계
+
+orma-collectd 없이 직접 session을 만들어도 된다.
 
 ```bash
 lttng create t && lttng enable-event --userspace 'orma:*,flux:*,ros2:*' && lttng start
@@ -96,41 +208,38 @@ LD_PRELOAD=install/orma_lttng/lib/liborma_lttng.so ros2 run <package> <node>
 lttng stop && babeltrace ~/lttng-traces/t-*
 ```
 
-A program that links flux statically calls the functions directly and is not seen.
+flux를 정적으로 링크한 프로그램은 함수를 직접 호출하므로 보이지 않는다.
 
-## Checks
+## 실시간 영향
 
-`pre-commit run --all-files`, and after a build, as a user with sudo, in a shell that has sourced the workspace:
+Orin(6.8 RT kernel), SCHED_FIFO 부하(rclcpp Pub -> Relay -> Sink chain, component container, fanout, rclpy chain)에서 아무것도 붙이지 않은 상태와 비교한 값이다. latency는 publish stamp부터 Sink callback 진입까지다.
 
-```bash
-daemon/orma_daemon/test/accuracy.py [--ormad PATH] [--only CASE]... [--humble]
-```
+| method | p99 증가 | 부하 process CPU 증가 | 그 밖의 CPU |
+| --- | --- | --- | --- |
+| `preload` | 0-5 us | 코어의 5% 이하 | - |
+| `lttng` | 10-22 us | 코어의 7-11% | session daemon, consumer 1-3% |
+| `uprobe` | 30-80 us | 코어의 14-30% | eBPF 실행 2.2-2.8%, ormad 0.1-0.6% |
 
-`accuracy.py` starts ormad on a private socket, talks to it as orma-collectd does, and fails unless every record and aggregate row matches what the test processes did:
+- 실시간 시스템은 `preload`. `orma run`, `orma env`의 기본값
+- uprobe는 같은 함수를 부르는 thread끼리 kernel 안에서 직렬화. 1 kHz 이상 RT 부하에는 부적합
+- uprobe 부착 probe당 약 0.25 s, 해제 약 1.1 s. 선택 후 첫 값까지 수 초
+- 선택 없이 모든 process를 볼 때는 uprobe 미부착
+- orma 자체 비용은 `orma status` 마지막 줄(orma-collectd와 ormad의 CPU, RSS, ring loss)
 
-- `ros_calls`, `flux_calls`: every tracepoint and `flux_trace_*` function called a known number of times with known arguments, from a process that maps a private copy of the library; nested, recursive and out-of-order callbacks on four threads;
-- `flux_real`: the C caller (`flux_caller.c`) on the installed flux;
-- `cpp_node`, `cpp_fastdds`, `py_node`: `node.cpp` and `node.py` (with `orma_rclpy`) run timers, a subscription and a service a counted number of times; Fast DDS adds the serialized sizes;
-- `sched`: callbacks that sleep and callbacks that spin, timed through the uprobe stack and through a shim-style current-callback word;
-- `select`: a second process on the same library file has no breakpoint and no records, and detaching removes the breakpoint;
-- `gpu_calls`: every driver function of the `gpu` set in a stand-in `libcuda.so.1` (`fake_cuda.c`), with its byte count and result, from two threads;
-- `spans`: nested spans through `liborma_span.so` (the built one, else `fake_span.c`);
-- `futex`: a thread's `FUTEX_WAIT`s with their results and durations, a `futex_waitv` and a condition variable wait (`futex_caller.c`);
-- `dds_cyclone`, `dds_fastdds`: `node.cpp` with a DDS write next to each publish;
-- `selfcheck`: two nodes inside a selfcheck window;
-- `humble_cpp`, `humble_py` (`--humble`): the same nodes in the `flux-humble` container, attached through `/proc/<pid>/root`.
+## package
 
-`colcon test --packages-select orma_lttng` (with a private session daemon each):
+| package | 설치되는 것 |
+| --- | --- |
+| `orma_daemon` | `ormad`, systemd service 파일 |
+| `orma_collectd` | `orma-collectd`, `orma-analyze` |
+| `orma_cli` | `orma` 명령, launch action `OrmaTrace` |
+| `rqt_orma` | rqt plugin |
+| `orma_diagnostics` | `/diagnostics`를 publish하는 node `orma_diagnostics` |
+| `orma_span` | `liborma_span.so`, header `orma_span/span.h`, Python module `orma_span` |
+| `orma_preload` | `liborma_preload.so` |
+| `orma_lttng` | `liborma_lttng.so` |
+| `orma_rclpy` | rclpy용 module |
 
-- `lttng_events`: every ROS and flux function called a known number of times arrives as often as its orma or flux event, and as often again as a ros2 event; spans, and CUDA and DDS calls into stand-in libraries (`orma_preload/test/cuda_stub.c`, `dds_stub.c`), arrive with their keys, names, sizes and writers, and none before the caller turns them on;
-- `lttng_flux`: the flux caller (`daemon/orma_daemon/test/flux_caller.c`) on the installed flux;
-- `lttng_agreement`: a C++ pair, an rclpy pair with `orma_rclpy` and the flux caller, both libraries in each process, recorded by a real orma-collectd with methods `preload` and `lttng` at once; every event count in the window is the same;
-- `lttng_lifecycle`: a recording outlives its killed client; a burst's kept and discarded events add up to the calls; after orma-collectd or orma-collectd and its guard are killed the session daemon is gone and the recording truncated; a running process registers again with the next daemon.
+## 라이선스
 
-`collect/orma_lttng/test/humble_agreement.py IMAGE HUMBLE_WS` runs the agreement in a Humble container (LTTng there, LD_PRELOAD read by the host's orma-collectd).
-
-`cargo test` (or `scripts/cargo.sh test`) also checks the contracts: the committed C headers, `schema/v1.json` and golden frames against what the code generates now (`scripts/gen_headers.sh` rewrites them), every struct's field offsets in C against Rust, `orma_emit.h` against the event catalog, and every golden message through its Rust type and through `common/orma_proto/test/read_golden.py`, which validates it against the schema (`python3-jsonschema`).
-
-## License
-
-MIT ([`LICENSE`](LICENSE)), except `orma_ebpf`, which is MIT or GPL-2.0 at your choice ([`LICENSE-GPL2`](LICENSE-GPL2)). The kernel lets only GPL-compatible programs call helpers such as `bpf_probe_read_user_str`, and the programs declare `Dual MIT/GPL` to it.
+MIT([`LICENSE`](LICENSE)). `orma_ebpf`만 MIT 또는 GPL-2.0 선택([`LICENSE-GPL2`](LICENSE-GPL2)). kernel이 `bpf_probe_read_user_str` 같은 helper를 GPL 호환 프로그램에만 허용하기 때문이다.

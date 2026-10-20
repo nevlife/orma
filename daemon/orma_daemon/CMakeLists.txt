@@ -16,7 +16,7 @@ if(NOT CARGO)
 endif()
 find_program(BPF_LINKER bpf-linker)
 if(NOT BPF_LINKER)
-  message(FATAL_ERROR "bpf-linker not on PATH: see README.md, Building")
+  message(FATAL_ERROR "bpf-linker not on PATH: see the build section of README.md")
 endif()
 
 set(WORKSPACE ${CMAKE_CURRENT_SOURCE_DIR}/../..)

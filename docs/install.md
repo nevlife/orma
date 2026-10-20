@@ -1,23 +1,14 @@
 # 설치
 
-지원하는 ROS 2 배포판은 Humble과 Jazzy다.
+지원 ROS 2 distro: Humble, Jazzy
 
-orma는 프로세스 셋으로 돈다.
-
-| 프로세스 | 권한 | 띄우는 것 |
+| process | 권한 | 실행 |
 | --- | --- | --- |
-| `ormad` | eBPF 권한을 가진 시스템 서비스(사용자 `orma`) | systemd 시스템 유닛 `ormad.service`. 부팅할 때 켠다 |
-| `orma-collectd` | 사용자 권한. 사용자마다 하나 | `orma` 명령이나 rqt 플러그인이 처음 붙을 때 띄운다. systemd 사용자 유닛으로 둘 수도 있다 |
-| 관측 대상 | 그대로 | 사용자가 띄운다. preload와 LTTng 방식은 띄울 때 환경변수를 넣는다([usage.md](usage.md)) |
-
-```text
-ROS 프로세스 --uprobe--> ormad --/run/orma/ormad.sock--> orma-collectd --> orma, rqt_orma
-ROS 프로세스 --공유 메모리, LTTng-----------------------> orma-collectd
-```
+| `ormad` | eBPF 권한을 가진 system service(사용자 `orma`) | systemd system unit `ormad.service`. 부팅 시 시작 |
+| `orma-collectd` | 사용자 권한. 사용자당 하나 | `orma` 명령이나 rqt plugin이 처음 붙을 때 자동 시작. systemd user unit도 가능 |
+| 관측 대상 | 그대로 | 사용자가 직접 실행. `preload`, `lttng` method는 `orma run`이나 `OrmaTrace`로 실행([usage.md](usage.md) 3절) |
 
 ## 1. 빌드
-
-eBPF 프로그램을 빌드하려면 nightly 툴체인과 `bpf-linker`가 필요하다.
 
 ```bash
 rustup toolchain install nightly-2026-09-28 --profile minimal --component rust-src
@@ -25,17 +16,18 @@ curl -LO https://github.com/aya-rs/bpf-linker/releases/download/v0.11.1/bpf-link
 tar -xpf bpf-linker-$(uname -m)-unknown-linux-musl.tar.zst -C ~/.local/bin
 sudo apt install liblttng-ust-dev lttng-tools babeltrace
 
-cd ~/flux_devel/flux_ws
-colcon build --symlink-install --packages-up-to orma_cli rqt_orma orma_daemon orma_collectd orma_preload orma_lttng orma_rclpy
+cd ~/ros2_ws   # the colcon workspace with orma under src/
+colcon build --symlink-install --packages-up-to orma_cli rqt_orma orma_daemon orma_collectd orma_preload orma_lttng orma_rclpy orma_diagnostics
 source install/setup.bash
 ```
 
-- `bpf-linker`는 LLVM 23이 필요하다. Ubuntu 24.04에는 그 패키지가 없어 릴리스 바이너리를 쓴다.
-- `lttng-tools`, `babeltrace`(1.5)는 LTTng 방식을 쓸 때만 필요하다.
+- nightly toolchain, `bpf-linker`: eBPF 프로그램 빌드용
+- `bpf-linker`: LLVM 23 필요. Ubuntu 24.04에 package가 없어 release binary 사용
+- `lttng-tools`, `babeltrace`(1.5): `lttng` method 전용
 
-## 2. ormad 서비스
+## 2. ormad service
 
-워크스페이스를 source한 셸에서 돌린다.
+workspace를 source한 shell에서 실행한다.
 
 ```bash
 src/orma/daemon/orma_daemon/systemd/install.sh
@@ -44,62 +36,50 @@ sudo systemctl enable --now ormad
 
 `install.sh`가 하는 일:
 
-1. `ormad`를 `/usr/local/sbin/ormad`에 복사한다.
-2. 사용자와 그룹 `orma`를 만든다(`/etc/sysusers.d/orma.conf`).
-3. 유닛을 `/etc/systemd/system/ormad.service`에 둔다.
-4. 지금 사용자를 그룹 `orma`에 넣는다.
+1. `ormad`를 `/usr/local/sbin/ormad`에 복사
+2. 사용자와 group `orma` 생성(`/etc/sysusers.d/orma.conf`)
+3. unit을 `/etc/systemd/system/ormad.service`에 설치
+4. 현재 사용자를 group `orma`에 추가
 
-- 복사하는 이유: 홈 디렉터리(`0750`) 아래의 워크스페이스에는 서비스 사용자 `orma`가 들어가지 못한다.
-- 그룹은 다음 로그인부터 적용된다. 모든 세션에서 로그아웃한 뒤 다시 로그인한다. 그 전에는 orma-collectd가 ormad에 붙지 못한다(`orma status`의 `ormad: denied`).
-- `sg orma`로 orma-collectd를 띄우면 ormad에는 붙지만 쓰지 않는다. 주 그룹이 바뀌어 커널이 같은 사용자 프로세스의 `smaps_rollup`도 막고, rqt의 `pss` 체크를 켜도 PSS가 `-`로 나온다.
+- 복사 이유: service 사용자 `orma`는 홈 디렉터리(`0750`) 아래 workspace에 접근 불가
+- group은 다음 로그인부터 적용. 모든 session에서 로그아웃 후 다시 로그인한다. 그 전에는 `orma status`가 `ormad: denied`
+- `sg orma`로 orma-collectd 실행 금지. 주 group이 바뀌어 같은 사용자 process의 `smaps_rollup`도 막히고, rqt의 `pss` 체크를 켜도 PSS가 `-`로 나온다
 
-서비스가 받는 권한은 다섯이다. 설계 문서 5.1에 근거가 있다.
+service의 capability:
 
-| 권한 | 쓰는 곳 |
+| capability | 용도 |
 | --- | --- |
-| `CAP_BPF`, `CAP_PERFMON` | eBPF 프로그램을 올리고 uprobe와 트레이스포인트에 붙인다 |
-| `CAP_SYS_ADMIN` | eBPF 실행 시간 통계(`BPF_ENABLE_STATS`). Ubuntu 7.0 커널은 이것 없이 uprobe의 `perf_event_open`도 거부했다(`EACCES`) |
-| `CAP_SYS_PTRACE` | 다른 사용자 프로세스의 `/proc/<pid>/maps`, `/proc/<pid>/root`. 없으면 아무 프로브도 붙지 않는다 |
-| `CAP_DAC_READ_SEARCH` | tracefs(`/sys/kernel/tracing`)의 이벤트 `format`, `id`. 없으면 sched 프로브가 꺼진다 |
+| `CAP_BPF`, `CAP_PERFMON` | eBPF 프로그램 로드, uprobe와 tracepoint 부착 |
+| `CAP_SYS_ADMIN` | eBPF 실행 시간 통계(`BPF_ENABLE_STATS`). Ubuntu 7.0 kernel은 이것 없이 uprobe의 `perf_event_open`도 거부(`EACCES`) |
+| `CAP_SYS_PTRACE` | 다른 사용자 process의 `/proc/<pid>/maps`, `/proc/<pid>/root`. 없으면 probe 부착 불가 |
+| `CAP_DAC_READ_SEARCH` | tracefs(`/sys/kernel/tracing`)의 event `format`, `id`. 없으면 sched probe 비활성 |
 
-유닛은 ormad를 가둔다. 파일 시스템은 읽기 전용(`/run/orma` 제외)이고, 소켓은 unix만, namespace 생성 금지, 시스템 호출은 `@system-service`에 `bpf`, `perf_event_open`만 더한 목록이다(그 밖은 `EPERM`). `ProtectProc=invisible`, `ProcSubset=pid`는 다른 사용자의 `/proc/<pid>/maps`를 가리므로 쓰지 않는다. 5.11 미만 커널(JetPack 5)은 맵 메모리를 `RLIMIT_MEMLOCK`에 달아서 `LimitMEMLOCK=infinity`를 둔다. `install.sh`가 끝에 `systemd-analyze security ormad.service`의 점수를 찍는다(3.4, 가두기 전 7.2).
+unit의 sandbox:
+
+- file system은 읽기 전용(`/run/orma` 제외), socket은 unix만, namespace 생성 금지
+- system call은 `@system-service`에 `bpf`, `perf_event_open`만 더한 목록. 그 밖은 `EPERM`
+- `ProtectProc=invisible`, `ProcSubset=pid`는 쓰지 않는다. 다른 사용자의 `/proc/<pid>/maps`를 가린다
+- `LimitMEMLOCK=infinity`: 5.11 미만 kernel(JetPack 5)은 map memory를 `RLIMIT_MEMLOCK`에 단다
+- `install.sh`가 끝에 `systemd-analyze security ormad.service` 점수를 출력(3.4, sandbox 전 7.2)
 
 확인:
 
 ```bash
 systemctl status ormad
 orma status            # ormad: connected
-orma check         # fail이 없으면 종료 코드 0
+orma check             # exit code 0 when nothing fails
 ```
 
 ### 다시 빌드한 뒤
 
-서비스는 복사한 실행 파일을 쓴다. ormad를 다시 빌드하면 복사와 재시작을 다시 한다.
+service는 복사한 실행 파일을 쓰므로 복사와 재시작을 다시 한다.
 
 ```bash
 src/orma/daemon/orma_daemon/systemd/install.sh
 sudo systemctl restart ormad
 ```
 
-### 개발 중
-
-- 서비스가 떠 있으면 `sudo ormad`는 "another ormad serves it"로 끝난다. 같은 소켓을 두 ormad가 나눠 쓰지 않게 하기 위해서다.
-- 빌드 트리의 ormad를 쓰려면 서비스를 끄고 전경에서 띄운다.
-
-```bash
-sudo systemctl stop ormad
-sudo install/orma_daemon/bin/ormad
-```
-
-- 다른 소켓에 하나 더 띄울 수도 있다. 테스트가 쓰는 방법이다.
-
-```bash
-sudo install/orma_daemon/bin/ormad --socket /tmp/ormad.sock --group "$(id -gn)"
-```
-
-- 통합 테스트(`orma_integration`)는 `/run/orma/ormad.sock`에 이미 ormad가 있으면 그것을 쓴다. 서비스가 떠 있으면 복사한 실행 파일로 시험하게 되므로, ormad를 고친 뒤에는 위의 "다시 빌드한 뒤"를 먼저 한다.
-
-### 지우기
+### 제거
 
 ```bash
 sudo systemctl disable --now ormad
@@ -110,15 +90,17 @@ sudo userdel orma
 
 ## 3. orma-collectd
 
-따로 설치하지 않아도 된다. `orma` 명령이나 rqt 플러그인이 붙을 때 없으면 띄운다. 기록도 클라이언트도 없는 상태가 5분 이어지면 스스로 끝난다.
+따로 설치하지 않는다.
 
-systemd 사용자 유닛으로 두려면:
+- 시작: `orma` 명령이나 rqt plugin이 붙을 때 없으면 자동 시작
+- 종료: recording도 client도 없는 상태가 5분 지속되면 자동 종료
+- socket: `$XDG_RUNTIME_DIR/orma/collectd.sock`. `XDG_RUNTIME_DIR`이 없는 shell(예: `docker exec --user`)에서는 사용 불가
+- 설정 파일: `~/.config/orma/collectd.toml`. recording 한도의 상한([usage.md](usage.md) 5절)
+
+systemd user unit으로 두려면:
 
 ```bash
 systemctl --user link install/orma_collectd/share/orma_collectd/systemd/orma-collectd.service
 ```
 
-유닛이 있으면 클라이언트는 `systemctl --user start orma-collectd`로 띄운다.
-
-- 소켓은 `$XDG_RUNTIME_DIR/orma/collectd.sock`이다. `XDG_RUNTIME_DIR`이 없는 셸(예: `docker exec --user`)에서는 붙지 못한다.
-- 설정 파일은 `~/.config/orma/collectd.toml`이다. 기록 한도의 상한을 둔다([usage.md](usage.md)의 기록 절).
+unit이 있으면 client가 `systemctl --user start orma-collectd`로 시작한다.
