@@ -1,0 +1,11 @@
+[Unit]
+Description=orma-collectd, orma's per-user collector and recorder
+
+[Service]
+ExecStart=@CMAKE_INSTALL_PREFIX@/bin/orma-collectd
+# The guard cleans up after orma-collectd dies and ends at end of input; the session daemon
+# ends with orma-collectd. Killing the whole cgroup would take the guard down before it cleans.
+KillMode=process
+
+[Install]
+WantedBy=default.target

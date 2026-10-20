@@ -1,0 +1,25 @@
+[package]
+name = "orma-ebpf"
+version.workspace = true
+edition.workspace = true
+# The kernel grants the probe_read helpers only to GPL-compatible programs.
+license = "MIT OR GPL-2.0"
+publish.workspace = true
+
+[dependencies]
+orma-common = { workspace = true }
+aya-ebpf = { workspace = true }
+
+[[bin]]
+name = "orma"
+path = "src/main.rs"
+test = false
+bench = false
+
+[lints.rust]
+# aya-build passes --cfg bpf_target_arch for the host the probes run on.
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(bpf_target_arch, values("x86_64"))'] }
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+undocumented_unsafe_blocks = "warn"

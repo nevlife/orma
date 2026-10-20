@@ -1,5 +1,5 @@
-# The daemon's toolchain. The eBPF crate needs nightly; armo_daemon's build script names that one
-# (EBPF_TOOLCHAIN in armo_daemon/build.rs).
+# The daemon's toolchain. The eBPF crate needs nightly; orma_daemon's build script names that one
+# (EBPF_TOOLCHAIN in orma_daemon/build.rs).
 [toolchain]
 channel = "1.98.1"
 components = ["rustfmt", "clippy"]

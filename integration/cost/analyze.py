@@ -145,7 +145,7 @@ def main():
             print(
                 f"{'method':24} {'p50':>7} {'p90':>7} {'p99':>7} {'p99.9':>8} {'max':>8} "
                 f"{'>n99%':>6} {'>n999%':>6} {'>1ms%':>6} {'lost':>5} {'cpuW':>6} "
-                f"{'armod':>6} {'bpf%':>6} {'lttng':>6} {'csw/s':>7} {'pssMB':>6}  p99.9 reps"
+                f"{'ormad':>6} {'bpf%':>6} {'lttng':>6} {'csw/s':>7} {'pssMB':>6}  p99.9 reps"
             )
         if "pending" in r:
             print(f"{r['method']:24} pending: {r['pending']}")
@@ -155,7 +155,7 @@ def main():
             f"{r['method']:24} {r['p50']:7.1f} {r['p90']:7.1f} {r['p99']:7.1f} "
             f"{r['p999']:8.1f} {r['max']:8.1f} {r['gt_none_p99_pct']:6.2f} "
             f"{r['gt_none_p999_pct']:6.3f} {r['gt_1ms_pct']:6.3f} {r['lost']:5d} "
-            f"{r.get('cpu_workload', 0):6.1f} {r.get('cpu_armod', 0):6.2f} "
+            f"{r.get('cpu_workload', 0):6.1f} {r.get('cpu_ormad', 0):6.2f} "
             f"{r.get('bpf_cpu_pct', 0):6.2f} {sess:6.2f} {r.get('csw_per_s', 0):7.0f} "
             f"{r.get('pss_workload_kb', 0) / 1024:6.1f}  "
             + " ".join(f"{x:.0f}" for x in r["p999_reps"])

@@ -10,7 +10,7 @@ import sys
 
 from ament_index_python.packages import get_package_prefix
 
-LIB = os.path.join(get_package_prefix("armo_integration"), "lib/armo_integration")
+LIB = os.path.join(get_package_prefix("orma_integration"), "lib/orma_integration")
 PY = os.path.join(LIB, "tc_nodes.py")
 CONTAINER = os.path.join(
     get_package_prefix("rclcpp_components"), "lib/rclcpp_components/component_container"
@@ -87,8 +87,8 @@ class Container(Workload):
             ("Pub", "tc_pub", [t, "out:=/tc/a", f"rate_hz:={self.rate}.0"]),
         ]
         for plugin, node, params in loads:
-            cmd = ["ros2", "component", "load", "/tc_container", "armo_integration"]
-            cmd += [f"armo_integration::{plugin}", "--node-name", node]
+            cmd = ["ros2", "component", "load", "/tc_container", "orma_integration"]
+            cmd += [f"orma_integration::{plugin}", "--node-name", node]
             for p in params:
                 cmd += ["-p", p]
             subprocess.run(cmd, env=ctx.env, capture_output=True, check=True)

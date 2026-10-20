@@ -1,4 +1,4 @@
-// Test nodes of armo_integration. Pub, Relay and Sink carry `topics` independent topics; Pub writes
+// Test nodes of orma_integration. Pub, Relay and Sink carry `topics` independent topics; Pub writes
 // {CLOCK_MONOTONIC ns, seq} into the first 16 payload bytes right before publish and Sink keeps the
 // arrival time at callback entry, written to <tag>_t<i>.csv in the working directory at the end.
 // Burner spends `busy_ms` of its thread's CPU time, then sleeps `sleep_ms`, every `period_ms`.
@@ -19,7 +19,7 @@
 #include <thread>
 #include <vector>
 
-namespace armo_integration
+namespace orma_integration
 {
 
 using Msg = std_msgs::msg::UInt8MultiArray;
@@ -156,9 +156,9 @@ private:
   rclcpp::TimerBase::SharedPtr timer_;
 };
 
-}  // namespace armo_integration
+}  // namespace orma_integration
 
-RCLCPP_COMPONENTS_REGISTER_NODE(armo_integration::Pub)
-RCLCPP_COMPONENTS_REGISTER_NODE(armo_integration::Relay)
-RCLCPP_COMPONENTS_REGISTER_NODE(armo_integration::Sink)
-RCLCPP_COMPONENTS_REGISTER_NODE(armo_integration::Burner)
+RCLCPP_COMPONENTS_REGISTER_NODE(orma_integration::Pub)
+RCLCPP_COMPONENTS_REGISTER_NODE(orma_integration::Relay)
+RCLCPP_COMPONENTS_REGISTER_NODE(orma_integration::Sink)
+RCLCPP_COMPONENTS_REGISTER_NODE(orma_integration::Burner)

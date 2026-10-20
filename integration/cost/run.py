@@ -234,7 +234,7 @@ def run_one(out_dir, rep, wl_name, rate, sched, spec, window, env0, topics):
         meta["method0"], meta["method1"] = m0, m1
         meta["mem"] = {p.role: mem(proc.pid) for p, proc, _ in procs}
         meta["mem_daemons"] = {
-            f"{n}:{pid}": mem(pid, root=(n == "armod")) for n, pid in tracked if n[:2] != "w:"
+            f"{n}:{pid}": mem(pid, root=(n == "ormad")) for n, pid in tracked if n[:2] != "w:"
         }
         meta["sched_check"] = {
             p.role: subprocess.run(

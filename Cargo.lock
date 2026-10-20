@@ -18,62 +18,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
-name = "armo-collectd"
-version = "0.0.0"
-dependencies = [
- "armo-common",
- "armo-proto",
- "cpp_demangle",
- "libc",
- "object",
- "regex",
- "serde",
- "serde_json",
- "toml",
- "zstd",
-]
-
-[[package]]
-name = "armo-common"
-version = "0.0.0"
-dependencies = [
- "aya",
- "cbindgen",
-]
-
-[[package]]
-name = "armo-ebpf"
-version = "0.0.0"
-dependencies = [
- "armo-common",
- "aya-ebpf",
-]
-
-[[package]]
-name = "armo-proto"
-version = "0.0.0"
-dependencies = [
- "armo-common",
- "libc",
- "schemars",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "armod"
-version = "0.0.0"
-dependencies = [
- "armo-common",
- "armo-proto",
- "aya",
- "aya-build",
- "libc",
- "object",
- "serde_json",
-]
-
-[[package]]
 name = "assert_matches"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -398,6 +342,62 @@ name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
+
+[[package]]
+name = "orma-collectd"
+version = "0.0.0"
+dependencies = [
+ "cpp_demangle",
+ "libc",
+ "object",
+ "orma-common",
+ "orma-proto",
+ "regex",
+ "serde",
+ "serde_json",
+ "toml",
+ "zstd",
+]
+
+[[package]]
+name = "orma-common"
+version = "0.0.0"
+dependencies = [
+ "aya",
+ "cbindgen",
+]
+
+[[package]]
+name = "orma-ebpf"
+version = "0.0.0"
+dependencies = [
+ "aya-ebpf",
+ "orma-common",
+]
+
+[[package]]
+name = "orma-proto"
+version = "0.0.0"
+dependencies = [
+ "libc",
+ "orma-common",
+ "schemars",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "ormad"
+version = "0.0.0"
+dependencies = [
+ "aya",
+ "aya-build",
+ "libc",
+ "object",
+ "orma-common",
+ "orma-proto",
+ "serde_json",
+]
 
 [[package]]
 name = "pkg-config"

@@ -1,5 +1,5 @@
-"""What the armo_integration tests share. armod and armo-collectd come from the other packages'
-tests: accuracy.Armod (daemon/armo_daemon/test) and harness.Collectd (collect/armo_lttng/test), imported from
+"""What the orma_integration tests share. ormad and orma-collectd come from the other packages'
+tests: accuracy.Ormad (daemon/orma_daemon/test) and harness.Collectd (collect/orma_lttng/test), imported from
 the source tree rather than copied."""
 
 import os
@@ -13,14 +13,14 @@ from pathlib import Path
 
 from ament_index_python.packages import get_package_prefix
 
-ARMO = Path(__file__).resolve().parents[2]
-sys.path[:0] = [str(ARMO / "daemon/armo_daemon/test"), str(ARMO / "collect/armo_lttng/test")]
+ORMA = Path(__file__).resolve().parents[2]
+sys.path[:0] = [str(ORMA / "daemon/orma_daemon/test"), str(ORMA / "collect/orma_lttng/test")]
 import accuracy  # noqa: E402
 import harness  # noqa: E402
 
 Collectd = harness.Collectd
 
-SOCKET = "/run/armo/armod.sock"
+SOCKET = "/run/orma/ormad.sock"
 DOMAIN = "88"
 UID = f"{os.getuid()}:{os.getgid()}"
 HOT = (
@@ -34,20 +34,20 @@ CAP_PCT = 70.0
 
 
 @contextmanager
-def armod(tmp):
-    """armod on the socket armo-collectd uses. One another test already started serves as is: armod
+def ormad(tmp):
+    """ormad on the socket orma-collectd uses. One another test already started serves as is: ormad
     refuses a second instance there."""
     s = socket.socket(socket.AF_UNIX)
     try:
         s.connect(SOCKET)
         s.close()
-        print(f"armod: using the one already serving {SOCKET}", flush=True)
+        print(f"ormad: using the one already serving {SOCKET}", flush=True)
         yield
         return
     except OSError:
         s.close()
-    binary = os.path.join(get_package_prefix("armo_daemon"), "bin/armod")
-    a = accuracy.Armod(binary, SOCKET, str(tmp / "armod.log"))
+    binary = os.path.join(get_package_prefix("orma_daemon"), "bin/ormad")
+    a = accuracy.Ormad(binary, SOCKET, str(tmp / "ormad.log"))
     try:
         yield
     finally:
@@ -79,7 +79,7 @@ def wait_for(check, what, seconds=60):
 
 
 def uprobes_on(pid, *symbols, lib="libtracetools.so"):
-    """Whether armod's breakpoint is on each symbol of the library `lib` (a file name, or its
+    """Whether ormad's breakpoint is on each symbol of the library `lib` (a file name, or its
     start) in `pid`; false also while the process has not loaded it yet."""
     found = [f for f in (line.split() for line in open(f"/proc/{pid}/maps")) if len(f) > 5]
     mapped = next((f[5] for f in found if f[5].rsplit("/", 1)[-1].startswith(lib)), None)
@@ -127,13 +127,13 @@ class Host:
 
 class Docker:
     """Processes in one container of IMAGE with the Humble workspace WS at /w and this tree at
-    /w/src/armo, sharing /dev/shm with the host (--ipc=host) under this user's ids; CPU-capped
+    /w/src/orma, sharing /dev/shm with the host (--ipc=host) under this user's ids; CPU-capped
     to CAP_PCT of a core per container CPU."""
 
     def __init__(self, image, ws, cpus, mounts=()):
-        self.name = f"armo_int_{os.getpid()}"
+        self.name = f"orma_int_{os.getpid()}"
         n = len(cpus.split(","))
-        vols = ["-v", f"{ws}:/w", "-v", f"{ARMO}:/w/src/armo:ro"]
+        vols = ["-v", f"{ws}:/w", "-v", f"{ORMA}:/w/src/orma:ro"]
         for m in mounts:
             vols += ["-v", f"{m}:{m}"]
         subprocess.run(
@@ -156,7 +156,7 @@ class Docker:
 
     def start(self, argv, cpu, extra_env=None):
         """Starts `argv` in the container; returns its host pid."""
-        tag = f"ARMO_INT_TAG={time.monotonic_ns()}"
+        tag = f"ORMA_INT_TAG={time.monotonic_ns()}"
         env = " ".join(f"{k}={v}" for k, v in (extra_env or {}).items())
         self.shell(f"exec env {tag} {env} {' '.join(argv)}", detach=True)
         host = []
@@ -167,10 +167,10 @@ class Docker:
         self.shell(" ".join(argv))
 
     def build_node(self):
-        """armo_daemon's node.cpp built in the image; returns its path there."""
+        """orma_daemon's node.cpp built in the image; returns its path there."""
         self.shell(
-            "mkdir -p /w/build/armo_integration_node && cd /w/build/armo_integration_node"
-            " && cp /w/src/armo/daemon/armo_daemon/test/node.cpp . && printf '%s\\n' "
+            "mkdir -p /w/build/orma_integration_node && cd /w/build/orma_integration_node"
+            " && cp /w/src/orma/daemon/orma_daemon/test/node.cpp . && printf '%s\\n' "
             "'cmake_minimum_required(VERSION 3.16)' 'project(n CXX)'"
             " 'find_package(rclcpp REQUIRED)' 'find_package(std_msgs REQUIRED)'"
             " 'find_package(std_srvs REQUIRED)' 'add_executable(node node.cpp)'"
@@ -178,7 +178,7 @@ class Docker:
             " > CMakeLists.txt && cmake -S . -B o -DCMAKE_BUILD_TYPE=Release >/dev/null"
             " && cmake --build o -j2 >/dev/null"
         )
-        return "/w/build/armo_integration_node/o/node"
+        return "/w/build/orma_integration_node/o/node"
 
     def host_pid(self, ns_pid):
         """The host pid of the container's process `ns_pid`."""
@@ -235,7 +235,7 @@ class Waiting:
 
 
 class Caller:
-    """armo_daemon's flux and flux callers: print their keys, run on "go", print "done"."""
+    """orma_daemon's flux and flux callers: print their keys, run on "go", print "done"."""
 
     def __init__(self, argv, env):
         self.p = subprocess.Popen(
@@ -274,18 +274,18 @@ def tagged(tag):
 
 
 def build_humble_ws(image, ws):
-    """armo_preload, armo_lttng, armo_rclpy and armo_integration built in IMAGE into WS, once.
+    """orma_preload, orma_lttng, orma_rclpy and orma_integration built in IMAGE into WS, once.
     Three CPUs at CAP_PCT."""
-    if (ws / "install/armo_integration").is_dir():
+    if (ws / "install/orma_integration").is_dir():
         return
     (ws / "home").mkdir(parents=True, exist_ok=True)
     (ws / "src").mkdir(exist_ok=True)
     subprocess.run(
         ["sudo", "-n", "docker", "run", "--rm", "--user", UID, "-e", "HOME=/w/home",
          "-e", "MAKEFLAGS=-j3", "--cpuset-cpus=9-11", f"--cpus={3 * CAP_PCT / 100:.2f}",
-         "-v", f"{ws}:/w", "-v", f"{ARMO}:/w/src/armo:ro", "-w", "/w", image, "bash", "-c",
+         "-v", f"{ws}:/w", "-v", f"{ORMA}:/w/src/orma:ro", "-w", "/w", image, "bash", "-c",
          "source /opt/ros/humble/setup.bash && colcon build --symlink-install "
          "--parallel-workers 1 --cmake-args -DBUILD_TESTING=OFF --packages-select "
-         "armo_preload armo_lttng armo_rclpy armo_integration"],
+         "orma_preload orma_lttng orma_rclpy orma_integration"],
         check=True,
     )  # fmt: skip

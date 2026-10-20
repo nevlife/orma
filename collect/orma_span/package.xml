@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>orma_span</name>
+  <version>0.0.0</version>
+  <description>
+    liborma_span.so: orma_span_begin and orma_span_end, empty functions that mark a stretch inside
+    a callback, the C++ orma::Span and the Python decorator orma_span.span around them. orma catches them by name (LD_PRELOAD and
+    LTTng) or attaches to them (uprobe); without orma a span costs its two calls.
+  </description>
+  <maintainer email="nevlife000720@gmail.com">nevlife</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>ament_cmake_python</buildtool_depend>
+
+  <test_depend>ament_cmake_test</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

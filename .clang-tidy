@@ -1,10 +1,10 @@
 # Defect classes only, style checks off. Each disabled check below was run over the tree and every
 # hit was a false positive or intended: macros whose arguments are parameter lists, _GNU_SOURCE and
 # glibc's __libc_* entry points, a test node's main that ends on an exception.
-# Only armo's own headers: the ROS headers the shim includes are not ours to change, and the two
-# generated from armo_common are cbindgen's output.
-HeaderFilterRegex: '.*/armo_[a-z]+/include/.*'
-ExcludeHeaderFilterRegex: '.*/armo_(shm|events)\.h'
+# Only orma's own headers: the ROS headers the shim includes are not ours to change, and the two
+# generated from orma_common are cbindgen's output.
+HeaderFilterRegex: '.*/orma_[a-z]+/include/.*'
+ExcludeHeaderFilterRegex: '.*/orma_(shm|events)\.h'
 Checks: >
   -*,
   bugprone-*,

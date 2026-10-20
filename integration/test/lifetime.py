@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Recording lifetime with the real sources, armod and the shared memory files (design 14.7
-items 2 to 7; the LTTng parts of 5 and 6 are armo_lttng/test/lifecycle.py).
+"""Recording lifetime with the real sources, ormad and the shared memory files (design 14.7
+items 2 to 7; the LTTng parts of 5 and 6 are orma_lttng/test/lifecycle.py).
 
-A publisher and a subscriber of armo_integration at 1 kHz run with libarmo_preload.so on CPUs 9
-and 10 for the whole test, under a real armo-collectd and the host's armod:
+A publisher and a subscriber of orma_integration at 1 kHz run with liborma_preload.so on CPUs 9
+and 10 for the whole test, under a real orma-collectd and the host's ormad:
 
 2. --max-duration 5 ends finalized, max_duration, within a window of 5 s, by preload and by
    uprobe; --max-size ends max_size within a window's bytes of the size.
@@ -12,10 +12,10 @@ and 10 for the whole test, under a real armo-collectd and the host's armod:
    takes the space.
 4. SIGTERM: the recordings in progress end finalized, collector_exit.
 5. SIGKILL: within 2 s the guard puts `armed` to 0; the next start marks the recording truncated.
-6. SIGKILL of armo-collectd and its guard: `armed` stays; the next start lowers it and marks the
+6. SIGKILL of orma-collectd and its guard: `armed` stays; the next start lowers it and marks the
    recording truncated.
-7. No client and no recording: armod's hot probes come off, `armed` goes to 0, and 5 minutes
-   later armo-collectd ends.
+7. No client and no recording: ormad's hot probes come off, `armed` goes to 0, and 5 minutes
+   later orma-collectd ends.
 
     lifetime.py [--only N]...
 """
@@ -32,11 +32,11 @@ import tempfile
 import time
 from pathlib import Path
 
-import armo_client
+import orma_client
 import common
 from ament_index_python.packages import get_package_prefix
 
-ARMED = 48  # offset of `armed` in armo_shm_header (armo_preload/armo_shm.h)
+ARMED = 48  # offset of `armed` in orma_shm_header (orma_preload/orma_shm.h)
 FLOOR = 32 << 20
 SIZE = 16 << 20
 # A start needs the floor plus 1 GiB free (14.2).
@@ -45,7 +45,7 @@ WINDOW_S = 1.0
 
 
 def armed(pid):
-    with open(glob.glob(f"/dev/shm/armo.{pid}.*")[0], "rb") as f:
+    with open(glob.glob(f"/dev/shm/orma.{pid}.*")[0], "rb") as f:
         f.seek(ARMED)
         return int.from_bytes(f.read(4), "little")
 
@@ -71,7 +71,7 @@ def take(path, size):
 class Test:
     def __init__(self, tmp, pids):
         self.tmp, self.pids, self.failed = tmp, pids, []
-        self.targets = armo_client.targets(pids=pids)
+        self.targets = orma_client.targets(pids=pids)
 
     def check(self, ok, text):
         print(("ok    " if ok else "FAIL  ") + text, flush=True)
@@ -80,13 +80,13 @@ class Test:
 
     def start(self, client, method, **options):
         return client.request(
-            "record_start", **armo_client.record_start(method, self.targets, **options)
+            "record_start", **orma_client.record_start(method, self.targets, **options)
         )
 
     def wait_uprobes(self):
         for pid in self.pids:
             common.wait_for(
-                lambda: common.uprobes_on(pid, *common.HOT), "armod's uprobes", seconds=600
+                lambda: common.uprobes_on(pid, *common.HOT), "ormad's uprobes", seconds=600
             )
 
     def duration(self, client, method):
@@ -122,7 +122,7 @@ class Test:
             try:
                 self.start(client, "preload", dir=str(disk), max_bytes=SIZE, sched=False)
                 refused = "started"
-            except armo_client.ArmoError as e:
+            except orma_client.OrmaError as e:
                 refused = str(e)
             self.check("disk floor" in refused, f"3: start refused under the floor: {refused}")
             fill.unlink()
@@ -144,9 +144,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", type=int, action="append", choices=range(2, 8))
     items = set(ap.parse_args().only or range(2, 8))
-    tmp = Path(tempfile.mkdtemp(prefix="armo-life-", dir="/tmp"))
+    tmp = Path(tempfile.mkdtemp(prefix="orma-life-", dir="/tmp"))
     os.chmod(tmp, 0o755)
-    cfg = tmp / "h/.config/armo"
+    cfg = tmp / "h/.config/orma"
     cfg.mkdir(parents=True)
     (cfg / "collectd.toml").write_text(f"disk_floor_bytes = {FLOOR}\n")
     (tmp / "disk").mkdir()
@@ -156,8 +156,8 @@ def main():
         check=True,
     )  # fmt: skip
     host = common.Host(dict(os.environ), cwd=tmp)
-    lib = Path(get_package_prefix("armo_integration")) / "lib/armo_integration"
-    preload = {"LD_PRELOAD": host.lib("armo_preload", "libarmo_preload.so")}
+    lib = Path(get_package_prefix("orma_integration")) / "lib/orma_integration"
+    preload = {"LD_PRELOAD": host.lib("orma_preload", "liborma_preload.so")}
     ros = ["--ros-args", "-p", "topics:=1", "-p", "rate_hz:=1000.0"]
     pids = [
         host.start([lib / "tc_sink", *ros, "-p", "in:=/tc/a"], 9, preload),
@@ -165,8 +165,8 @@ def main():
     ]
     t = Test(tmp, pids)
     try:
-        with common.armod(tmp):
-            common.wait_for(lambda: all(glob.glob(f"/dev/shm/armo.{p}.*") for p in pids), "shm")
+        with common.ormad(tmp):
+            common.wait_for(lambda: all(glob.glob(f"/dev/shm/orma.{p}.*") for p in pids), "shm")
             collectd = common.Collectd(tmp)
             try:
                 run(t, collectd, items, pids)
@@ -183,7 +183,7 @@ def main():
 
 
 def run(t, collectd, items, pids):
-    client = armo_client.connect(start=False)
+    client = orma_client.connect(start=False)
     client.request("select", all=False, pids=[])
     if 2 in items:
         t.duration(client, "preload")
@@ -206,7 +206,7 @@ def run(t, collectd, items, pids):
             )
         t.check(not any(armed(p) for p in pids), "4: armed 0 after SIGTERM")
         collectd.start()
-        client = armo_client.connect(start=False)
+        client = orma_client.connect(start=False)
         client.request("select", all=False, pids=[])
     for item in (5, 6):
         if item not in items:
@@ -228,7 +228,7 @@ def run(t, collectd, items, pids):
             time.sleep(3)
             t.check(all(armed(p) for p in pids), "6: with the guard dead armed stays 1")
         collectd.start()
-        client = armo_client.connect(start=False)
+        client = orma_client.connect(start=False)
         client.request("select", all=False, pids=[])
         common.wait_for(lambda: meta(rec)["state"] != "recording", "the next start", 10)
         state = meta(rec)["state"]
@@ -262,9 +262,9 @@ def run(t, collectd, items, pids):
         try:
             collectd.proc.wait(timeout=400)
             took = time.monotonic() - gone
-            t.check(300 <= took <= 300 + 10, f"7: armo-collectd ended {took:.0f} s after it")
+            t.check(300 <= took <= 300 + 10, f"7: orma-collectd ended {took:.0f} s after it")
         except subprocess.TimeoutExpired:
-            t.check(False, "7: armo-collectd still runs 400 s after the last client")
+            t.check(False, "7: orma-collectd still runs 400 s after the last client")
 
 
 main()

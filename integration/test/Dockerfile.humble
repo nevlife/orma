@@ -1,5 +1,5 @@
 # The Humble image of the container tests (design 18): ros-base, the LTTng tools and headers the
-# armo_lttng build and the LTTng item need, and the demo nodes of item 1.
+# orma_lttng build and the LTTng item need, and the demo nodes of item 1.
 FROM ros:humble-ros-base-jammy
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     liblttng-ust-dev lttng-tools babeltrace python3-numpy \

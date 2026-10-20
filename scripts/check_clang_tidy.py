@@ -17,7 +17,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-PACKAGES = ("armo_preload", "armo_lttng", "armo_span")
+PACKAGES = ("orma_preload", "orma_lttng", "orma_span")
 
 
 def compile_commands():
@@ -35,7 +35,7 @@ def main(argv):
     if not entries:
         print(
             f"no compile_commands.json under {build}/<package>/: build with "
-            "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON, or set ARMO_BUILD_DIR",
+            "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON, or set ORMA_BUILD_DIR",
             file=sys.stderr,
         )
         return 1

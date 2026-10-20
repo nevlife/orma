@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Per-node CPU against the real armod and armo-collectd (design 15.4).
+"""Per-node CPU against the real ormad and orma-collectd (design 15.4).
 
 Four Burner components in one container: node i spends i ms of CPU every 20 ms. The design's
 10 ms period would load the container's core to 100 %; 20 ms keeps it at 50 % (the 70 % cap)
@@ -12,13 +12,13 @@ and the 1:2:3:4 ratio. Cases:
   clock busy time is 2 ms per callback more.
 - isolated: component_container_isolated. Each node's executor thread is in the node's bucket.
 
-Methods (item 5): uprobe, preload (LD_PRELOAD and armod's scheduler probes) and lttng (LTTng and
-armod's scheduler probes). Needs root for armod (sudo -n) and a sourced workspace.
+Methods (item 5): uprobe, preload (LD_PRELOAD and ormad's scheduler probes) and lttng (LTTng and
+ormad's scheduler probes). Needs root for ormad (sudo -n) and a sourced workspace.
 
     node_cpu.py [--method M]... [--case C]... [--humble IMAGE WS]
 
 With --humble the container runs in IMAGE, from the Humble workspace WS (built there first if
-it is not), and the host's armod and armo-collectd watch it (design 18, Humble item 5).
+it is not), and the host's ormad and orma-collectd watch it (design 18, Humble item 5).
 """
 
 import argparse
@@ -30,7 +30,7 @@ import tempfile
 import time
 from pathlib import Path
 
-import armo_client
+import orma_client
 import common
 from ament_index_python.packages import get_package_prefix
 
@@ -57,7 +57,7 @@ def ready(method, pid, collectd):
     if method == "uprobe":
         common.wait_for(
             lambda: common.uprobes_on(pid, "ros_trace_rcl_node_init", "ros_trace_callback_start"),
-            "armod's uprobes in the container",
+            "ormad's uprobes in the container",
             seconds=300,
         )
     elif method == "lttng":
@@ -70,15 +70,15 @@ def ready(method, pid, collectd):
 
 def run_case(launcher, collectd, method, case, check, tmp):
     exe = "component_container_isolated" if case == "isolated" else "component_container"
-    name = f"armo_cpu_{case}"
+    name = f"orma_cpu_{case}"
     env = {}
     if method == "preload":
-        env["LD_PRELOAD"] = launcher.lib("armo_preload", "libarmo_preload.so")
+        env["LD_PRELOAD"] = launcher.lib("orma_preload", "liborma_preload.so")
     if method == "lttng":
-        env["LD_PRELOAD"] = launcher.lib("armo_lttng", "libarmo_lttng.so")
+        env["LD_PRELOAD"] = launcher.lib("orma_lttng", "liborma_lttng.so")
         env["LTTNG_HOME"] = str(collectd.lttng_home)
     pid = launcher.start([launcher.container(exe), "--ros-args", "-r", f"__node:={name}"], CPU, env)
-    client = armo_client.connect(start=False)
+    client = orma_client.connect(start=False)
     try:
         client.request("configure", window_s=1.0, sched=True)
         client.request("select", all=False, pids=[pid], method_by_pid={str(pid): method})
@@ -100,9 +100,9 @@ def run_case(launcher, collectd, method, case, check, tmp):
                 "--spin-time",
                 "5",
                 f"/{name}",
-                "armo_integration",
+                "orma_integration",
             ]
-            argv += ["armo_integration::Burner", "-n", f"burner{i}"]
+            argv += ["orma_integration::Burner", "-n", f"burner{i}"]
             argv += ["-p", f"busy_ms:={float(i)}", "-p", f"period_ms:={PERIOD_MS}"]
             if case == "sleep" and i == 2:
                 argv += ["-p", f"sleep_ms:={SLEEP_MS}"]
@@ -167,12 +167,12 @@ def run_case(launcher, collectd, method, case, check, tmp):
         f"(worst window {worst:.2%}: {at})",
     )
     span = sum(w["window_ns"] for w in ws) / 1e9
-    armo_cpu = sum(p["cpu_pct"] * w["window_ns"] for w, p in zip(ws, proc)) / 1e9 / 100
+    orma_cpu = sum(p["cpu_pct"] * w["window_ns"] for w, p in zip(ws, proc)) / 1e9 / 100
     stat_cpu = (ticks1 - ticks0) / os.sysconf("SC_CLK_TCK")
-    err = armo_cpu / stat_cpu - 1
+    err = orma_cpu / stat_cpu - 1
     check(
         abs(err) <= SUM_TOL,
-        f"{tag}: process CPU {armo_cpu:.3f} s against /proc/<pid>/stat {stat_cpu:.3f} s "
+        f"{tag}: process CPU {orma_cpu:.3f} s against /proc/<pid>/stat {stat_cpu:.3f} s "
         f"over {span:.1f} s: {err:+.2%}",
     )
     if case == "sleep":
@@ -209,7 +209,7 @@ def main():
     a = ap.parse_args()
     methods = a.method or ["uprobe", "preload", "lttng"]
     cases = a.case or ["shared", "sleep", "isolated"]
-    tmp = Path(tempfile.mkdtemp(prefix="armo-cpu-", dir="/tmp"))
+    tmp = Path(tempfile.mkdtemp(prefix="orma-cpu-", dir="/tmp"))
     os.chmod(tmp, 0o755)
     if a.humble:
         ws = Path(a.humble[1]).resolve()
@@ -221,7 +221,7 @@ def main():
         if not ok:
             failed.append(text)
 
-    with common.armod(tmp):
+    with common.ormad(tmp):
         collectd = common.Collectd(tmp)
         try:
             for method in methods:

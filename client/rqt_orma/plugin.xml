@@ -1,0 +1,17 @@
+<library path="rqt_orma">
+  <class name="Orma" type="rqt_orma.plugin.Orma" base_class_type="rqt_gui_py::Plugin">
+    <description>
+      Monitoring, recordings and the message flow graph from orma-collectd.
+    </description>
+    <qtgui>
+      <group>
+        <label>Introspection</label>
+        <icon type="theme">folder</icon>
+        <statustip>Plugins related to introspection.</statustip>
+      </group>
+      <label>orma</label>
+      <icon type="theme">utilities-system-monitor</icon>
+      <statustip>Monitoring, recordings and the message flow graph from orma-collectd.</statustip>
+    </qtgui>
+  </class>
+</library>

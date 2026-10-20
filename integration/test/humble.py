@@ -3,14 +3,14 @@
 
 One container of IMAGE in its own pid namespace, sharing /dev/shm (--ipc=host) under this user's
 ids, runs from the Humble workspace WS (built there first if it is not), every process with
-libarmo_preload.so and libarmo_lttng.so and a session daemon of its own recording ros2 events:
+liborma_preload.so and liborma_lttng.so and a session daemon of its own recording ros2 events:
 
-- node.cpp and node.py (armo_rclpy), which print what they did;
-- component_container with demo_nodes_cpp's Talker and Listener and armo_integration's Pub and
-  Sink, loaded once armod is attached;
+- node.cpp and node.py (orma_rclpy), which print what they did;
+- component_container with demo_nodes_cpp's Talker and Listener and orma_integration's Pub and
+  Sink, loaded once ormad is attached;
 - demo_nodes_py's talker and listener, which load libtracetools.so and wait before they start.
 
-The host's armod and armo-collectd monitor them by uprobe and record them twice, by uprobe and
+The host's ormad and orma-collectd monitor them by uprobe and record them twice, by uprobe and
 by preload. Checks:
 
 1. uprobe through /proc/<pid>/root: node.cpp's and node.py's publishes and takes counted exactly;
@@ -35,7 +35,7 @@ import threading
 import time
 from pathlib import Path
 
-import armo_client
+import orma_client
 import common
 
 A = common.accuracy
@@ -111,21 +111,21 @@ def ros2_counts(ctf, ns_to_host, window):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--image", default="armo-humble")
+    ap.add_argument("--image", default="orma-humble")
     ap.add_argument(
         "--ws",
-        default=str(Path(tempfile.gettempdir()) / "armo-humble-ws"),
-        help="the Humble workspace, built in IMAGE if it holds no install/armo_integration",
+        default=str(Path(tempfile.gettempdir()) / "orma-humble-ws"),
+        help="the Humble workspace, built in IMAGE if it holds no install/orma_integration",
     )
     a = ap.parse_args()
     ws = Path(a.ws).resolve()
     common.build_humble_ws(a.image, ws)
-    tmp = Path(tempfile.mkdtemp(prefix="armo-humble-", dir="/tmp"))
+    tmp = Path(tempfile.mkdtemp(prefix="orma-humble-", dir="/tmp"))
     os.chmod(tmp, 0o755)
     tag = f"h{os.getpid()}"
-    prefix = f"/armo_{tag}"
+    prefix = f"/orma_{tag}"
     f = A.Fail("humble")
-    with common.armod(tmp):
+    with common.ormad(tmp):
         collectd = common.Collectd(tmp)
         try:
             run(a, ws, tag, prefix, f)
@@ -147,20 +147,20 @@ def run(a, ws, tag, prefix, f):
             " >/dev/null && lttng add-context -u -t vpid -t vtid >/dev/null && lttng start"
             " >/dev/null"
         )
-        libs = ":".join(f"/w/install/{p}/lib/lib{p}.so" for p in ("armo_preload", "armo_lttng"))
-        autoload = "/w/install/armo_rclpy/share/armo_rclpy/autoload"
+        libs = ":".join(f"/w/install/{p}/lib/lib{p}.so" for p in ("orma_preload", "orma_lttng"))
+        autoload = "/w/install/orma_rclpy/share/orma_rclpy/autoload"
         env = {"LD_PRELOAD": libs, "LTTNG_HOME": lt, "PYTHONPATH": f"{autoload}:$PYTHONPATH"}
         exe = docker.build_node()
         procs["cpp"] = common.Waiting([exe, prefix, "40"], env, docker)
         procs["py"] = common.Waiting(
-            ["python3", "/w/src/armo/daemon/armo_daemon/test/node.py", prefix + "_py", "40"],
+            ["python3", "/w/src/orma/daemon/orma_daemon/test/node.py", prefix + "_py", "40"],
             env,
             docker,
         )
         pids = {k: p.pid for k, p in procs.items()}
         pids["container"] = docker.start(
             ["/opt/ros/humble/lib/rclcpp_components/component_container", "--ros-args", "-r",
-             f"__node:=armo_{tag}"], 8, env,
+             f"__node:=orma_{tag}"], 8, env,
         )  # fmt: skip
         for role, module in (("py_talker", "talker"), ("py_listener", "listener")):
             pids[role] = docker.start(
@@ -170,9 +170,9 @@ def run(a, ws, tag, prefix, f):
         for role, pid in pids.items():
             status = open(f"/proc/{pid}/status").read()
             ns[int(re.search(r"^NSpid:.*\s(\d+)$", status, re.M)[1])] = pid
-        targets = armo_client.targets(pids=sorted(pids.values()))
+        targets = orma_client.targets(pids=sorted(pids.values()))
 
-        mon = armo_client.connect(start=False)
+        mon = orma_client.connect(start=False)
         mon.request("configure", window_s=1.0, sched=False)
         mon.request(
             "select",
@@ -186,23 +186,23 @@ def run(a, ws, tag, prefix, f):
             while True:
                 try:
                     m = mon.next_message()
-                except (OSError, armo_client.ArmoError):
+                except (OSError, orma_client.OrmaError):
                     return
                 if m["type"] == "window":
                     windows.append(m)
 
         threading.Thread(target=read, daemon=True).start()
-        client = armo_client.connect(start=False)
+        client = orma_client.connect(start=False)
         for method in ("uprobe", "preload"):
             rs[method] = client.request(
-                "record_start", **armo_client.record_start(method, targets, sched=False)
+                "record_start", **orma_client.record_start(method, targets, sched=False)
             )
         for role, pid in pids.items():
             common.wait_for(
                 lambda: common.uprobes_on(
                     pid, "ros_trace_rcl_node_init", "ros_trace_callback_start"
                 ),
-                f"armod's uprobes on {role}",
+                f"ormad's uprobes on {role}",
                 seconds=600,
             )
         for plugin, name in (
@@ -217,7 +217,7 @@ def run(a, ws, tag, prefix, f):
                     "--no-daemon",
                     "--spin-time",
                     "5",
-                    f"/armo_{tag}",
+                    f"/orma_{tag}",
                     plugin,
                     name,
                 ]
@@ -229,11 +229,11 @@ def run(a, ws, tag, prefix, f):
             "--no-daemon",
             "--spin-time",
             "5",
-            f"/armo_{tag}",
-            "armo_integration",
+            f"/orma_{tag}",
+            "orma_integration",
         ]
-        docker.run(load + ["armo_integration::Pub", "-p", "rate_hz:=50.0", "-p", "topics:=1"])
-        docker.run(load + ["armo_integration::Sink", "-p", "in:=/tc/a", "-p", "topics:=1"])
+        docker.run(load + ["orma_integration::Pub", "-p", "rate_hz:=50.0", "-p", "topics:=1"])
+        docker.run(load + ["orma_integration::Sink", "-p", "in:=/tc/a", "-p", "topics:=1"])
         docker.shell(f"touch {go}")
         for p in procs.values():
             p.go()
@@ -256,7 +256,7 @@ def run(a, ws, tag, prefix, f):
     recs = {m: records(r) for m, r in rs.items()}
     exact(f, recs["uprobe"], pids["cpp"], said["cpp"], prefix + "/out")
     exact(f, recs["uprobe"], pids["py"], said["py"], prefix + "_py/out")
-    # A process that starts after record_start is in a preload recording only once armo-collectd
+    # A process that starts after record_start is in a preload recording only once orma-collectd
     # has found and armed its new shared memory file; item 2 compares inside the window.
     for role in ("cpp", "py"):
         first = {m: min(r.t for r in recs[m] if r.pid == pids[role]) for m in recs}

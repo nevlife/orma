@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Method agreement on Jazzy with all three methods in one run (design 3, 3.1, 8).
 
-Every workload process carries both libraries (LD_PRELOAD=libarmo_preload.so:libarmo_lttng.so)
-and waits before it creates any ROS entity: two node.cpp on one topic, node.py with armo_rclpy
-and, when the workspace has flux_ffi, armo_daemon's flux caller. A real armo-collectd records
-them three times, by uprobe (the host's armod), by preload and by lttng. Once armod's probes are
+Every workload process carries both libraries (LD_PRELOAD=liborma_preload.so:liborma_lttng.so)
+and waits before it creates any ROS entity: two node.cpp on one topic, node.py with orma_rclpy
+and, when the workspace has flux_ffi, orma_daemon's flux caller. A real orma-collectd records
+them three times, by uprobe (the host's ormad), by preload and by lttng. Once ormad's probes are
 on, the processes run. In a window that starts after every method is on, each event of each
 process must be counted the same by all three; the LTTng recording's ros2 events, which
 libtracetools emits itself on Jazzy, must match uprobe as well. The events a method does not see
@@ -23,24 +23,24 @@ import time
 from collections import Counter
 from pathlib import Path
 
-import armo_client
+import orma_client
 import common
 import session
 from ament_index_python.packages import get_package_prefix, get_package_share_directory
 
 A = common.accuracy
-TEST = common.ARMO / "daemon/armo_daemon/test"
+TEST = common.ORMA / "daemon/orma_daemon/test"
 TICKS = "600"
 # Design 3.4: rclcpp_callback_register is gated, so a uprobe cannot take it, and uprobe names
 # callbacks by callback_code instead.
-ONLY = {"armo:rclcpp_callback_register"}
+ONLY = {"orma:rclcpp_callback_register"}
 ROS2 = {
-    "ros2:callback_start": "armo:callback_start",
-    "ros2:callback_end": "armo:callback_end",
-    "ros2:rcl_publish": "armo:rcl_publish",
-    "ros2:rclcpp_publish": "armo:rclcpp_publish",
-    "ros2:rmw_publish": "armo:rmw_publish",
-    "ros2:rmw_take": "armo:rmw_take",
+    "ros2:callback_start": "orma:callback_start",
+    "ros2:callback_end": "orma:callback_end",
+    "ros2:rcl_publish": "orma:rcl_publish",
+    "ros2:rclcpp_publish": "orma:rclcpp_publish",
+    "ros2:rmw_publish": "orma:rmw_publish",
+    "ros2:rmw_take": "orma:rmw_take",
 }
 
 
@@ -60,17 +60,17 @@ def ros2_counts(ctf, pids, window):
 
 
 def main():
-    tmp = Path(tempfile.mkdtemp(prefix="armo-agree3-", dir="/tmp"))
+    tmp = Path(tempfile.mkdtemp(prefix="orma-agree3-", dir="/tmp"))
     os.chmod(tmp, 0o755)
     failed = []
-    with common.armod(tmp):
+    with common.ormad(tmp):
         collectd = common.Collectd(tmp)
         procs = {}
         try:
-            client = armo_client.connect(start=False)
+            client = orma_client.connect(start=False)
             # Only the workload: a client's monitoring would arm every shared memory file.
             client.request("select", all=False, pids=[])
-            # sched off in all three: armod's scheduler records are not a method's events (3.4).
+            # sched off in all three: ormad's scheduler records are not a method's events (3.4).
             rec = {
                 "lttng": client.request(
                     "record_start", method="lttng", max_duration_s=600, sched=False
@@ -80,9 +80,9 @@ def main():
 
             libs = [
                 Path(get_package_prefix(p)) / "lib" / f"lib{p}.so"
-                for p in ("armo_preload", "armo_lttng")
+                for p in ("orma_preload", "orma_lttng")
             ]
-            autoload = Path(get_package_share_directory("armo_rclpy")) / "autoload"
+            autoload = Path(get_package_share_directory("orma_rclpy")) / "autoload"
             env = A.node_env("rmw_cyclonedds_cpp")
             env.update(
                 ROS_DOMAIN_ID=common.DOMAIN,
@@ -91,7 +91,7 @@ def main():
                 PYTHONPATH=f"{autoload}:{env.get('PYTHONPATH', '')}",
             )
             exe = A.build_node(tmp)
-            prefix = f"/armo_agree_{os.getpid()}"
+            prefix = f"/orma_agree_{os.getpid()}"
             procs["cpp_a"] = common.Waiting([exe, prefix, TICKS], env)
             procs["cpp_b"] = common.Waiting([exe, prefix, TICKS], env)
             procs["py"] = common.Waiting(
@@ -100,16 +100,16 @@ def main():
             if A.flux_lib():
                 procs["flux"] = common.Caller([session.flux_caller(tmp)], env)
             pids = {k: p.pid for k, p in procs.items()}
-            targets = armo_client.targets(pids=sorted(pids.values()))
+            targets = orma_client.targets(pids=sorted(pids.values()))
             for method in ("uprobe", "preload"):
                 rec[method] = client.request(
-                    "record_start", **armo_client.record_start(method, targets, sched=False)
+                    "record_start", **orma_client.record_start(method, targets, sched=False)
                 )
             for role, pid in pids.items():
                 if role == "flux":
                     common.wait_for(
                         lambda: common.uprobes_on(pid, *common.FLUX, lib="libflux_ffi.so"),
-                        "armod's uprobes on the flux caller",
+                        "ormad's uprobes on the flux caller",
                         seconds=600,
                     )
                     continue
@@ -118,7 +118,7 @@ def main():
                         common.uprobes_on(pid, *common.HOT)
                         and common.uprobes_on(pid, "rcl_wait", lib="librcl.so")
                     ),
-                    f"armod's uprobes on {role}",
+                    f"ormad's uprobes on {role}",
                     seconds=600,
                 )
             common.wait_for(
@@ -130,7 +130,7 @@ def main():
             for role, p in procs.items():
                 if role != "flux":
                     p.go()
-            # The preload recording takes a new process once armo-collectd has armed its file.
+            # The preload recording takes a new process once orma-collectd has armed its file.
             t0 = time.monotonic_ns() + 1_500_000_000
             time.sleep(2.0)
             if "flux" in procs:
@@ -174,7 +174,7 @@ def main():
             failed.append(f"{name}: uprobe {row[0]}, preload {row[1]}, lttng {row[2]}")
         if name in ROS2.values() and ros2[name] != row[0]:
             failed.append(f"{name}: ros2 {ros2[name]}, uprobe {row[0]}")
-    for event in ("armo:callback_start", "armo:rmw_take", "armo:rcl_wait_exit"):
+    for event in ("orma:callback_start", "orma:rmw_take", "orma:rcl_wait_exit"):
         if counts["uprobe"][event] == 0:
             failed.append(f"no {event} in the window")
     if "flux" in procs and counts["uprobe"]["flux:take"] == 0:

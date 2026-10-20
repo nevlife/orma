@@ -1,0 +1,6 @@
+{
+  "hooks": [
+    "share/orma_cli/environment/orma-argcomplete.bash",
+    "share/orma_cli/environment/orma-argcomplete.zsh"
+  ]
+}

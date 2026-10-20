@@ -1,4 +1,4 @@
-"""Tracing methods, by name. A method spec joins components with '+', e.g. 'armo_rclpy+uprobe'.
+"""Tracing methods, by name. A method spec joins components with '+', e.g. 'orma_rclpy+uprobe'.
 
 A component may start what it needs and add environment variables before the workload starts
 (prepare), attach to the running workload processes (attach), name its own daemon processes so
@@ -25,17 +25,17 @@ BIN = {}
 
 
 def freeze(out):
-    """Copies armod and the two backends into out/bin; returns their sha256 by name."""
+    """Copies ormad and the two backends into out/bin; returns their sha256 by name."""
     d = os.path.join(out, "bin")
     os.makedirs(d, exist_ok=True)
     srcs = {
-        "armod": os.path.join(get_package_prefix("armo_daemon"), "bin/armod"),
-        "libarmo_preload.so": os.path.join(get_package_prefix("armo_preload"), "lib"),
-        "libarmo_lttng.so": os.path.join(get_package_prefix("armo_lttng"), "lib"),
+        "ormad": os.path.join(get_package_prefix("orma_daemon"), "bin/ormad"),
+        "liborma_preload.so": os.path.join(get_package_prefix("orma_preload"), "lib"),
+        "liborma_lttng.so": os.path.join(get_package_prefix("orma_lttng"), "lib"),
     }
     sums = {}
     for name, src in srcs.items():
-        src = src if name == "armod" else os.path.join(src, name)
+        src = src if name == "ormad" else os.path.join(src, name)
         BIN[name] = shutil.copy(os.path.realpath(src), os.path.join(d, name))
         sums[name] = sh("sha256sum", BIN[name]).stdout.split()[0]
     return sums
@@ -79,30 +79,30 @@ class Component:
         pass
 
 
-class ArmoRclpy(Component):
-    name = "armo_rclpy"
+class OrmaRclpy(Component):
+    name = "orma_rclpy"
 
     def check(self, workload):
         if not workload.python:
-            raise Pending("armo_rclpy applies to Python workloads only")
+            raise Pending("orma_rclpy applies to Python workloads only")
 
     def prepare(self, ctx):
-        autoload = os.path.join(get_package_share_directory("armo_rclpy"), "autoload")
+        autoload = os.path.join(get_package_share_directory("orma_rclpy"), "autoload")
         return {"PYTHONPATH_PREPEND": autoload}
 
 
 class Preload(Component):
-    """libarmo_preload.so in every workload process, nothing reading it."""
+    """liborma_preload.so in every workload process, nothing reading it."""
 
     name = "preload"
 
     def prepare(self, ctx):
-        return {"LD_PRELOAD_APPEND": BIN["libarmo_preload.so"]}
+        return {"LD_PRELOAD_APPEND": BIN["liborma_preload.so"]}
 
 
 MONITOR = """
-import signal, sys, armo_client
-c = armo_client.connect(start=False)
+import signal, sys, orma_client
+c = orma_client.connect(start=False)
 c.request("configure", window_s=1.0, sched=False)
 pids = [int(p) for p in sys.argv[1:]]
 c.request("select", all=False, pids=pids, method_by_pid={str(p): "preload" for p in pids})
@@ -116,23 +116,23 @@ while True:
 
 
 class PreloadArmed(Preload):
-    """libarmo_preload.so with a reader: a private armo-collectd monitoring every workload pid
-    by method preload in 1 s windows, without armod's scheduler probes."""
+    """liborma_preload.so with a reader: a private orma-collectd monitoring every workload pid
+    by method preload in 1 s windows, without ormad's scheduler probes."""
 
     name = "preload_armed"
 
     def attach(self, ctx, pids):
-        self.xdg = tempfile.mkdtemp(prefix="armo-cost-", dir="/tmp")
+        self.xdg = tempfile.mkdtemp(prefix="orma-cost-", dir="/tmp")
         env = dict(os.environ, XDG_RUNTIME_DIR=self.xdg, HOME=self.xdg)
         self.collectd = subprocess.Popen(
-            ["armo-collectd"],
+            ["orma-collectd"],
             env=env,
             cwd="/",
             stdout=open(os.path.join(ctx.rundir, "collectd.log"), "w"),
             stderr=subprocess.STDOUT,
             start_new_session=True,
         )
-        while not os.path.exists(os.path.join(self.xdg, "armo", "collectd.sock")):
+        while not os.path.exists(os.path.join(self.xdg, "orma", "collectd.sock")):
             time.sleep(0.05)
         self.log = os.path.join(ctx.rundir, "ring_drops.txt")
         self.monitor = subprocess.Popen(
@@ -145,7 +145,7 @@ class PreloadArmed(Preload):
             time.sleep(0.1)
 
     def daemons(self):
-        return [("armo-collectd", self.collectd.pid), ("armo-monitor", self.monitor.pid)]
+        return [("orma-collectd", self.collectd.pid), ("orma-monitor", self.monitor.pid)]
 
     def detach(self, ctx):
         stop(self.monitor)
@@ -156,40 +156,40 @@ class PreloadArmed(Preload):
 
 
 class Uprobe(Component):
-    """One armod in its text mode per workload process (it takes one --pid); BPF run time from
+    """One ormad in its text mode per workload process (it takes one --pid); BPF run time from
     the programs' fdinfo."""
 
     name = "uprobe"
 
     def __init__(self):
         self.procs = []
-        self.armods = []
+        self.ormads = []
         self.stats_was = sh("sysctl", "-n", "kernel.bpf_stats_enabled").stdout.strip()
 
     def attach(self, ctx, pids):
         sh("sudo", "-n", "sysctl", "-q", "kernel.bpf_stats_enabled=1")
         for pid in pids:
-            log = open(os.path.join(ctx.rundir, f"armod_{pid}.log"), "w")
+            log = open(os.path.join(ctx.rundir, f"ormad_{pid}.log"), "w")
             p = subprocess.Popen(
-                ["sudo", "-n", BIN["armod"], "--pid", str(pid), "--interval", "1"],
+                ["sudo", "-n", BIN["ormad"], "--pid", str(pid), "--interval", "1"],
                 stdout=log,
                 stderr=subprocess.STDOUT,
                 start_new_session=True,
             )
             self.procs.append((p, log))
         for pid in pids:
-            path = os.path.join(ctx.rundir, f"armod_{pid}.log")
+            path = os.path.join(ctx.rundir, f"ormad_{pid}.log")
             while "attached to" not in open(path).read():
                 time.sleep(0.1)
         for p, _ in self.procs:
-            self.armods.append(int(sh("pgrep", "-P", str(p.pid)).stdout))
+            self.ormads.append(int(sh("pgrep", "-P", str(p.pid)).stdout))
 
     def daemons(self):
-        return [("armod", pid) for pid in self.armods]
+        return [("ormad", pid) for pid in self.ormads]
 
     def sample(self):
         run_ns = cnt = 0
-        for pid in self.armods:
+        for pid in self.ormads:
             # Non-BPF fds have neither line; grep exits 0 because the BPF ones match.
             out = sh(
                 "sudo", "-n", "sh", "-c",
@@ -203,7 +203,7 @@ class Uprobe(Component):
         return {"bpf_run_time_ns": run_ns, "bpf_run_cnt": cnt}
 
     def detach(self, ctx):
-        # From the sudo processes: attach may have stopped before it knew every armod.
+        # From the sudo processes: attach may have stopped before it knew every ormad.
         for p, _ in self.procs:
             for pid in subprocess.run(
                 ["pgrep", "-P", str(p.pid)], capture_output=True, text=True
@@ -214,10 +214,10 @@ class Uprobe(Component):
             log.close()
         sh("sudo", "-n", "sysctl", "-q", f"kernel.bpf_stats_enabled={self.stats_was}")
         lost = 0
-        for path in glob.glob(os.path.join(ctx.rundir, "armod_*.log")):
+        for path in glob.glob(os.path.join(ctx.rundir, "ormad_*.log")):
             for line in re.findall(r"^-- window .* lost: (.*)$", open(path).read(), re.M):
                 lost += sum(int(n) for n in re.findall(r"\d+", line))
-        return {"armod_lost": lost}
+        return {"ormad_lost": lost}
 
 
 class Lttng(Component):
@@ -230,7 +230,7 @@ class Lttng(Component):
 
     def prepare(self, ctx):
         # Under /tmp: the daemon's socket paths must fit in 108 bytes.
-        self.home = tempfile.mkdtemp(prefix="armo-cost-lt-", dir="/tmp")
+        self.home = tempfile.mkdtemp(prefix="orma-cost-lt-", dir="/tmp")
         self.env = dict(os.environ, LTTNG_HOME=self.home)
         sh("lttng-sessiond", "--no-kernel", "--daemonize", env=self.env)
         return {"LTTNG_HOME": self.home}
@@ -276,17 +276,17 @@ class Lttng(Component):
         shutil.rmtree(self.home)
 
 
-class ArmoLttng(Lttng):
-    """libarmo_lttng.so in the workload, its armo and flux providers enabled as well."""
+class OrmaLttng(Lttng):
+    """liborma_lttng.so in the workload, its orma and flux providers enabled as well."""
 
-    name = "armo_lttng"
-    events = ["ros2:*", "armo:*", "flux:*"]
+    name = "orma_lttng"
+    events = ["ros2:*", "orma:*", "flux:*"]
 
     def prepare(self, ctx):
-        return dict(super().prepare(ctx), LD_PRELOAD_APPEND=BIN["libarmo_lttng.so"])
+        return dict(super().prepare(ctx), LD_PRELOAD_APPEND=BIN["liborma_lttng.so"])
 
 
-REGISTRY = {c.name: c for c in (ArmoRclpy, Preload, PreloadArmed, Uprobe, Lttng, ArmoLttng)}
+REGISTRY = {c.name: c for c in (OrmaRclpy, Preload, PreloadArmed, Uprobe, Lttng, OrmaLttng)}
 
 
 def build(spec):

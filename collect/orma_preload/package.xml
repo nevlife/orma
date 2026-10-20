@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>orma_preload</name>
+  <version>0.0.0</version>
+  <description>
+    liborma_preload.so, loaded with LD_PRELOAD: catches ros_trace_*, rcl_wait, rcl_timer_fini,
+    rclcpp construction functions, flux_trace_*, orma_span markers and, on request, CUDA driver
+    and DDS write calls, and writes orma's shared memory file. Also the static interception
+    library orma_intercept that the LTTng backend links.
+  </description>
+  <maintainer email="nevlife000720@gmail.com">nevlife</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <build_depend>rclcpp</build_depend>
+  <build_depend>rmw</build_depend>
+  <build_depend>tracetools</build_depend>
+
+  <test_depend>ament_cmake_test</test_depend>
+  <test_depend>orma_rclpy</test_depend>
+  <test_depend>orma_span</test_depend>
+  <test_depend>rclpy</test_depend>
+  <test_depend>std_msgs</test_depend>
+  <test_depend>std_srvs</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

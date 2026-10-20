@@ -1,13 +1,13 @@
-# armo pre-commit. Enable: pipx install pre-commit && pre-commit install
+# orma pre-commit. Enable: pipx install pre-commit && pre-commit install
 repos:
   - repo: https://github.com/pre-commit/mirrors-clang-format
     rev: v18.1.6
     hooks:
       - id: clang-format
         types_or: [c, c++]
-        files: ^collect/armo_(preload|lttng|span)/
-        # Generated: armo_common's header test compares them byte for byte with cbindgen's output.
-        exclude: ^collect/armo_preload/include/armo_preload/armo_(shm|events)\.h$
+        files: ^collect/orma_(preload|lttng|span)/
+        # Generated: orma_common's header test compares them byte for byte with cbindgen's output.
+        exclude: ^collect/orma_preload/include/orma_preload/orma_(shm|events)\.h$
 
   - repo: https://github.com/adrienverge/yamllint
     rev: v1.37.1
@@ -55,17 +55,17 @@ repos:
         pass_filenames: false
 
       - id: clippy
-        name: clippy (armod, armo-common)
+        name: clippy (ormad, orma-common)
         entry: scripts/cargo.sh clippy --release --all-targets --locked -- -D warnings
         language: script
         types_or: [rust, toml]
         pass_filenames: false
 
       - id: clippy-ebpf
-        name: clippy (armo-ebpf, pinned nightly)
+        name: clippy (orma-ebpf, pinned nightly)
         entry: scripts/clippy_ebpf.sh
         language: script
-        files: ^(collect/armo_ebpf|common/armo_common)/
+        files: ^(collect/orma_ebpf|common/orma_common)/
         pass_filenames: false
 
       # Only when the lock file changes: each run fetches the RustSec advisory database.
@@ -89,7 +89,7 @@ repos:
         language: python
         additional_dependencies: [clang-tidy==22.1.8]
         types_or: [c, c++]
-        files: ^collect/armo_(preload|lttng|span)/
+        files: ^collect/orma_(preload|lttng|span)/
 
       - id: docs-tracked
         name: no untracked files under docs/

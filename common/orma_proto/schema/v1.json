@@ -1,0 +1,4220 @@
+{
+  "$defs": {
+    "Agent": {
+      "properties": {
+        "bpf": {
+          "items": {
+            "$ref": "#/$defs/BpfProg"
+          },
+          "type": "array"
+        },
+        "collect_ns": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "collectd": {
+          "$ref": "#/$defs/ProcUse"
+        },
+        "lttng_discarded": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "maps": {
+          "items": {
+            "$ref": "#/$defs/MapUse"
+          },
+          "type": "array"
+        },
+        "ormad": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProcUse"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "probes_missing": {
+          "items": {
+            "$ref": "#/$defs/ProbeMissing"
+          },
+          "type": "array"
+        },
+        "shm": {
+          "$ref": "#/$defs/ShmUse"
+        }
+      },
+      "required": [
+        "collectd",
+        "bpf",
+        "maps",
+        "shm",
+        "collect_ns",
+        "probes_missing"
+      ],
+      "type": "object"
+    },
+    "Aggregate": {
+      "description": "One table row's difference over a window (`orma_table_entry`, kinds `ORMA_AGG_*`). `tid`\nis 0 for a row a kernel map keeps per process.",
+      "properties": {
+        "count": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "entry": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "hist": {
+          "items": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "key": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "kind": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "pid": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "src": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "sum": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tid": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "pid",
+        "tid",
+        "kind",
+        "src",
+        "entry",
+        "key",
+        "count",
+        "sum",
+        "max",
+        "hist"
+      ],
+      "type": "object"
+    },
+    "Attach": {
+      "description": "`node`, `topic` and `exclude` are regular expressions over whole names (design 14.3). In\n`state`, `pids` also holds the processes they matched. Proto 1.5.",
+      "properties": {
+        "all": {
+          "default": false,
+          "type": "boolean"
+        },
+        "exclude": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "node": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pids": {
+          "default": [],
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "sets": {
+          "items": {
+            "$ref": "#/$defs/ProbeSet"
+          },
+          "type": "array"
+        },
+        "topic": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "user_words": {
+          "additionalProperties": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "default": {},
+          "description": "Thread id to the address of its slot's `cur_cb` (design 15.2), host ids.",
+          "type": "object"
+        }
+      },
+      "required": [
+        "sets"
+      ],
+      "type": "object"
+    },
+    "BpfProg": {
+      "description": "Differences over the window. `pid` is null for a program shared by every process.",
+      "properties": {
+        "pid": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "prog": {
+          "type": "string"
+        },
+        "run_cnt": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "run_time_ns": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "prog",
+        "run_time_ns",
+        "run_cnt"
+      ],
+      "type": "object"
+    },
+    "Callback": {
+      "properties": {
+        "age": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Lat"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cuda": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CudaUse"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Proto 1.8 (design 20.1)."
+        },
+        "dispatch": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Lat"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "duration": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Lat"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "executor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "expected_hz": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "futex_mean_ns": {
+          "description": "Mean futex wait per run. Proto 1.8 (design 20.4).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "group": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "hz": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "intra_pct": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "kind": {
+          "$ref": "#/$defs/CallbackKind"
+        },
+        "nested": {
+          "type": "boolean"
+        },
+        "node": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "oncpu_mean_ns": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "service": {
+          "description": "The service name of a service callback. Proto 1.5.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "symbol": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "topic": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "nested"
+      ],
+      "type": "object"
+    },
+    "CallbackKind": {
+      "enum": [
+        "sub",
+        "timer",
+        "service",
+        "flux",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "Chain": {
+      "description": "One configured chain (design 20.6). `steps[k]` is the time from the source's publish to\nthe publish on `topics[k + 1]`; the last is `e2e`. `broken` counts the publishes on a\nlater topic that did not reach the source.",
+      "properties": {
+        "broken": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "count": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "e2e": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Lat"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mode": {
+          "$ref": "#/$defs/ChainMode"
+        },
+        "name": {
+          "type": "string"
+        },
+        "steps": {
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Lat"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "type": "array"
+        },
+        "topics": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "mode",
+        "topics",
+        "count",
+        "steps",
+        "broken"
+      ],
+      "type": "object"
+    },
+    "ChainMode": {
+      "enum": [
+        "lineage",
+        "first"
+      ],
+      "type": "string"
+    },
+    "ChainSpec": {
+      "description": "`topics` in order from the source; at least two. Proto 1.8.",
+      "properties": {
+        "mode": {
+          "$ref": "#/$defs/ChainMode"
+        },
+        "name": {
+          "type": "string"
+        },
+        "topics": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "topics",
+        "mode"
+      ],
+      "type": "object"
+    },
+    "Check": {
+      "properties": {
+        "detail": {
+          "type": "string"
+        },
+        "item": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/CheckStatus"
+        }
+      },
+      "required": [
+        "item",
+        "status",
+        "detail"
+      ],
+      "type": "object"
+    },
+    "CheckStatus": {
+      "enum": [
+        "pass",
+        "fail",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "ClientRequest": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/Hello",
+          "properties": {
+            "op": {
+              "const": "hello",
+              "type": "string"
+            }
+          },
+          "required": [
+            "op"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "op": {
+              "const": "subscribe",
+              "type": "string"
+            },
+            "streams": {
+              "items": {
+                "$ref": "#/$defs/Stream"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "op",
+            "streams"
+          ],
+          "type": "object"
+        },
+        {
+          "$ref": "#/$defs/Select",
+          "properties": {
+            "op": {
+              "const": "select",
+              "type": "string"
+            }
+          },
+          "required": [
+            "op"
+          ],
+          "type": "object"
+        },
+        {
+          "$ref": "#/$defs/Configure",
+          "properties": {
+            "op": {
+              "const": "configure",
+              "type": "string"
+            }
+          },
+          "required": [
+            "op"
+          ],
+          "type": "object"
+        },
+        {
+          "$ref": "#/$defs/RecordOptions",
+          "properties": {
+            "op": {
+              "const": "record_start",
+              "type": "string"
+            }
+          },
+          "required": [
+            "op"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "op": {
+              "const": "record_stop",
+              "type": "string"
+            },
+            "record_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "op",
+            "record_id"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "op": {
+              "const": "record_list",
+              "type": "string"
+            }
+          },
+          "required": [
+            "op"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "dir": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "op": {
+              "const": "record_show",
+              "type": "string"
+            },
+            "record_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "op"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "entity": {
+              "type": "string"
+            },
+            "op": {
+              "const": "detail",
+              "type": "string"
+            },
+            "what": {
+              "$ref": "#/$defs/DetailWhat"
+            }
+          },
+          "required": [
+            "op",
+            "entity",
+            "what"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "dir": {
+              "type": "string"
+            },
+            "op": {
+              "const": "replay_open",
+              "type": "string"
+            }
+          },
+          "required": [
+            "op",
+            "dir"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "frame": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "op": {
+              "const": "replay_seek",
+              "type": "string"
+            },
+            "replay_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "op",
+            "replay_id",
+            "frame"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "op": {
+              "const": "replay_play",
+              "type": "string"
+            },
+            "rate": {
+              "format": "double",
+              "type": "number"
+            },
+            "replay_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "op",
+            "replay_id",
+            "rate"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "op": {
+              "const": "replay_pause",
+              "type": "string"
+            },
+            "replay_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "op",
+            "replay_id"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "op": {
+              "const": "replay_close",
+              "type": "string"
+            },
+            "replay_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "op",
+            "replay_id"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "dir": {
+              "type": "string"
+            },
+            "metrics": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "op": {
+              "const": "export",
+              "type": "string"
+            },
+            "out": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "op",
+            "dir",
+            "out",
+            "metrics"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "duration_s": {
+              "format": "double",
+              "type": "number"
+            },
+            "op": {
+              "const": "selfcheck",
+              "type": "string"
+            }
+          },
+          "required": [
+            "op",
+            "duration_s"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "op": {
+              "const": "bye",
+              "type": "string"
+            }
+          },
+          "required": [
+            "op"
+          ],
+          "type": "object"
+        }
+      ],
+      "properties": {
+        "id": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "Compression": {
+      "enum": [
+        "none",
+        "zstd"
+      ],
+      "type": "string"
+    },
+    "Configure": {
+      "description": "Only the fields given change.",
+      "properties": {
+        "bandwidth": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "chains": {
+          "description": "Replaces the chains measured end to end (design 20.6). Proto 1.8.",
+          "items": {
+            "$ref": "#/$defs/ChainSpec"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "dds": {
+          "description": "DDS write calls (design 20.2). Proto 1.8.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "expected_hz": {
+          "additionalProperties": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "futex": {
+          "description": "Futex waits of the selected threads (design 20.4). Proto 1.8.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "gpu": {
+          "description": "CUDA driver calls (design 20.1). Proto 1.8.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "latest_nodes": {
+          "description": "Regular expressions over node names whose outputs link to their latest inputs\n(design 20.7). Proto 1.8.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "malloc": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "pss": {
+          "description": "Read each process's PSS: a walk of its page tables under its mmap_lock. Proto 1.7.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "sched": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "window_s": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "Counts": {
+      "properties": {
+        "events": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "lost": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "events",
+        "lost"
+      ],
+      "type": "object"
+    },
+    "CpuSource": {
+      "enum": [
+        "sched",
+        "wall_bound"
+      ],
+      "type": "string"
+    },
+    "CudaUse": {
+      "description": "A callback's CUDA driver calls over the window; the means are per run of the callback.",
+      "properties": {
+        "api_mean_ns": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "calls": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "launches": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "memcpy_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "sync_mean_ns": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "calls",
+        "launches",
+        "memcpy_bytes",
+        "api_mean_ns",
+        "sync_mean_ns"
+      ],
+      "type": "object"
+    },
+    "Detail": {
+      "properties": {
+        "entity": {
+          "type": "string"
+        },
+        "flows": {
+          "items": {
+            "$ref": "#/$defs/Flow"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "hists": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Hist"
+          },
+          "description": "By the name of the entity's latency field.",
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "threads": {
+          "items": {
+            "$ref": "#/$defs/Thread"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "what": {
+          "$ref": "#/$defs/DetailWhat"
+        }
+      },
+      "required": [
+        "entity",
+        "what"
+      ],
+      "type": "object"
+    },
+    "DetailWhat": {
+      "enum": [
+        "hist",
+        "flows",
+        "threads"
+      ],
+      "type": "string"
+    },
+    "Drops": {
+      "properties": {
+        "ambiguous": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "publish": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "record": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "EndReason": {
+      "enum": [
+        "user_stop",
+        "max_duration",
+        "max_size",
+        "disk_floor",
+        "collector_exit",
+        "error"
+      ],
+      "type": "string"
+    },
+    "EntityCount": {
+      "properties": {
+        "events": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "id": {
+          "type": "string"
+        },
+        "lost": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "events",
+        "lost"
+      ],
+      "type": "object"
+    },
+    "ErrorMessage": {
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "id": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "type": "object"
+    },
+    "EventLine": {
+      "properties": {
+        "ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "level": {
+          "$ref": "#/$defs/Level"
+        },
+        "t_real_ns": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "t_real_ns",
+        "level",
+        "kind",
+        "text",
+        "ids"
+      ],
+      "type": "object"
+    },
+    "Executor": {
+      "properties": {
+        "busy_pct": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "callbacks": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "dispatch": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Lat"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "groups": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/ExecutorKind"
+        },
+        "nodes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "oncpu_pct": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "wait": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Lat"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "nodes",
+        "groups",
+        "callbacks"
+      ],
+      "type": "object"
+    },
+    "ExecutorKind": {
+      "enum": [
+        "rclcpp",
+        "rclpy",
+        "flux"
+      ],
+      "type": "string"
+    },
+    "Flow": {
+      "properties": {
+        "ambiguous": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "count": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "dwell": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Lat"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "input": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/FlowKind"
+        },
+        "node": {
+          "type": "string"
+        },
+        "output": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "node",
+        "input",
+        "output",
+        "count",
+        "ambiguous"
+      ],
+      "type": "object"
+    },
+    "FlowKind": {
+      "enum": [
+        "sync",
+        "stamp",
+        "blind",
+        "latest"
+      ],
+      "type": "string"
+    },
+    "Gap": {
+      "properties": {
+        "from_ns": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "to_ns": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "from_ns",
+        "to_ns",
+        "source",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "Gpu": {
+      "properties": {
+        "clock_mhz": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "index": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "mem_total_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "mem_used_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "power_w": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "temp_c": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "throttle": {
+          "description": "Why the clock is held down now, empty when it is not.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "util_pct": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "index",
+        "name",
+        "throttle"
+      ],
+      "type": "object"
+    },
+    "Hello": {
+      "properties": {
+        "client": {
+          "type": "string"
+        },
+        "pid": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "proto": {
+          "items": {
+            "format": "uint16",
+            "maximum": 65535,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        }
+      },
+      "required": [
+        "proto",
+        "client",
+        "pid"
+      ],
+      "type": "object"
+    },
+    "Hist": {
+      "description": "For `log2`, bucket `i` counts `[2^i, 2^(i+1))` ns over `orma_common::BUCKETS` buckets.",
+      "properties": {
+        "counts": {
+          "items": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "scheme": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "scheme",
+        "counts"
+      ],
+      "type": "object"
+    },
+    "Host": {
+      "properties": {
+        "arch": {
+          "type": "string"
+        },
+        "cpus": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "hostname": {
+          "type": "string"
+        },
+        "kernel": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "hostname",
+        "kernel",
+        "arch",
+        "cpus"
+      ],
+      "type": "object"
+    },
+    "HostWindow": {
+      "properties": {
+        "cpu_mhz": {
+          "description": "`scaling_cur_freq` by CPU number at the window's end.",
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "type": "array"
+        },
+        "gpus": {
+          "items": {
+            "$ref": "#/$defs/Gpu"
+          },
+          "type": "array"
+        },
+        "net": {
+          "items": {
+            "$ref": "#/$defs/NetIf"
+          },
+          "type": "array"
+        },
+        "thermal": {
+          "items": {
+            "$ref": "#/$defs/Thermal"
+          },
+          "type": "array"
+        },
+        "throttle": {
+          "additionalProperties": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "description": "Throttle counters' increase over the window, by name.",
+          "type": "object"
+        },
+        "udp": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Udp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "cpu_mhz",
+        "thermal",
+        "throttle",
+        "net",
+        "gpus"
+      ],
+      "type": "object"
+    },
+    "Instant": {
+      "properties": {
+        "mono_ns": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "real_ns": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "mono_ns",
+        "real_ns"
+      ],
+      "type": "object"
+    },
+    "Interference": {
+      "description": "Kernel counters over a recording, end minus start (design 14.9). Per CPU vectors are\nindexed by CPU number.",
+      "properties": {
+        "interrupts": {
+          "additionalProperties": {
+            "items": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "description": "`/proc/interrupts` by row; the numbered (device) rows are summed into `dev`.",
+          "type": "object"
+        },
+        "pressure_us": {
+          "additionalProperties": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "description": "`total` of `/proc/pressure/<resource>`, by `<resource>.some` and `<resource>.full`.",
+          "type": "object"
+        },
+        "softirqs": {
+          "additionalProperties": {
+            "items": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "type": "object"
+        },
+        "steal_ticks": {
+          "description": "Time a hypervisor ran something else, from `/proc/stat`.",
+          "items": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "threads": {
+          "items": {
+            "$ref": "#/$defs/ThreadCounters"
+          },
+          "type": "array"
+        },
+        "vmstat": {
+          "additionalProperties": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "interrupts",
+        "softirqs",
+        "vmstat",
+        "pressure_us",
+        "steal_ticks",
+        "threads"
+      ],
+      "type": "object"
+    },
+    "Lat": {
+      "properties": {
+        "max_ns": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "mean_ns": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "n": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "p50_ns": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "p90_ns": {
+          "default": 0,
+          "description": "Proto 1.8; recordings from before read 0.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "p999_ns": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "p99_ns": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "n",
+        "mean_ns",
+        "p50_ns",
+        "p99_ns",
+        "p999_ns",
+        "max_ns"
+      ],
+      "type": "object"
+    },
+    "Level": {
+      "enum": [
+        "info",
+        "warn",
+        "error"
+      ],
+      "type": "string"
+    },
+    "Library": {
+      "properties": {
+        "build_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
+    },
+    "Limits": {
+      "properties": {
+        "disk_floor_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_duration_s": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "max_duration_s",
+        "max_bytes",
+        "disk_floor_bytes"
+      ],
+      "type": "object"
+    },
+    "LttngState": {
+      "enum": [
+        "available",
+        "absent"
+      ],
+      "type": "string"
+    },
+    "Malloc": {
+      "properties": {
+        "alloc_bps": {
+          "format": "double",
+          "type": "number"
+        },
+        "alloc_hz": {
+          "format": "double",
+          "type": "number"
+        },
+        "free_bps": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "alloc_bps",
+        "free_bps",
+        "alloc_hz"
+      ],
+      "type": "object"
+    },
+    "MapUse": {
+      "properties": {
+        "max": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "memlock_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "name": {
+          "type": "string"
+        },
+        "used": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "used",
+        "max",
+        "memlock_bytes"
+      ],
+      "type": "object"
+    },
+    "Method": {
+      "enum": [
+        "uprobe",
+        "preload",
+        "lttng"
+      ],
+      "type": "string"
+    },
+    "Monitor": {
+      "properties": {
+        "bandwidth": {
+          "type": "boolean"
+        },
+        "chains": {
+          "items": {
+            "$ref": "#/$defs/ChainSpec"
+          },
+          "type": "array"
+        },
+        "dds": {
+          "default": false,
+          "type": "boolean"
+        },
+        "futex": {
+          "default": false,
+          "type": "boolean"
+        },
+        "gpu": {
+          "default": false,
+          "description": "Proto 1.8.",
+          "type": "boolean"
+        },
+        "latest_nodes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "malloc": {
+          "type": "boolean"
+        },
+        "method_by_pid": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Method"
+          },
+          "type": "object"
+        },
+        "pss": {
+          "default": false,
+          "description": "Proto 1.7.",
+          "type": "boolean"
+        },
+        "running": {
+          "type": "boolean"
+        },
+        "sched": {
+          "type": "boolean"
+        },
+        "selection": {
+          "$ref": "#/$defs/Selection"
+        },
+        "window_s": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "running",
+        "window_s",
+        "selection",
+        "method_by_pid",
+        "bandwidth",
+        "sched",
+        "malloc"
+      ],
+      "type": "object"
+    },
+    "NetIf": {
+      "description": "`/proc/net/dev` over the window.",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "rx_bps": {
+          "format": "double",
+          "type": "number"
+        },
+        "rx_drops": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "rx_errors": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "rx_pps": {
+          "format": "double",
+          "type": "number"
+        },
+        "tx_bps": {
+          "format": "double",
+          "type": "number"
+        },
+        "tx_drops": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tx_errors": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tx_pps": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "name",
+        "rx_bps",
+        "tx_bps",
+        "rx_pps",
+        "tx_pps",
+        "rx_drops",
+        "tx_drops",
+        "rx_errors",
+        "tx_errors"
+      ],
+      "type": "object"
+    },
+    "Node": {
+      "properties": {
+        "busy_pct": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "callbacks": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "cb_hz": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "cpu_pct": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "cpu_source": {
+          "$ref": "#/$defs/CpuSource"
+        },
+        "fqn": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "malloc": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Malloc"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "pid": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "fqn",
+        "pid",
+        "cpu_source",
+        "callbacks"
+      ],
+      "type": "object"
+    },
+    "OrmadLink": {
+      "enum": [
+        "connected",
+        "absent",
+        "denied",
+        "lost"
+      ],
+      "type": "string"
+    },
+    "OrmadMessage": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/ServerHello",
+          "properties": {
+            "type": {
+              "const": "hello",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "$ref": "#/$defs/OrmadWindow",
+          "properties": {
+            "type": {
+              "const": "window",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "$ref": "#/$defs/EventLine",
+          "properties": {
+            "type": {
+              "const": "event_line",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "$ref": "#/$defs/Reply",
+          "properties": {
+            "type": {
+              "const": "reply",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "$ref": "#/$defs/ErrorMessage",
+          "properties": {
+            "type": {
+              "const": "error",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "OrmadRequest": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/Hello",
+          "properties": {
+            "op": {
+              "const": "hello",
+              "type": "string"
+            }
+          },
+          "required": [
+            "op"
+          ],
+          "type": "object"
+        },
+        {
+          "$ref": "#/$defs/Attach",
+          "properties": {
+            "op": {
+              "const": "attach",
+              "type": "string"
+            }
+          },
+          "required": [
+            "op"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "op": {
+              "const": "detach",
+              "type": "string"
+            },
+            "pids": {
+              "items": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "sets": {
+              "items": {
+                "$ref": "#/$defs/ProbeSet"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "op",
+            "pids",
+            "sets"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "on": {
+              "type": "boolean"
+            },
+            "op": {
+              "const": "stream",
+              "type": "string"
+            },
+            "pids": {
+              "items": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "op",
+            "on",
+            "pids"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "op": {
+              "const": "window",
+              "type": "string"
+            },
+            "window_s": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "op",
+            "window_s"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "ormad's items of design 6.7 over `duration_s`, answered with a `selfcheck` reply.\n`pids` is orma-collectd's selection; empty: every process.",
+          "properties": {
+            "duration_s": {
+              "format": "double",
+              "type": "number"
+            },
+            "op": {
+              "const": "selfcheck",
+              "type": "string"
+            },
+            "pids": {
+              "items": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "op",
+            "duration_s",
+            "pids"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Sends the records ormad holds, then answers: every record from before the request\narrives ahead of the reply. Without `drain_only` the answer also waits until the\nattaches asked for before are in; an ending recording needs only the records.",
+          "properties": {
+            "drain_only": {
+              "type": "boolean"
+            },
+            "op": {
+              "const": "flush",
+              "type": "string"
+            }
+          },
+          "required": [
+            "op"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "op": {
+              "const": "bye",
+              "type": "string"
+            }
+          },
+          "required": [
+            "op"
+          ],
+          "type": "object"
+        }
+      ],
+      "properties": {
+        "id": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "OrmadWindow": {
+      "description": "The kernel maps' differences over one window.",
+      "properties": {
+        "aggregates": {
+          "items": {
+            "$ref": "#/$defs/Aggregate"
+          },
+          "type": "array"
+        },
+        "bpf": {
+          "items": {
+            "$ref": "#/$defs/BpfProg"
+          },
+          "type": "array"
+        },
+        "lost": {
+          "additionalProperties": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "object"
+        },
+        "maps": {
+          "items": {
+            "$ref": "#/$defs/MapUse"
+          },
+          "type": "array"
+        },
+        "probe_changes": {
+          "description": "The attaches and detaches that ended since the last window. Proto 1.7.",
+          "items": {
+            "$ref": "#/$defs/ProbeChange"
+          },
+          "type": "array"
+        },
+        "probes_missing": {
+          "items": {
+            "$ref": "#/$defs/ProbeMissing"
+          },
+          "type": "array"
+        },
+        "seq": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "t_mono_ns": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "usage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProcUse"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "ormad's own CPU over the window and its RSS (design 6.8). Proto 1.4."
+        },
+        "window_ns": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "seq",
+        "t_mono_ns",
+        "window_ns",
+        "aggregates",
+        "bpf",
+        "maps",
+        "lost",
+        "probes_missing"
+      ],
+      "type": "object"
+    },
+    "Overflow": {
+      "description": "What the preload shim could not take, counted since it made its file.",
+      "properties": {
+        "depth": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "table": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "threads": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "threads",
+        "table",
+        "depth"
+      ],
+      "type": "object"
+    },
+    "Owner": {
+      "properties": {
+        "client": {
+          "type": "string"
+        },
+        "host": {
+          "type": "string"
+        },
+        "pid": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "uid": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "uid",
+        "client",
+        "pid",
+        "host"
+      ],
+      "type": "object"
+    },
+    "ProbeChange": {
+      "description": "One program attached to or detached from the points of one file (design 6.8): the\nkernel patched code and flushed TLBs on the CPUs then, monotonic ns.",
+      "properties": {
+        "attach": {
+          "type": "boolean"
+        },
+        "from_ns": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "pid": {
+          "description": "`None`: every process mapping the file.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "points": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "prog": {
+          "type": "string"
+        },
+        "to_ns": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "from_ns",
+        "to_ns",
+        "attach",
+        "prog",
+        "points"
+      ],
+      "type": "object"
+    },
+    "ProbeMissing": {
+      "properties": {
+        "method": {
+          "$ref": "#/$defs/Method"
+        },
+        "pid": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "point": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "method",
+        "point",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "ProbeSet": {
+      "enum": [
+        "discovery",
+        "hot",
+        "sched",
+        "bandwidth",
+        "rclcpp_symbols",
+        "names",
+        "gpu",
+        "dds",
+        "futex"
+      ],
+      "type": "string"
+    },
+    "ProcCuda": {
+      "description": "The process's CUDA driver calls over the window.",
+      "properties": {
+        "alloc_hz": {
+          "format": "double",
+          "type": "number"
+        },
+        "calls_hz": {
+          "format": "double",
+          "type": "number"
+        },
+        "errors": {
+          "description": "Calls that returned an error.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "launch_hz": {
+          "format": "double",
+          "type": "number"
+        },
+        "memcpy_bps": {
+          "format": "double",
+          "type": "number"
+        },
+        "sync": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Lat"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Time blocked in the synchronize calls."
+        }
+      },
+      "required": [
+        "calls_hz",
+        "launch_hz",
+        "memcpy_bps",
+        "alloc_hz",
+        "errors"
+      ],
+      "type": "object"
+    },
+    "ProcUse": {
+      "properties": {
+        "cpu_pct": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "rss_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "Process": {
+      "properties": {
+        "cold": {
+          "type": "boolean"
+        },
+        "comm": {
+          "type": "string"
+        },
+        "cpu_pct": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "cuda": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProcCuda"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Proto 1.8 (design 20.1)."
+        },
+        "exited": {
+          "type": "boolean"
+        },
+        "flux_gpu_wedged": {
+          "description": "The `CUresult` that wedged the process's GPU (`flux_trace_gpu_wedged`); its GPU\nchannels refuse claims, loans and takes from then on. Proto 1.7.",
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "gpu_mem_bytes": {
+          "description": "Device memory the process holds, from the GPU driver. Proto 1.8.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "method": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Method"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "methods_available": {
+          "items": {
+            "$ref": "#/$defs/Method"
+          },
+          "type": "array"
+        },
+        "nodes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "ns_pid": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "overflow": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Overflow"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "LD_PRELOAD processes only (design 13.2)."
+        },
+        "pid": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "pss_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "ros": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Ros"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rss_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "shared_cpu_pct": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "threads": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "pid",
+        "comm",
+        "methods_available",
+        "threads",
+        "nodes",
+        "exited",
+        "cold"
+      ],
+      "type": "object"
+    },
+    "ProcessRos": {
+      "properties": {
+        "libraries": {
+          "items": {
+            "$ref": "#/$defs/Library"
+          },
+          "type": "array"
+        },
+        "pid": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "rmw": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ros": {
+          "$ref": "#/$defs/Ros"
+        },
+        "starttime": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "pid",
+        "starttime",
+        "ros",
+        "libraries"
+      ],
+      "type": "object"
+    },
+    "PublishAbi": {
+      "enum": [
+        "rmw",
+        "rcl"
+      ],
+      "type": "string"
+    },
+    "RecordDrops": {
+      "properties": {
+        "lttng": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "ormad_ring": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "shm_ring": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "shm_ring",
+        "ormad_ring",
+        "lttng"
+      ],
+      "type": "object"
+    },
+    "RecordKind": {
+      "enum": [
+        "events",
+        "windows"
+      ],
+      "type": "string"
+    },
+    "RecordMeta": {
+      "properties": {
+        "bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "counts": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Counts"
+          },
+          "type": "object"
+        },
+        "drops": {
+          "$ref": "#/$defs/RecordDrops"
+        },
+        "end_detail": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "end_reason": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EndReason"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ended": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Instant"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "files": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "flux_contract": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "gaps": {
+          "items": {
+            "$ref": "#/$defs/Gap"
+          },
+          "type": "array"
+        },
+        "host": {
+          "$ref": "#/$defs/Host"
+        },
+        "id": {
+          "type": "string"
+        },
+        "interference": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Interference"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Proto 1.7."
+        },
+        "methods_by_pid": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Method"
+          },
+          "type": "object"
+        },
+        "options": {
+          "$ref": "#/$defs/RecordOptions"
+        },
+        "orma_version": {
+          "type": "string"
+        },
+        "owner": {
+          "$ref": "#/$defs/Owner"
+        },
+        "probe_changes": {
+          "description": "ormad's attaches and detaches during the recording. Proto 1.7.",
+          "items": {
+            "$ref": "#/$defs/ProbeChange"
+          },
+          "type": "array"
+        },
+        "probes_missing": {
+          "items": {
+            "$ref": "#/$defs/ProbeMissing"
+          },
+          "type": "array"
+        },
+        "realtime_steps": {
+          "description": "When CLOCK_REALTIME stepped during the recording, monotonic ns. Wall-clock ages and\ntimestamp pairings near these are not to be trusted. Proto 1.7.",
+          "items": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "ros": {
+          "items": {
+            "$ref": "#/$defs/ProcessRos"
+          },
+          "type": "array"
+        },
+        "schema": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "started": {
+          "$ref": "#/$defs/Instant"
+        },
+        "state": {
+          "$ref": "#/$defs/RecordState"
+        },
+        "system_end": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "system_start": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "The host's settings that change what a measurement means, read at the start and at\nthe end; an unreadable one is left out (design 14.9). Proto 1.7.",
+          "type": "object"
+        }
+      },
+      "required": [
+        "schema",
+        "orma_version",
+        "id",
+        "host",
+        "ros",
+        "options",
+        "methods_by_pid",
+        "owner",
+        "started",
+        "state",
+        "probes_missing",
+        "gaps",
+        "counts",
+        "drops",
+        "files",
+        "bytes"
+      ],
+      "type": "object"
+    },
+    "RecordMethod": {
+      "enum": [
+        "auto",
+        "uprobe",
+        "preload",
+        "lttng"
+      ],
+      "type": "string"
+    },
+    "RecordOptions": {
+      "description": "The options of design 14.3, one field each. An absent field takes the default there.",
+      "properties": {
+        "bandwidth": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "cache_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "chains": {
+          "items": {
+            "$ref": "#/$defs/ChainSpec"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "compression": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Compression"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "dds": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "dir": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "futex": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "gpu": {
+          "description": "Proto 1.8, as in `Configure`.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RecordKind"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "latest_nodes": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "malloc": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "max_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_duration_s": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "method": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RecordMethod"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sched": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "split_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "split_duration_s": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "targets": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Targets"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "RecordState": {
+      "enum": [
+        "recording",
+        "finalized",
+        "truncated"
+      ],
+      "type": "string"
+    },
+    "Recording": {
+      "properties": {
+        "bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "dir": {
+          "type": "string"
+        },
+        "elapsed_s": {
+          "format": "double",
+          "type": "number"
+        },
+        "end_reason": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EndReason"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/RecordKind"
+        },
+        "limits": {
+          "$ref": "#/$defs/Limits"
+        },
+        "methods": {
+          "items": {
+            "$ref": "#/$defs/Method"
+          },
+          "type": "array"
+        },
+        "owner": {
+          "$ref": "#/$defs/Owner"
+        },
+        "per_entity": {
+          "items": {
+            "$ref": "#/$defs/EntityCount"
+          },
+          "type": "array"
+        },
+        "per_entity_truncated": {
+          "type": "boolean"
+        },
+        "started_real_ns": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "state": {
+          "$ref": "#/$defs/RecordState"
+        },
+        "targets": {
+          "$ref": "#/$defs/Targets"
+        },
+        "totals": {
+          "$ref": "#/$defs/Counts"
+        }
+      },
+      "required": [
+        "id",
+        "state",
+        "dir",
+        "kind",
+        "methods",
+        "targets",
+        "started_real_ns",
+        "elapsed_s",
+        "bytes",
+        "limits",
+        "owner",
+        "totals",
+        "per_entity",
+        "per_entity_truncated"
+      ],
+      "type": "object"
+    },
+    "Reply": {
+      "anyOf": [
+        {
+          "properties": {
+            "dir": {
+              "type": "string"
+            },
+            "record_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "record_id",
+            "dir"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "recordings": {
+              "items": {
+                "$ref": "#/$defs/Recording"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "recordings"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "table": {
+              "$ref": "#/$defs/VerifyTable"
+            }
+          },
+          "required": [
+            "table"
+          ],
+          "type": "object"
+        },
+        {
+          "$ref": "#/$defs/Detail"
+        },
+        {
+          "properties": {
+            "replay_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "replay_id"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "checks": {
+              "items": {
+                "$ref": "#/$defs/Check"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "checks"
+          ],
+          "type": "object"
+        },
+        {
+          "type": "object"
+        }
+      ],
+      "description": "Told apart by their fields; the request's `id` says which op it answers.",
+      "properties": {
+        "id": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "ok": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "ok"
+      ],
+      "type": "object"
+    },
+    "Ros": {
+      "properties": {
+        "distro": {
+          "type": "string"
+        },
+        "gated_register": {
+          "type": "boolean"
+        },
+        "publish_abi": {
+          "$ref": "#/$defs/PublishAbi"
+        },
+        "tracetools_lttng": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "distro",
+        "publish_abi",
+        "tracetools_lttng",
+        "gated_register"
+      ],
+      "type": "object"
+    },
+    "Select": {
+      "description": "`node`, `topic` and `exclude` are regular expressions over whole names (design 14.3). In\n`state`, `pids` also holds the processes they matched. Proto 1.5.",
+      "properties": {
+        "all": {
+          "default": false,
+          "type": "boolean"
+        },
+        "exclude": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "method_by_pid": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Method"
+          },
+          "default": {},
+          "type": "object"
+        },
+        "node": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pids": {
+          "default": [],
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "topic": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "Selection": {
+      "description": "`node`, `topic` and `exclude` are regular expressions over whole names (design 14.3). In\n`state`, `pids` also holds the processes they matched. Proto 1.5.",
+      "properties": {
+        "all": {
+          "default": false,
+          "type": "boolean"
+        },
+        "exclude": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "node": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pids": {
+          "default": [],
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "topic": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "ServerHello": {
+      "properties": {
+        "proto": {
+          "items": {
+            "format": "uint16",
+            "maximum": 65535,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "server": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "proto",
+        "server",
+        "version"
+      ],
+      "type": "object"
+    },
+    "ServerMessage": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/ServerHello",
+          "properties": {
+            "type": {
+              "const": "hello",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "$ref": "#/$defs/State",
+          "properties": {
+            "type": {
+              "const": "state",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "$ref": "#/$defs/Window",
+          "properties": {
+            "type": {
+              "const": "window",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "$ref": "#/$defs/EventLine",
+          "properties": {
+            "type": {
+              "const": "event_line",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "$ref": "#/$defs/Reply",
+          "properties": {
+            "type": {
+              "const": "reply",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "$ref": "#/$defs/ErrorMessage",
+          "properties": {
+            "type": {
+              "const": "error",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ShmUse": {
+      "properties": {
+        "bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "files": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "ring_drops": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "files",
+        "bytes",
+        "ring_drops"
+      ],
+      "type": "object"
+    },
+    "Sources": {
+      "properties": {
+        "lttng": {
+          "$ref": "#/$defs/LttngState"
+        },
+        "ormad": {
+          "$ref": "#/$defs/OrmadLink"
+        },
+        "preload_processes": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "ormad",
+        "lttng",
+        "preload_processes"
+      ],
+      "type": "object"
+    },
+    "Span": {
+      "description": "One `liborma_span.so` span (design 20.5). `parent` is the span it ran inside.",
+      "properties": {
+        "callback": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "duration": {
+          "$ref": "#/$defs/Lat"
+        },
+        "hz": {
+          "format": "double",
+          "type": "number"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "node": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "parent": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pid": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "pid",
+        "hz",
+        "duration"
+      ],
+      "type": "object"
+    },
+    "State": {
+      "properties": {
+        "monitor": {
+          "$ref": "#/$defs/Monitor"
+        },
+        "recordings": {
+          "items": {
+            "$ref": "#/$defs/Recording"
+          },
+          "type": "array"
+        },
+        "seq": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "sources": {
+          "$ref": "#/$defs/Sources"
+        }
+      },
+      "required": [
+        "seq",
+        "sources",
+        "monitor",
+        "recordings"
+      ],
+      "type": "object"
+    },
+    "Stream": {
+      "enum": [
+        "state",
+        "window",
+        "event_line"
+      ],
+      "type": "string"
+    },
+    "Subscription": {
+      "properties": {
+        "hop": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Lat"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "intra_pct": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "loss_pct": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "lost": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "node": {
+          "type": "string"
+        },
+        "recv_hz": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "topic": {
+          "type": "string"
+        },
+        "wake": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Lat"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "topic",
+        "node"
+      ],
+      "type": "object"
+    },
+    "Targets": {
+      "properties": {
+        "all": {
+          "default": false,
+          "type": "boolean"
+        },
+        "exclude": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "node": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pids": {
+          "default": [],
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "topic": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "Thermal": {
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "temp_c": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "name",
+        "temp_c"
+      ],
+      "type": "object"
+    },
+    "Thread": {
+      "properties": {
+        "bucket": {
+          "type": "string"
+        },
+        "cpu_pct": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "cpu_wait": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Lat"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cpus": {
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "futex": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Lat"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Proto 1.8 (design 20.4)."
+        },
+        "id": {
+          "type": "string"
+        },
+        "in_callback_cpu_pct": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "policy": {
+          "type": "string"
+        },
+        "prio": {
+          "format": "int32",
+          "type": "integer"
+        },
+        "tid": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "tid",
+        "name",
+        "policy",
+        "prio",
+        "bucket",
+        "cpus"
+      ],
+      "type": "object"
+    },
+    "ThreadCounters": {
+      "description": "A target thread's faults and scheduler statistics; from its start when it began during\nthe recording.",
+      "properties": {
+        "comm": {
+          "type": "string"
+        },
+        "majflt": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "minflt": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "pid": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "run_ns": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "slices": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tid": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "wait_ns": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "pid",
+        "tid",
+        "comm",
+        "minflt",
+        "majflt",
+        "run_ns",
+        "wait_ns",
+        "slices"
+      ],
+      "type": "object"
+    },
+    "Topic": {
+      "properties": {
+        "age_pub": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Lat"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "age_take": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Lat"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "bw_bps": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "dds_write": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Lat"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "drops": {
+          "$ref": "#/$defs/Drops"
+        },
+        "expected_hz": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "hop": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Lat"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "pub_hz": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "pub_to_dds": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Lat"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "`rclcpp_publish` to the DDS write call, and the call itself. Proto 1.8 (design 20.2)."
+        },
+        "publishers": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "subscribers": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "transport": {
+          "$ref": "#/$defs/Transport"
+        }
+      },
+      "required": [
+        "id",
+        "transport",
+        "name",
+        "publishers",
+        "subscribers",
+        "drops"
+      ],
+      "type": "object"
+    },
+    "Transport": {
+      "enum": [
+        "ros",
+        "flux"
+      ],
+      "type": "string"
+    },
+    "Udp": {
+      "description": "The UDP rows of `/proc/net/snmp`, increase over the window.",
+      "properties": {
+        "in_errors": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "no_ports": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "rcvbuf_errors": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "sndbuf_errors": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "in_errors",
+        "rcvbuf_errors",
+        "sndbuf_errors",
+        "no_ports"
+      ],
+      "type": "object"
+    },
+    "VerifyRow": {
+      "properties": {
+        "events": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "hz": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "lost": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "events",
+        "lost"
+      ],
+      "type": "object"
+    },
+    "VerifyTable": {
+      "properties": {
+        "end_detail": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "end_reason": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EndReason"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "entities": {
+          "items": {
+            "$ref": "#/$defs/VerifyRow"
+          },
+          "type": "array"
+        },
+        "totals": {
+          "$ref": "#/$defs/VerifyTotals"
+        },
+        "warnings": {
+          "items": {
+            "$ref": "#/$defs/Warning"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "entities",
+        "warnings",
+        "totals"
+      ],
+      "type": "object"
+    },
+    "VerifyTotals": {
+      "properties": {
+        "bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "duration_s": {
+          "format": "double",
+          "type": "number"
+        },
+        "events": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "lost": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "events",
+        "lost",
+        "duration_s",
+        "bytes"
+      ],
+      "type": "object"
+    },
+    "Warning": {
+      "properties": {
+        "ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "text",
+        "ids"
+      ],
+      "type": "object"
+    },
+    "Window": {
+      "properties": {
+        "agent": {
+          "$ref": "#/$defs/Agent"
+        },
+        "behind": {
+          "type": "boolean"
+        },
+        "callbacks": {
+          "items": {
+            "$ref": "#/$defs/Callback"
+          },
+          "type": "array"
+        },
+        "chains": {
+          "description": "Proto 1.8 (design 20.6).",
+          "items": {
+            "$ref": "#/$defs/Chain"
+          },
+          "type": "array"
+        },
+        "executors": {
+          "items": {
+            "$ref": "#/$defs/Executor"
+          },
+          "type": "array"
+        },
+        "flows": {
+          "items": {
+            "$ref": "#/$defs/Flow"
+          },
+          "type": "array"
+        },
+        "hists": {
+          "additionalProperties": {
+            "additionalProperties": {
+              "$ref": "#/$defs/Hist"
+            },
+            "type": "object"
+          },
+          "description": "Window records only (14.4): entity id, then latency field name.",
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "host": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HostWindow"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The host's GPUs, network, temperatures and clocks over the window. Proto 1.8 (design\n20.3)."
+        },
+        "nodes": {
+          "items": {
+            "$ref": "#/$defs/Node"
+          },
+          "type": "array"
+        },
+        "processes": {
+          "items": {
+            "$ref": "#/$defs/Process"
+          },
+          "type": "array"
+        },
+        "replay": {
+          "type": "boolean"
+        },
+        "seq": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "spans": {
+          "description": "Proto 1.8 (design 20.5).",
+          "items": {
+            "$ref": "#/$defs/Span"
+          },
+          "type": "array"
+        },
+        "subscriptions": {
+          "items": {
+            "$ref": "#/$defs/Subscription"
+          },
+          "type": "array"
+        },
+        "t_mono_ns": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "t_real_ns": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "threads": {
+          "items": {
+            "$ref": "#/$defs/Thread"
+          },
+          "type": "array"
+        },
+        "topics": {
+          "items": {
+            "$ref": "#/$defs/Topic"
+          },
+          "type": "array"
+        },
+        "window_ns": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "seq",
+        "replay",
+        "t_mono_ns",
+        "t_real_ns",
+        "window_ns",
+        "behind",
+        "processes",
+        "threads",
+        "nodes",
+        "executors",
+        "callbacks",
+        "topics",
+        "subscriptions",
+        "flows",
+        "agent"
+      ],
+      "type": "object"
+    },
+    "WindowLine": {
+      "properties": {
+        "snap": {
+          "$ref": "#/$defs/Window"
+        },
+        "t_mono_ns": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "t_real_ns": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "t_mono_ns",
+        "t_real_ns",
+        "snap"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "orma protocol 1"
+}

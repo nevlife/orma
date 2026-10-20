@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""`armo check` against the real armod and armo-collectd (design 6.7, 18 WP9).
+"""`orma check` against the real ormad and orma-collectd (design 6.7, 18 WP9).
 
 Processes that wait before they create any ROS entity are selected first, so the check attaches
-only to them; `armo check` then runs and they start inside its window: two node.cpp on one
-topic (one under libarmo_preload.so), node.py with armo_rclpy and, when the workspace has
-flux_ffi, armo_daemon's flux caller. Each row of 6.7 must come out as an item that passes;
+only to them; `orma check` then runs and they start inside its window: two node.cpp on one
+topic (one under liborma_preload.so), node.py with orma_rclpy and, when the workspace has
+flux_ffi, orma_daemon's flux caller. Each row of 6.7 must come out as an item that passes;
 the Cyclone m_size offset may stay unknown with its reason (it needs Cyclone's debug symbols).
 
     selfcheck.py [--duration S] [--humble IMAGE WS]
@@ -23,20 +23,20 @@ import tempfile
 import time
 from pathlib import Path
 
-import armo_client
+import orma_client
 import common
 from ament_index_python.packages import get_package_prefix, get_package_share_directory
 
 A = common.accuracy
-TEST = common.ARMO / "daemon/armo_daemon/test"
+TEST = common.ORMA / "daemon/orma_daemon/test"
 
 
 def host_procs(prefix, tmp):
     exe = A.build_node(tmp)
     env = A.node_env("rmw_cyclonedds_cpp")
     env["ROS_DOMAIN_ID"] = common.DOMAIN
-    preload = Path(get_package_prefix("armo_preload")) / "lib/libarmo_preload.so"
-    autoload = Path(get_package_share_directory("armo_rclpy")) / "autoload"
+    preload = Path(get_package_prefix("orma_preload")) / "lib/liborma_preload.so"
+    autoload = Path(get_package_share_directory("orma_rclpy")) / "autoload"
     out = {
         "cpp": common.Waiting([exe, prefix, "200"], env),
         "cpp_preload": common.Waiting([exe, prefix, "200"], dict(env, LD_PRELOAD=str(preload))),
@@ -46,7 +46,7 @@ def host_procs(prefix, tmp):
         ),
     }
     if A.flux_lib():
-        sys.path.insert(0, str(common.ARMO / "collect/armo_lttng/test"))
+        sys.path.insert(0, str(common.ORMA / "collect/orma_lttng/test"))
         import session
 
         out["flux"] = common.Caller([session.flux_caller(tmp)], env)
@@ -55,9 +55,9 @@ def host_procs(prefix, tmp):
 
 def docker_procs(prefix, docker):
     exe = docker.build_node()
-    preload = {"LD_PRELOAD": "/w/install/armo_preload/lib/libarmo_preload.so"}
-    autoload = {"PYTHONPATH": "/w/install/armo_rclpy/share/armo_rclpy/autoload:$PYTHONPATH"}
-    node_py = ["python3", "/w/src/armo/daemon/armo_daemon/test/node.py", prefix + "_py", "200"]
+    preload = {"LD_PRELOAD": "/w/install/orma_preload/lib/liborma_preload.so"}
+    autoload = {"PYTHONPATH": "/w/install/orma_rclpy/share/orma_rclpy/autoload:$PYTHONPATH"}
+    node_py = ["python3", "/w/src/orma/daemon/orma_daemon/test/node.py", prefix + "_py", "200"]
     return {
         "cpp": common.Waiting([exe, prefix, "200"], docker=docker),
         "cpp_preload": common.Waiting([exe, prefix, "200"], preload, docker),
@@ -85,7 +85,7 @@ MAY_BE_UNKNOWN = {"cyclone serdata_rmw::m_size offset"}
 
 
 def parse(out):
-    """Rows of `armo check`'s table: item -> (status, detail)."""
+    """Rows of `orma check`'s table: item -> (status, detail)."""
     lines = out.splitlines()
     head = next(i for i, line in enumerate(lines) if line.split()[:2] == ["item", "status"])
     status_at = lines[head].index("status")
@@ -104,31 +104,31 @@ def main():
     ap.add_argument("--duration", type=float, default=20.0)
     ap.add_argument("--humble", nargs=2, metavar=("IMAGE", "WS"))
     a = ap.parse_args()
-    tmp = Path(tempfile.mkdtemp(prefix="armo-sc-", dir="/tmp"))
+    tmp = Path(tempfile.mkdtemp(prefix="orma-sc-", dir="/tmp"))
     os.chmod(tmp, 0o755)
-    prefix = f"/armo_sc_{os.getpid()}"
+    prefix = f"/orma_sc_{os.getpid()}"
     docker = None
     if a.humble:
         ws = Path(a.humble[1]).resolve()
         common.build_humble_ws(a.humble[0], ws)
         docker = common.Docker(a.humble[0], ws, "8-10")
     failed = []
-    with common.armod(tmp):
+    with common.ormad(tmp):
         collectd = common.Collectd(tmp)
         procs = {}
         try:
             procs = docker_procs(prefix, docker) if docker else host_procs(prefix, tmp)
             pids = {k: p.pid for k, p in procs.items()}
-            client = armo_client.connect(start=False)
+            client = orma_client.connect(start=False)
             client.request("select", all=False, pids=sorted(pids.values()))
             check = subprocess.Popen(
-                ["armo", "check", "--duration", str(a.duration)],
+                ["orma", "check", "--duration", str(a.duration)],
                 env=collectd.env,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
             )
-            # armod opens the window once every set is attached, tens of seconds on this kernel,
+            # ormad opens the window once every set is attached, tens of seconds on this kernel,
             # one probe after the other: the nodes start once the last ones they hit are on.
             common.wait_for(
                 lambda: (
@@ -143,7 +143,7 @@ def main():
             for p in procs.values():
                 p.go()
             out = check.communicate(timeout=600)[0]
-            print(f"armo check ended {time.monotonic() - t0:.0f} s after the nodes started")
+            print(f"orma check ended {time.monotonic() - t0:.0f} s after the nodes started")
             print(out)
             client.close()
         finally:

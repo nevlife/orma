@@ -1,10 +1,10 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>armo_integration</name>
+  <name>orma_integration</name>
   <version>0.0.0</version>
   <description>
-    armo's integration tests against the real armod, armo-collectd, shim and LTTng backend, their
+    orma's integration tests against the real ormad, orma-collectd, shim and LTTng backend, their
     test nodes, and the tool that measures each method's cost under real ROS 2 load.
   </description>
   <maintainer email="nevlife000720@gmail.com">nevlife</maintainer>
@@ -16,9 +16,9 @@
   <depend>rclcpp_components</depend>
   <depend>std_msgs</depend>
 
-  <!-- The tests and the cost tool run from the source tree on the host and need the other armo
-       packages there; the container builds only the nodes, with armo_preload, armo_lttng and
-       armo_rclpy beside them. -->
+  <!-- The tests and the cost tool run from the source tree on the host and need the other orma
+       packages there; the container builds only the nodes, with orma_preload, orma_lttng and
+       orma_rclpy beside them. -->
   <exec_depend>rclpy</exec_depend>
 
   <export>

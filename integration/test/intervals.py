@@ -3,7 +3,7 @@
 
 The same workload runs once per method, each run fresh: two node.cpp on one topic (CPUs 9 and
 10), a timer at 100 Hz publishing to both, a service call every other tick. A real
-armo-collectd records each run by its method and `armo-analyze` splits the recording into the
+orma-collectd records each run by its method and `orma-analyze` splits the recording into the
 intervals of 2.5. preload and uprobe run twice, so the difference between two runs of one method
 (A/A) is measured too.
 
@@ -22,7 +22,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-import armo_client
+import orma_client
 import common
 import numpy as np
 from ament_index_python.packages import get_package_prefix
@@ -30,7 +30,7 @@ from ament_index_python.packages import get_package_prefix
 A = common.accuracy
 QS = (50, 90)
 # A method's cost (design 18.1). Inside one thread, per event: half a callback_start/end pair
-# with two threads (8.1); lttng is libarmo_lttng's armo event, which 8.1 did not measure
+# with two threads (8.1); lttng is liborma_lttng's orma event, which 8.1 did not measure
 # (dispatch, 8 events: lttng - preload 4.4 us on 2026-10-10). On a path that publishes, per hop:
 # the p99 rise of 8.6 over its two hops, upper end.
 EVENT_US = {"preload": 0.05, "lttng": 0.6, "uprobe": 1.77}
@@ -63,11 +63,11 @@ def run(method, collectd, client, exe, tmp, ticks, n):
     env = A.node_env("rmw_cyclonedds_cpp")
     env["ROS_DOMAIN_ID"] = common.DOMAIN
     if method in ("preload", "lttng"):
-        p = "armo_preload" if method == "preload" else "armo_lttng"
+        p = "orma_preload" if method == "preload" else "orma_lttng"
         env["LD_PRELOAD"] = str(Path(get_package_prefix(p)) / "lib" / f"lib{p}.so")
     if method == "lttng":
         env["LTTNG_HOME"] = str(collectd.lttng_home)
-    prefix = f"/armo_iv_{os.getpid()}_{n}"
+    prefix = f"/orma_iv_{os.getpid()}_{n}"
     procs = [
         common.Waiting(["taskset", "-c", str(cpu), exe, prefix, str(ticks)], env) for cpu in (9, 10)
     ]
@@ -75,7 +75,7 @@ def run(method, collectd, client, exe, tmp, ticks, n):
     try:
         rec = client.request(
             "record_start",
-            **armo_client.record_start(method, armo_client.targets(pids=pids), sched=False),
+            **orma_client.record_start(method, orma_client.targets(pids=pids), sched=False),
         )
         if method == "uprobe":
             for pid in pids:
@@ -84,7 +84,7 @@ def run(method, collectd, client, exe, tmp, ticks, n):
                         common.uprobes_on(pid, *common.HOT)
                         and common.uprobes_on(pid, "rcl_wait", lib="librcl.so")
                     ),
-                    "armod's uprobes",
+                    "ormad's uprobes",
                     seconds=600,
                 )
         if method == "lttng":
@@ -103,7 +103,7 @@ def run(method, collectd, client, exe, tmp, ticks, n):
                 p.end()
             else:
                 p.kill()
-    subprocess.run(["armo-analyze", rec["dir"]], check=True, capture_output=True)
+    subprocess.run(["orma-analyze", rec["dir"]], check=True, capture_output=True)
     return intervals(Path(rec["dir"]) / "analysis", prefix, pids), said
 
 
@@ -128,14 +128,14 @@ def main():
     ap.add_argument("--ticks", type=int, default=1500)
     a = ap.parse_args()
     runs = a.runs.split(",")
-    tmp = Path(tempfile.mkdtemp(prefix="armo-iv-", dir="/tmp"))
+    tmp = Path(tempfile.mkdtemp(prefix="orma-iv-", dir="/tmp"))
     os.chmod(tmp, 0o755)
     exe = A.build_node(tmp)
     results = []
-    with common.armod(tmp):
+    with common.ormad(tmp):
         collectd = common.Collectd(tmp)
         try:
-            client = armo_client.connect(start=False)
+            client = orma_client.connect(start=False)
             client.request("select", all=False, pids=[])
             for n, method in enumerate(runs):
                 got, said = run(method, collectd, client, exe, tmp, a.ticks, n)

@@ -1,0 +1,9 @@
+{
+  "type": "hello",
+  "proto": [
+    1,
+    7
+  ],
+  "server": "ormad",
+  "version": "0.1.0"
+}
