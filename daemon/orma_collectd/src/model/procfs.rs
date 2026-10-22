@@ -8,8 +8,8 @@ use std::path::PathBuf;
 
 use object::read::elf::ElfFile64;
 use object::{Object, elf};
-use orma_common::RCL_EXECUTOR_ANCHORS;
-use orma_proto::msg::{ExecutorProbes, PublishAbi, Ros};
+use orma_common::{RCL_EXECUTOR_ANCHORS, RCL_IPC_CONTRACT, RCLPY_CONTRACT};
+use orma_proto::msg::{DeliveryProbe, ExecutorProbes, PublishAbi, Ros};
 
 pub fn proc_path(pid: u32, rest: &str) -> PathBuf {
     PathBuf::from(format!("/proc/{pid}/{rest}"))
@@ -285,21 +285,15 @@ fn needs(elf: &ElfFile64<'_>, prefix: &[u8]) -> bool {
         .any(|d| d.tag == elf::DT_NEEDED && table.string(d).is_ok_and(|s| s.starts_with(prefix)))
 }
 
-/// ormad's choice for the process (its `libs::executor_probes`): the rcl_executor probes when a
-/// mapped librcl_executor.so exports every anchor.
-fn executor_probes(pid: u32, maps: &[Mapping]) -> ExecutorProbes {
+/// Whether a mapped file whose name `name` accepts exports every one of `symbols`.
+fn exports_all(pid: u32, maps: &[Mapping], name: impl Fn(&str) -> bool, symbols: &[&str]) -> bool {
     let mut paths: Vec<&str> = maps
         .iter()
         .map(|m| m.path.as_str())
-        .filter(|p| {
-            p.rsplit('/').next().is_some_and(|n| {
-                n.strip_prefix("librcl_executor.so")
-                    .is_some_and(|v| v.is_empty() || v.starts_with('.'))
-            })
-        })
+        .filter(|p| p.rsplit('/').next().is_some_and(&name))
         .collect();
     paths.dedup();
-    let core = paths.into_iter().any(|path| {
+    paths.into_iter().any(|path| {
         let Some(data) = read_mapped(pid, path) else {
             return false;
         };
@@ -309,15 +303,64 @@ fn executor_probes(pid: u32, maps: &[Mapping]) -> ExecutorProbes {
         let Ok(exports) = file.exports() else {
             return false;
         };
-        RCL_EXECUTOR_ANCHORS
+        symbols
             .iter()
             .all(|a| exports.iter().any(|e| e.name() == a.as_bytes()))
-    });
-    if core {
+    })
+}
+
+fn versioned(base: &'static str) -> impl Fn(&str) -> bool {
+    move |n| {
+        n.strip_prefix(base)
+            .is_some_and(|v| v.is_empty() || v.starts_with('.'))
+    }
+}
+
+/// ormad's choice for the process (its `libs::executor_probes`): the rcl_executor probes when a
+/// mapped librcl_executor.so exports every anchor.
+fn executor_probes(pid: u32, maps: &[Mapping]) -> ExecutorProbes {
+    if exports_all(
+        pid,
+        maps,
+        versioned("librcl_executor.so"),
+        &RCL_EXECUTOR_ANCHORS,
+    ) {
         ExecutorProbes::RclExecutor
     } else {
         ExecutorProbes::Stock
     }
+}
+
+/// The delivery path probes ormad attaches to the process (docs/instrumentation.md 2.13).
+fn delivery_probes(pid: u32, maps: &[Mapping]) -> Vec<DeliveryProbe> {
+    let rcl = |n: &str| n == "librcl.so";
+    let rclpy = |n: &str| n.starts_with("_rclpy_pybind11.") && n.ends_with(".so");
+    [
+        (
+            DeliveryProbe::Broker,
+            exports_all(pid, maps, rcl, &[RCL_IPC_CONTRACT]),
+        ),
+        (
+            DeliveryProbe::Loan,
+            exports_all(pid, maps, rcl, &["rcl_borrow_loaned_message"]),
+        ),
+        (
+            DeliveryProbe::ZenohShm,
+            exports_all(
+                pid,
+                maps,
+                versioned("libzenohc.so"),
+                &["z_bytes_from_shm_mut"],
+            ),
+        ),
+        (
+            DeliveryProbe::Rclpy,
+            exports_all(pid, maps, rclpy, &[RCLPY_CONTRACT]),
+        ),
+    ]
+    .into_iter()
+    .filter_map(|(p, on)| on.then_some(p))
+    .collect()
 }
 
 /// The process's ROS as the distro check decides it; `None` when it maps no `libtracetools.so`.
@@ -360,6 +403,7 @@ pub fn ros(pid: u32) -> Option<Ros> {
         tracetools_lttng,
         gated_register,
         executor_probes: Some(executor_probes(pid, &maps)),
+        delivery_probes: delivery_probes(pid, &maps),
     })
 }
 

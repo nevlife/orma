@@ -1908,3 +1908,185 @@ fn analyze_times_cuda_futex_and_dds_per_run_with_the_host_around_the_tail() {
     assert!(report.text.contains("DDS write [us]"), "{}", report.text);
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+impl H {
+    fn rcl_publish(&mut self, pid: u32, tid: u32, t: u64, rcl: u64, stamp: u64) {
+        let p = orma_ev_publish {
+            publisher: rcl,
+            message: 1,
+            stamp,
+        };
+        self.ev(pid, tid, t, ORMA_EV_RCL_PUBLISH, p, &[]);
+    }
+
+    fn rmw_publish(&mut self, pid: u32, tid: u32, t: u64, rmw: u64, ts: i64) {
+        let p = orma_ev_rmw_publish {
+            rmw_publisher: rmw,
+            message: 1,
+            timestamp: ts,
+            stamp: 0,
+        };
+        self.ev(pid, tid, t, ORMA_EV_RMW_PUBLISH, p, &[]);
+    }
+
+    fn ipc_take(&mut self, pid: u32, tid: u32, t: u64, rcl: u64, message: u64, ts: i64) {
+        let p = orma_ev_rcl_ipc_take {
+            subscription: rcl,
+            message,
+            data: 1,
+            source_timestamp: ts,
+            stamp: 0,
+            local: 1,
+            pad: 0,
+        };
+        self.ev(pid, tid, t, ORMA_EV_RCL_IPC_TAKE, p, &[]);
+    }
+
+    fn loan(&mut self, pid: u32, t: u64, event: u16, endpoint: u64, message: u64, sub: bool) {
+        let p = orma_ev_rcl_loan {
+            endpoint,
+            message,
+            ret: 0,
+            subscription: u32::from(sub),
+        };
+        self.ev(pid, pid, t, event, p, &[]);
+    }
+
+    fn handle(&mut self, pid: u32, t: u64, event: u16, handle: u64) {
+        self.ev(pid, pid, t, event, orma_ev_handle { handle }, &[]);
+    }
+}
+
+fn path(paths: &[PathStat], p: DeliveryPath) -> (u64, u64) {
+    paths
+        .iter()
+        .find(|s| s.path == p)
+        .map(|s| (s.takes, s.hop.as_ref().map_or(0, |h| h.max_ns)))
+        .unwrap_or_default()
+}
+
+/// One process publishes /img to its own broker reader (docs/instrumentation.md 2.13): no
+/// `rmw_publish` and no `rmw_take`, the broker's anchors in their place.
+#[test]
+fn broker_deliveries_count_pair_and_hold() {
+    let mut h = H::offline();
+    h.node(10, 0xa0, "both", "/");
+    h.publisher(10, 0x10, 0xa0, 0x11, "/img");
+    h.subscription(10, 0x20, 0xa0, "/img");
+    for i in 0..5u64 {
+        let t = T0 + i * 10 * MS;
+        let ts = (REAL + t) as i64;
+        h.rcl_publish(10, 10, t, 0x10, 0);
+        let p = orma_ev_rcl_ipc_publish {
+            publisher: 0x10,
+            message: 1,
+            source_timestamp: ts,
+            readers: 1,
+        };
+        h.ev(10, 10, t + US, ORMA_EV_RCL_IPC_PUBLISH, p, &[]);
+        h.ipc_take(10, 11, t + 40 * US, 0x20, 0x900 + i, ts);
+        h.cb(10, 11, t + 43 * US, t + 50 * US, 0x23);
+        h.ev(
+            10,
+            11,
+            t + 52 * US,
+            ORMA_EV_RCL_IPC_RELEASE,
+            orma_ev_handle { handle: 0x900 + i },
+            &[],
+        );
+    }
+    let w = h.window(T0 + W);
+    let t = topic(&w, "topic:ros:/img");
+    assert_eq!(t.pub_hz, Some(5.0));
+    assert_eq!(path(&t.paths, DeliveryPath::Broker), (5, 40 * US));
+    assert_eq!(t.paths.len(), 1);
+    let s = sub(&w, "topic:ros:/img", 10);
+    assert_eq!((s.recv_hz, s.lost), (Some(5.0), Some(0)));
+    assert_eq!(path(&s.paths, DeliveryPath::Broker), (5, 40 * US));
+    let hold = s.hold.as_ref().unwrap();
+    assert_eq!((hold.n, hold.max_ns), (5, 12 * US));
+    let deliver = s.deliver.as_ref().unwrap();
+    assert_eq!((deliver.n, deliver.max_ns), (5, 3 * US));
+    assert_eq!(s.loaned, None);
+}
+
+/// A zenoh publisher's three ways out, as its subscriber in another process sees them.
+#[test]
+fn zenoh_paths_follow_the_publish() {
+    let mut h = H::offline();
+    h.node(20, 0xa0, "p", "/");
+    h.publisher(20, 0x10, 0xa0, 0x11, "/z");
+    h.node(30, 0xc0, "s", "/");
+    h.subscription(30, 0x30, 0xc0, "/z");
+    let ts = |i: u64| (REAL + T0 + i * 10 * MS) as i64;
+    for i in 0..3u64 {
+        let t = T0 + i * 10 * MS;
+        match i {
+            0 => {}
+            1 => h.handle(20, t, ORMA_EV_ZENOH_SHM_PAYLOAD, 0x5),
+            _ => {
+                h.loan(20, t - 9 * US, ORMA_EV_RCL_LOAN_BORROW, 0x10, 0x700, false);
+                h.loan(20, t - 4 * US, ORMA_EV_RCL_LOAN_PUBLISH, 0x10, 0x700, false);
+            }
+        }
+        if i == 2 {
+            h.rcl_publish(20, 20, t - 3 * US, 0x10, 0);
+            h.handle(20, t - US, ORMA_EV_ZENOH_SHM_PAYLOAD, 0x5);
+            h.rmw_publish(20, 20, t, 0x11, ts(i));
+        } else {
+            h.publish(20, 20, t, 0x10, 0x11, ts(i), 0);
+        }
+        if i == 2 {
+            h.loan(30, t + 99 * US, ORMA_EV_RCL_LOAN_TAKE, 0x30, 0, true);
+        }
+        let p = orma_ev_rmw_take {
+            rmw_subscription: 0x31,
+            message: 0x800 + i,
+            source_timestamp: ts(i),
+            stamp: 0,
+            taken: 1,
+            pad: 0,
+        };
+        h.ev(30, 30, t + (i + 1) * 100 * US, ORMA_EV_RMW_TAKE, p, &[]);
+        h.cb(30, 30, t + (i + 1) * 100 * US + US, t + 400 * US, 0x33);
+        if i == 2 {
+            h.loan(30, t + 410 * US, ORMA_EV_RCL_LOAN_RETURN, 0x30, 0x802, true);
+        }
+    }
+    let w = h.window(T0 + W);
+    let t = topic(&w, "topic:ros:/z");
+    assert_eq!(path(&t.paths, DeliveryPath::Net), (1, 100 * US));
+    assert_eq!(path(&t.paths, DeliveryPath::Shm), (1, 200 * US));
+    assert_eq!(path(&t.paths, DeliveryPath::Loan), (1, 300 * US));
+    assert_eq!(t.loan_hold.as_ref().unwrap().max_ns, 5 * US);
+    let s = sub(&w, "topic:ros:/z", 30);
+    assert_eq!((s.recv_hz, s.lost, s.loaned), (Some(3.0), Some(0), Some(1)));
+    assert_eq!(s.hold.as_ref().unwrap().max_ns, 110 * US);
+}
+
+/// rclpy's anchors split its take-to-callback time and time its publish's conversion.
+#[test]
+fn rclpy_anchors_time_the_conversions() {
+    let mut h = H::offline();
+    h.node(40, 0xa0, "py", "/");
+    h.publisher(40, 0x10, 0xa0, 0x11, "/py");
+    h.subscription(40, 0x20, 0xa0, "/py");
+    let t = T0;
+    h.handle(40, t - 30 * US, ORMA_EV_RCLPY_PUBLISH_ENTER, 0x10);
+    h.publish(40, 40, t, 0x10, 0x11, 7, 0);
+    h.take(40, 40, t + 100 * US, 0x21, 7, 0);
+    let p = orma_ev_rclpy_take {
+        subscription: 0x20,
+        message: 0x9,
+    };
+    h.ev(40, 40, t + 120 * US, ORMA_EV_RCLPY_TAKE_CONVERTED, p, &[]);
+    h.cb(40, 40, t + 150 * US, t + 160 * US, 0x23);
+    let w = h.window(T0 + W);
+    // `publish` puts the rcl_publish 1 ns before the rmw_publish.
+    let convert = topic(&w, "topic:ros:/py").py_convert.clone().unwrap();
+    assert_eq!(convert.max_ns, 30 * US - 1);
+    let s = sub(&w, "topic:ros:/py", 40);
+    assert_eq!(s.py_convert.as_ref().unwrap().max_ns, 20 * US);
+    assert_eq!(s.deliver.as_ref().unwrap().max_ns, 50 * US);
+    assert_eq!(path(&s.paths, DeliveryPath::Net), (1, 100 * US));
+}

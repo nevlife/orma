@@ -76,6 +76,17 @@ pub struct Pending {
 #[map]
 pub static CLAIMING: LruHashMap<u32, u64> = LruHashMap::with_max_entries(MAX_THREADS, 0);
 
+/// A borrow this thread began: its publisher and the `void **` the loan is written to.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct Loan {
+    pub endpoint: u64,
+    pub out: u64,
+}
+
+#[map]
+pub static LOAN_CALLS: LruHashMap<u32, Loan> = LruHashMap::with_max_entries(MAX_THREADS, 0);
+
 #[map]
 pub static CUDA_CALLS: LruHashMap<u32, Pending> = LruHashMap::with_max_entries(MAX_THREADS, 0);
 

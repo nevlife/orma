@@ -8,7 +8,8 @@
 //     caller flux-global STUB     flux events of a stub loaded RTLD_GLOBAL
 //     caller flux-local STUB      the same loaded RTLD_LOCAL, as Python loads libflux_ffi
 //     caller flux-none STUB       a stub without flux_trace_contract_2: no events
-//     caller collect CUDA DDS      spans, and stub CUDA and DDS calls with their options off and on
+//     caller collect CUDA DDS DELIVERY  spans, stub CUDA and DDS calls with their options off and
+//                                  on, and the delivery points: stub anchors, librcl's loan calls
 #define _GNU_SOURCE
 #include "orma_preload/cuda_api.h"
 #include "orma_preload/orma_events.h"
@@ -691,13 +692,83 @@ static void check_spans(void)
   CHECK(strcmp(span_name(last_record(s, ORMA_EV_SPAN_BEGIN)), "inner") == 0);
 }
 
-static void check_collect(const char * cuda_stub, const char * dds_stub)
+static uint64_t word(const orma_record * r, int i)
+{
+  uint64_t w;
+  memcpy(&w, (const uint8_t *)(r + 1) + sizeof w * (size_t)i, sizeof w);
+  return w;
+}
+
+// The delivery points (docs/instrumentation.md 2.13): one record each with the arguments, and the
+// call passed on. The loan calls reach librcl, which refuses the null endpoint.
+static void check_delivery(const char * stub)
+{
+  void * lib = dlopen(stub, RTLD_NOW | RTLD_GLOBAL);
+  CHECK(lib != NULL);
+  const char * (*stub_last)(void) = (const char * (*)(void))dlsym(lib, "stub_last");
+  static const uint64_t data[2] = {0x123456789, 0};
+  void (*ipc_publish)(const void *, const void *, int64_t, size_t) = (void (*)(
+    const void *, const void *, int64_t, size_t))dlsym(RTLD_DEFAULT, "rcl_ipc_trace_publish");
+  void (*ipc_take)(const void *, const void *, const void *, int64_t, bool) =
+    (void (*)(const void *, const void *, const void *, int64_t, bool))dlsym(
+      RTLD_DEFAULT, "rcl_ipc_trace_take");
+  void (*ipc_release)(const void *) =
+    (void (*)(const void *))dlsym(RTLD_DEFAULT, "rcl_ipc_trace_release");
+  int8_t (*shm)(void *, void *) =
+    (int8_t(*)(void *, void *))dlsym(RTLD_DEFAULT, "z_bytes_from_shm_mut");
+  void (*py_take)(const void *, const void *) =
+    (void (*)(const void *, const void *))dlsym(RTLD_DEFAULT, "rclpy_trace_take_converted");
+  void (*py_publish)(const void *) =
+    (void (*)(const void *))dlsym(RTLD_DEFAULT, "rclpy_trace_publish_enter");
+  int32_t (*borrow)(const void *, const void *, void **) = (int32_t(*)(
+    const void *, const void *, void **))dlsym(RTLD_DEFAULT, "rcl_borrow_loaned_message");
+  int32_t (*loan_publish)(const void *, void *, void *) =
+    (int32_t(*)(const void *, void *, void *))dlsym(RTLD_DEFAULT, "rcl_publish_loaned_message");
+  CHECK(ours((void *)ipc_publish, "rcl_ipc_trace_publish") && ours((void *)ipc_take, NULL));
+  CHECK(ours((void *)ipc_release, NULL) && ours((void *)shm, NULL));
+  CHECK(ours((void *)py_take, NULL) && ours((void *)py_publish, NULL));
+  CHECK(ours((void *)borrow, NULL) && ours((void *)loan_publish, NULL));
+
+  ipc_publish(K(0x10), K(0x20), 77, 2);
+  CHECK(strcmp(stub_last(), "rcl_ipc_trace_publish") == 0);
+  ipc_take(K(0x30), K(0x40), data, 77, true);
+  CHECK(strcmp(stub_last(), "rcl_ipc_trace_take") == 0);
+  ipc_release(K(0x40));
+  CHECK(strcmp(stub_last(), "rcl_ipc_trace_release") == 0);
+  CHECK(
+    shm((void *)(uintptr_t)0x50, NULL) == 0 && strcmp(stub_last(), "z_bytes_from_shm_mut") == 0);
+  py_publish(K(0x60));
+  CHECK(strcmp(stub_last(), "rclpy_trace_publish_enter") == 0);
+  py_take(K(0x70), K(0x80));
+  CHECK(strcmp(stub_last(), "rclpy_trace_take_converted") == 0);
+  void * loan = (void *)(uintptr_t)0x1;
+  CHECK(borrow(NULL, NULL, &loan) != 0 && loan_publish(NULL, NULL, NULL) != 0);
+
+  const orma_thread_slot * s = slot_of((uint32_t)gettid());
+  const orma_record * r = last_record(s, ORMA_EV_RCL_IPC_PUBLISH);
+  CHECK(word(r, 0) == 0x10 && word(r, 1) == 0x20 && word(r, 2) == 77 && word(r, 3) == 2);
+  r = last_record(s, ORMA_EV_RCL_IPC_TAKE);
+  CHECK(word(r, 0) == 0x30 && word(r, 1) == 0x40 && word(r, 2) == (uintptr_t)data);
+  CHECK(word(r, 3) == 77 && word(r, 4) == data[0] && word(r, 5) == 1);
+  CHECK(word(last_record(s, ORMA_EV_RCL_IPC_RELEASE), 0) == 0x40);
+  CHECK(word(last_record(s, ORMA_EV_ZENOH_SHM_PAYLOAD), 0) == 0x50);
+  CHECK(word(last_record(s, ORMA_EV_RCLPY_PUBLISH_ENTER), 0) == 0x60);
+  r = last_record(s, ORMA_EV_RCLPY_TAKE_CONVERTED);
+  CHECK(word(r, 0) == 0x70 && word(r, 1) == 0x80);
+  // A refused borrow names no loan.
+  r = last_record(s, ORMA_EV_RCL_LOAN_BORROW);
+  CHECK(word(r, 0) == 0 && word(r, 1) == 0 && (int32_t)word(r, 2) != 0);
+  CHECK(count_records(ORMA_EV_RCL_LOAN_PUBLISH) == 1);
+}
+
+static void check_collect(const char * cuda_stub, const char * dds_stub, const char * delivery_stub)
 {
   // dlsym forwards RTLD_NEXT as a tail call, so it still means after this program.
   CHECK(ours(dlsym(RTLD_NEXT, "rcl_wait"), "rcl_wait"));
   check_spans();
   check_cuda(cuda_stub);
   check_dds(dds_stub);
+  check_delivery(delivery_stub);
 }
 
 int main(int argc, char ** argv)
@@ -709,8 +780,8 @@ int main(int argc, char ** argv)
   const orma_thread_slot * own = slot_of((uint32_t)gettid());
   CHECK(records(own, ORMA_EV_RCL_INIT, 0) == 1 && records(own, ORMA_EV_RCL_PUBLISH, 0) == 0);
   __atomic_store_n(&header->armed, 1, __ATOMIC_RELAXED);
-  if (argc == 4 && strcmp(argv[1], "collect") == 0) {
-    check_collect(argv[2], argv[3]);
+  if (argc == 5 && strcmp(argv[1], "collect") == 0) {
+    check_collect(argv[2], argv[3], argv[4]);
   } else if (argc == 3) {
     check_flux(argv[1], argv[2]);
   } else {

@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use orma_common::shm::ORMA_SRC_FLUX;
 use orma_proto::msg::{
     self, Agent, Callback, CpuSource, CudaUse, Drops, Executor, ExecutorKind, Flow, FlowKind, Hist,
-    Node, ProcCuda, ProcUse, Process, ShmUse, Span, Subscription, Topic, Window,
+    Node, PathStat, ProcCuda, ProcUse, Process, ShmUse, Span, Subscription, Topic, Window,
 };
 
 use super::*;
@@ -532,6 +532,9 @@ impl Model {
                 },
                 pub_to_dds: tw.pub_to_dds.lat(),
                 dds_write: tw.dds_write.lat(),
+                paths: path_stats(&tw.paths),
+                loan_hold: tw.loan_hold.lat(),
+                py_convert: tw.py_convert.lat(),
                 id,
             });
         }
@@ -575,6 +578,15 @@ impl Model {
                     .then(|| sw.intra as f64 * 100.0 / sw.callbacks as f64),
                 hop: sw.hop.lat().filter(|_| measured),
                 wake: sw.wake.lat().filter(|_| measured),
+                paths: if measured {
+                    path_stats(&sw.paths)
+                } else {
+                    Vec::new()
+                },
+                loaned: (sw.loaned > 0).then_some(sw.loaned),
+                hold: sw.hold.lat(),
+                deliver: sw.deliver.lat().filter(|_| measured),
+                py_convert: sw.py_convert.lat(),
                 id,
             });
         }
@@ -745,4 +757,15 @@ impl Model {
             t.subscribers.retain(|o| alive(o));
         }
     }
+}
+
+fn path_stats(paths: &BTreeMap<DeliveryPath, PathWin>) -> Vec<PathStat> {
+    paths
+        .iter()
+        .map(|(path, w)| PathStat {
+            path: *path,
+            takes: w.takes,
+            hop: w.hop.lat(),
+        })
+        .collect()
 }

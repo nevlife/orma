@@ -118,6 +118,38 @@
 // The core's item completed (`rcl_executor_trace_item_completed`, uprobe only).
 #define ORMA_EV_RCL_EXECUTOR_COMPLETE 85
 
+// The broker queued a message for its own readers (`rcl_ipc_trace_publish`).
+#define ORMA_EV_RCL_IPC_PUBLISH 86
+
+// A reader took a broker message (`rcl_ipc_trace_take`).
+#define ORMA_EV_RCL_IPC_TAKE 87
+
+// A broker message a reader took was released (`rcl_ipc_trace_release`); `handle` is it.
+#define ORMA_EV_RCL_IPC_RELEASE 88
+
+// `rcl_borrow_loaned_message`, written when it returns.
+#define ORMA_EV_RCL_LOAN_BORROW 89
+
+// `rcl_publish_loaned_message` was called.
+#define ORMA_EV_RCL_LOAN_PUBLISH 90
+
+// `rcl_take_loaned_message` was called: the `rmw_take` inside it took a loan.
+#define ORMA_EV_RCL_LOAN_TAKE 91
+
+// `rcl_return_loaned_message_from_publisher` or `_from_subscription` was called.
+#define ORMA_EV_RCL_LOAN_RETURN 92
+
+// zenoh-c's `z_bytes_from_shm_mut`: rmw_zenoh made a payload of shared memory; `handle` is the
+// bytes object.
+#define ORMA_EV_ZENOH_SHM_PAYLOAD 93
+
+// rclpy converted a taken message to Python (`rclpy_trace_take_converted`).
+#define ORMA_EV_RCLPY_TAKE_CONVERTED 94
+
+// rclpy began a publish, before converting the Python message (`rclpy_trace_publish_enter`);
+// `handle` is the rcl publisher.
+#define ORMA_EV_RCLPY_PUBLISH_ENTER 95
+
 #define ORMA_EV_CUDA_CALL 96
 
 #define ORMA_EV_SPAN_BEGIN 104
@@ -461,6 +493,43 @@ typedef struct orma_ev_rcl_executor_complete {
   uint64_t executor;
   uint64_t registration;
 } orma_ev_rcl_executor_complete;
+
+// `readers` is how many broker readers the message was queued for.
+typedef struct orma_ev_rcl_ipc_publish {
+  uint64_t publisher;
+  uint64_t message;
+  int64_t source_timestamp;
+  uint64_t readers;
+} orma_ev_rcl_ipc_publish;
+
+// `message` is the `rcl_ipc_message_t *` the reader holds until its release, 0 when the take
+// copied the message out; `data` the message read; `local` 0 for a remote message the rmw queued
+// in the broker.
+typedef struct orma_ev_rcl_ipc_take {
+  uint64_t subscription;
+  uint64_t message;
+  uint64_t data;
+  int64_t source_timestamp;
+  uint64_t stamp;
+  uint32_t local;
+  uint32_t pad;
+} orma_ev_rcl_ipc_take;
+
+// `endpoint` is the rcl publisher or subscription; `message` the loan, 0 for a take, whose
+// loan the `rmw_take` names; `ret` the `rcl_ret_t` of a borrow, else 0; `subscription` 1 for a
+// subscription's take or return.
+typedef struct orma_ev_rcl_loan {
+  uint64_t endpoint;
+  uint64_t message;
+  int32_t ret;
+  uint32_t subscription;
+} orma_ev_rcl_loan;
+
+// `subscription` is the rcl subscription, `message` the Python message object.
+typedef struct orma_ev_rclpy_take {
+  uint64_t subscription;
+  uint64_t message;
+} orma_ev_rclpy_take;
 
 typedef struct orma_ev_rclcpp_ipm_insert_sub_id_for_pub {
   uint64_t ipm;

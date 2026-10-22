@@ -21,8 +21,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use orma_common::shm::{ORMA_SRC_FLUX, ORMA_SRC_ROS};
 use orma_proto::Ingest;
 use orma_proto::msg::{
-    Aggregate, CallbackKind, ChainMode, ChainSpec, FlowKind, Method, PublishAbi, Ros, Transport,
-    Window,
+    Aggregate, CallbackKind, ChainMode, ChainSpec, DeliveryPath, FlowKind, Method, PublishAbi, Ros,
+    Transport, Window,
 };
 use orma_proto::records::Record;
 use regex::Regex;
@@ -255,6 +255,15 @@ struct Thread {
     dds_write: Option<(u64, u64)>,
     dds_topic: Option<TopicIx>,
     spans: Vec<OpenSpan>,
+    /// Inside one publish (docs/instrumentation.md 2.13): its payload is zenoh shared memory, or
+    /// it publishes a loan. A loan's publish precedes its `rcl_publish`.
+    shm_payload: bool,
+    loan_next: bool,
+    loan_publish: bool,
+    /// An rcl loan take began: the next `rmw_take` took a loan.
+    loan_take: bool,
+    /// When rclpy's publish began, until its `rcl_publish`.
+    py_publish: Option<u64>,
 }
 
 struct OpenSpan {
@@ -322,6 +331,15 @@ struct TopicWin {
     ambiguous: u64,
     dds_write: LatAcc,
     pub_to_dds: LatAcc,
+    paths: BTreeMap<DeliveryPath, PathWin>,
+    loan_hold: LatAcc,
+    py_convert: LatAcc,
+}
+
+#[derive(Default)]
+struct PathWin {
+    takes: u64,
+    hop: LatAcc,
 }
 
 #[derive(Default)]
@@ -333,6 +351,11 @@ struct SubWin {
     intra: u64,
     hop: LatAcc,
     wake: LatAcc,
+    paths: BTreeMap<DeliveryPath, PathWin>,
+    loaned: u64,
+    hold: LatAcc,
+    deliver: LatAcc,
+    py_convert: LatAcc,
 }
 
 #[derive(Default)]
@@ -425,6 +448,13 @@ pub enum Sample {
         id: String,
         duration_ns: u64,
     },
+    /// A taken broker message or loan from its take to its release (`subscription` set), or a
+    /// publisher's loan from its borrow to its publish or return.
+    Hold {
+        topic: String,
+        subscription: Option<String>,
+        ns: u64,
+    },
     /// A publish on `topics[step]` of a chain, `latency_ns` after its source's publish.
     Chain {
         name: String,
@@ -450,6 +480,10 @@ pub struct Delivery {
     pub dispatch_ns: Option<u64>,
     pub callback: Option<String>,
     pub callback_ns: Option<u64>,
+    pub path: Option<DeliveryPath>,
+    /// The take to the callback's start, and rclpy's conversion inside it.
+    pub deliver_ns: Option<u64>,
+    pub py_convert_ns: Option<u64>,
 }
 
 /// A delivery until both its pairing and its callback are known.
@@ -523,6 +557,10 @@ pub struct Model {
     /// Per node of `latest_nodes`, the time and number of the last take of each input topic.
     latest: HashMap<NodeIx, BTreeMap<TopicIx, (u64, u64)>>,
     next_take: u64,
+    /// Taken broker messages and subscription loans not yet released, by (pid, pointer).
+    holds: HashMap<(u32, u64), (u64, SubKey)>,
+    /// Publisher loans not yet published or returned: when borrowed, and the topic.
+    pub_loans: HashMap<(u32, u64), (u64, TopicIx)>,
 }
 
 impl Model {
@@ -579,6 +617,8 @@ impl Model {
             latest_match: HashMap::new(),
             latest: HashMap::new(),
             next_take: 0,
+            holds: HashMap::new(),
+            pub_loans: HashMap::new(),
         }
     }
 

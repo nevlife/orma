@@ -9,6 +9,7 @@
 
 mod cuda;
 mod dds;
+mod delivery;
 mod emit;
 mod flux;
 mod futex;

@@ -396,6 +396,76 @@ pub const CATALOG: &[EventInfo] = &[
         0,
         false
     ),
+    ev!(
+        ORMA_EV_RCL_IPC_PUBLISH,
+        "rcl_ipc_publish",
+        orma_ev_rcl_ipc_publish,
+        0,
+        true
+    ),
+    ev!(
+        ORMA_EV_RCL_IPC_TAKE,
+        "rcl_ipc_take",
+        orma_ev_rcl_ipc_take,
+        0,
+        true
+    ),
+    ev!(
+        ORMA_EV_RCL_IPC_RELEASE,
+        "rcl_ipc_release",
+        orma_ev_handle,
+        0,
+        true
+    ),
+    ev!(
+        ORMA_EV_RCL_LOAN_BORROW,
+        "rcl_loan_borrow",
+        orma_ev_rcl_loan,
+        0,
+        true
+    ),
+    ev!(
+        ORMA_EV_RCL_LOAN_PUBLISH,
+        "rcl_loan_publish",
+        orma_ev_rcl_loan,
+        0,
+        true
+    ),
+    ev!(
+        ORMA_EV_RCL_LOAN_TAKE,
+        "rcl_loan_take",
+        orma_ev_rcl_loan,
+        0,
+        true
+    ),
+    ev!(
+        ORMA_EV_RCL_LOAN_RETURN,
+        "rcl_loan_return",
+        orma_ev_rcl_loan,
+        0,
+        true
+    ),
+    ev!(
+        ORMA_EV_ZENOH_SHM_PAYLOAD,
+        "zenoh_shm_payload",
+        orma_ev_handle,
+        0,
+        true
+    ),
+    ev!(
+        ORMA_EV_RCLPY_TAKE_CONVERTED,
+        "rclpy_take_converted",
+        orma_ev_rclpy_take,
+        0,
+        true
+    ),
+    ev!(
+        ORMA_EV_RCLPY_PUBLISH_ENTER,
+        "rclpy_publish_enter",
+        orma_ev_handle,
+        0,
+        true
+    ),
     ev!(ORMA_EV_CUDA_CALL, "cuda_call", orma_ev_cuda_call, 0, true),
     ev!(ORMA_EV_SPAN_BEGIN, "span_begin", orma_ev_span, 1, true),
     ev!(ORMA_EV_SPAN_END, "span_end", orma_ev_span, 0, true),

@@ -3,6 +3,8 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
+use orma_proto::msg::DeliveryPath;
+
 use super::chain::Origins;
 use super::stamp::AGE_MAX_NS;
 use super::{NodeIx, PubKey, SubKey, TopicIx};
@@ -29,6 +31,8 @@ pub struct Sent {
     pub ambiguous: bool,
     pub takers: Vec<SubKey>,
     pub origins: Origins,
+    /// How the publisher handed it over; a broker reader's take says broker itself.
+    pub path: DeliveryPath,
 }
 
 pub struct Pending {
@@ -40,6 +44,8 @@ pub struct Pending {
     pub delivery: Option<u64>,
     pub take: u64,
     pub windows: u8,
+    /// The path the take itself knows: a local broker take.
+    pub path: Option<DeliveryPath>,
 }
 
 #[derive(Default)]
@@ -59,6 +65,7 @@ impl Pairing {
         publisher: PubKey,
         topic: TopicIx,
         origins: Origins,
+        path: DeliveryPath,
     ) {
         if let Some(s) = self.sent.get_mut(&key) {
             if s.publisher != publisher {
@@ -75,6 +82,7 @@ impl Pairing {
                 ambiguous: false,
                 takers: Vec::new(),
                 origins,
+                path,
             },
         );
         self.order.push_back((t, key));

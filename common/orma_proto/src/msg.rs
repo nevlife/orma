@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 /// `[major, minor]`.
 pub type Version = [u16; 2];
-pub const PROTO: Version = [1, 9];
+pub const PROTO: Version = [1, 10];
 pub const META_SCHEMA: u32 = 1;
 pub const HIST_LOG2: &str = "log2";
 
@@ -57,6 +57,13 @@ enums! {
     pub enum Transport { Ros, #[serde(alias = "flux2")] Flux }
     pub enum FlowKind { Sync, Stamp, Blind, Latest }
     pub enum ChainMode { Lineage, First }
+    /// How a message reached its subscription (docs/instrumentation.md 2.13): the rcl broker of
+    /// the ROS 2 overhaul in its process, an rmw loan, a payload the rmw serialized into shared
+    /// memory, one it serialized into its own buffer, or not known (its publish was not seen).
+    pub enum DeliveryPath { Broker, Loan, Shm, Net, Unknown }
+    /// The delivery path probes a process gets from what it maps: the broker anchors of the
+    /// overhaul's rcl, the rcl loan functions, zenoh-c's shared memory payload, rclpy's anchors.
+    pub enum DeliveryProbe { Broker, Loan, ZenohShm, Rclpy }
 }
 
 types! {
@@ -502,6 +509,9 @@ types! {
         /// Proto 1.9.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub executor_probes: Option<ExecutorProbes>,
+        /// Proto 1.10.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        pub delivery_probes: Vec<DeliveryProbe>,
     }
 
     pub struct Thread {
@@ -605,6 +615,21 @@ types! {
         pub pub_to_dds: Option<Lat>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub dds_write: Option<Lat>,
+        /// The takes of each delivery path and their hop. Proto 1.10.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        pub paths: Vec<PathStat>,
+        /// A publisher's loan from its borrow to its publish or return. Proto 1.10.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub loan_hold: Option<Lat>,
+        /// rclpy's publish to its `rcl_publish`: the conversion from Python. Proto 1.10.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub py_convert: Option<Lat>,
+    }
+
+    pub struct PathStat {
+        pub path: DeliveryPath,
+        pub takes: u64,
+        pub hop: Option<Lat>,
     }
 
     pub struct Drops {
@@ -623,6 +648,21 @@ types! {
         pub intra_pct: Option<f64>,
         pub hop: Option<Lat>,
         pub wake: Option<Lat>,
+        /// The takes of each delivery path and their hop. Proto 1.10.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        pub paths: Vec<PathStat>,
+        /// Takes that were rmw loans. Proto 1.10.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub loaned: Option<u64>,
+        /// A taken broker message or loan from its take to its release or return. Proto 1.10.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub hold: Option<Lat>,
+        /// The take to its callback's start. Proto 1.10.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub deliver: Option<Lat>,
+        /// rclpy's take to the end of its conversion to Python, part of `deliver`. Proto 1.10.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub py_convert: Option<Lat>,
     }
 
     pub struct Flow {

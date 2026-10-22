@@ -49,6 +49,16 @@
   X0(callback_code, orma_ev_callback_code)                                       \
   X0(rclcpp_executor_add_group, orma_ev_rclcpp_object)                           \
   X0(dds_write, orma_ev_dds_write)                                               \
+  X0(rcl_ipc_publish, orma_ev_rcl_ipc_publish)                                   \
+  X0(rcl_ipc_take, orma_ev_rcl_ipc_take)                                         \
+  X0(rcl_ipc_release, orma_ev_handle)                                            \
+  X0(rcl_loan_borrow, orma_ev_rcl_loan)                                          \
+  X0(rcl_loan_publish, orma_ev_rcl_loan)                                         \
+  X0(rcl_loan_take, orma_ev_rcl_loan)                                            \
+  X0(rcl_loan_return, orma_ev_rcl_loan)                                          \
+  X0(zenoh_shm_payload, orma_ev_handle)                                          \
+  X0(rclpy_take_converted, orma_ev_rclpy_take)                                   \
+  X0(rclpy_publish_enter, orma_ev_handle)                                        \
   X0(cuda_call, orma_ev_cuda_call)                                               \
   X1(span_begin, orma_ev_span, name)                                             \
   X0(span_end, orma_ev_span)

@@ -41,6 +41,10 @@ pub enum Cond {
     RclAbi,
     Rclcpp16,
     Rclcpp28,
+    /// A librcl.so with the broker anchors of the ROS 2 overhaul (`RCL_IPC_CONTRACT`).
+    RclIpc,
+    /// An rclpy module with the conversion anchors of the overhaul (`RCLPY_CONTRACT`).
+    RclpyAnchors,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -388,6 +392,106 @@ pub const PROGS: &[Prog] = &[
             Sym::Name("rcl_executor_trace_item_completed"),
         )
     },
+    // Delivery paths of the overhaul (docs/instrumentation.md 2.13). The broker and rclpy anchors
+    // only on files that export their contract; the loan functions are every rcl's.
+    Prog {
+        cond: Cond::RclIpc,
+        ..p(
+            "rcl_ipc_publish",
+            Lib::Rcl,
+            Hot,
+            Sym::Name("rcl_ipc_trace_publish"),
+        )
+    },
+    Prog {
+        cond: Cond::RclIpc,
+        ..p(
+            "rcl_ipc_take",
+            Lib::Rcl,
+            Hot,
+            Sym::Name("rcl_ipc_trace_take"),
+        )
+    },
+    Prog {
+        cond: Cond::RclIpc,
+        ..p(
+            "rcl_ipc_release",
+            Lib::Rcl,
+            Hot,
+            Sym::Name("rcl_ipc_trace_release"),
+        )
+    },
+    p(
+        "rcl_loan_borrow",
+        Lib::Rcl,
+        Hot,
+        Sym::Name("rcl_borrow_loaned_message"),
+    ),
+    Prog {
+        point: "rcl_loan_borrow",
+        ret: true,
+        ..p(
+            "rcl_loan_borrow_ret",
+            Lib::Rcl,
+            Hot,
+            Sym::Name("rcl_borrow_loaned_message"),
+        )
+    },
+    p(
+        "rcl_loan_publish",
+        Lib::Rcl,
+        Hot,
+        Sym::Name("rcl_publish_loaned_message"),
+    ),
+    Prog {
+        point: "rcl_loan_return",
+        ..p(
+            "rcl_loan_return_pub",
+            Lib::Rcl,
+            Hot,
+            Sym::Name("rcl_return_loaned_message_from_publisher"),
+        )
+    },
+    p(
+        "rcl_loan_take",
+        Lib::Rcl,
+        Hot,
+        Sym::Name("rcl_take_loaned_message"),
+    ),
+    Prog {
+        point: "rcl_loan_return",
+        ..p(
+            "rcl_loan_return_sub",
+            Lib::Rcl,
+            Hot,
+            Sym::Name("rcl_return_loaned_message_from_subscription"),
+        )
+    },
+    p(
+        "zenoh_shm_payload",
+        Lib::Zenohc,
+        Hot,
+        Sym::Name("z_bytes_from_shm_mut"),
+    ),
+    Prog {
+        point: "rclpy_take_converted",
+        cond: Cond::RclpyAnchors,
+        ..p(
+            "rclpy_take_converted",
+            Lib::Rclpy,
+            Hot,
+            Sym::Name("rclpy_trace_take_converted"),
+        )
+    },
+    Prog {
+        cond: Cond::RclpyAnchors,
+        ..p(
+            "rclpy_publish_enter",
+            Lib::Rclpy,
+            Hot,
+            Sym::Name("rclpy_trace_publish_enter"),
+        )
+    },
     p("span_begin", Lib::Span, Hot, Sym::Name("orma_span_begin")),
     p("span_end", Lib::Span, Hot, Sym::Name("orma_span_end")),
     // rclcpp C++ symbols, by rclcpp major (design 2.1.2, 4.5).
@@ -684,6 +788,42 @@ mod tests {
         }
         let on_core = PROGS.iter().filter(|p| p.lib == Lib::RclExecutor).count();
         assert_eq!(on_core, core.len());
+    }
+
+    #[test]
+    fn the_delivery_anchors_attach_by_contract() {
+        let on = |name: &str| PROGS.iter().find(|p| p.name == name).unwrap();
+        for anchor in orma_common::RCL_IPC_ANCHORS {
+            let p = PROGS.iter().find(|p| p.sym == Sym::Name(anchor)).unwrap();
+            assert_eq!(
+                (p.lib, p.set, p.cond),
+                (Lib::Rcl, Hot, Cond::RclIpc),
+                "{anchor}"
+            );
+        }
+        for anchor in orma_common::RCLPY_ANCHORS {
+            let p = PROGS.iter().find(|p| p.sym == Sym::Name(anchor)).unwrap();
+            assert_eq!(
+                (p.lib, p.cond),
+                (Lib::Rclpy, Cond::RclpyAnchors),
+                "{anchor}"
+            );
+        }
+        // Only the borrow needs its return; every other delivery point is an entry.
+        assert!(on("rcl_loan_borrow_ret").ret);
+        let delivery = [
+            "rcl_ipc_publish",
+            "rcl_ipc_take",
+            "rcl_ipc_release",
+            "rcl_loan_borrow",
+            "rcl_loan_publish",
+            "rcl_loan_return_pub",
+            "rcl_loan_take",
+            "rcl_loan_return_sub",
+            "zenoh_shm_payload",
+        ];
+        assert!(delivery.iter().all(|n| !on(n).ret && on(n).set == Hot));
+        assert_eq!(on("zenoh_shm_payload").lib, Lib::Zenohc);
     }
 
     #[test]

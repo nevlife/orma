@@ -379,6 +379,13 @@ def print_executor_probes(w):
     ]
     if rows:
         print(f"executor probes: {', '.join(rows)}")
+    rows = [
+        f"{p['pid']} ({p['comm']}) {'+'.join(p['ros']['delivery_probes'])}"
+        for p in w["processes"]
+        if (p.get("ros") or {}).get("delivery_probes")
+    ]
+    if rows:
+        print(f"delivery probes: {', '.join(rows)}")
 
 
 def exact(names):
@@ -572,10 +579,39 @@ def print_topic_window(w, command, topics):
     table("topics", ["topic"] + heads, rows)
 
 
+def print_topic_paths(w, topics):
+    """Per delivery path (docs/instrumentation.md 2.13): takes and hop, then what each
+    subscription spent from take to callback and how long it held the message."""
+    secs = w["window_ns"] / 1e9
+    by_name = {t["name"]: t for t in w["topics"]}
+    rows, pubs = [], []
+    for name in topics:
+        t = by_name.get(name)
+        for p in (t or {}).get("paths", []):
+            rows.append([name, p["path"], num(p["takes"] / secs)] + lat(p["hop"]))
+        if t and (t.get("loan_hold") or t.get("py_convert")):
+            pubs.append([name, p99(t.get("loan_hold")), p99(t.get("py_convert"))])
+    table("paths", ["topic", "path", "takes Hz"] + ["hop " + h for h in LAT_HEADS], rows)
+    table("publishers", ["topic", "loan hold p99", "py convert p99"], pubs)
+    ids = {by_name[n]["id"]: n for n in topics if n in by_name}
+    subs = [
+        [ids[s["topic"]], view.owner_label(w, s["node"]), view.pid_of(s["node"])]
+        + [", ".join(p["path"] for p in s.get("paths", [])) or "-", num(s.get("loaned"), "{}")]
+        + [ns((s.get("deliver") or {}).get("p50_ns")), p99(s.get("deliver"))]
+        + [p99(s.get("py_convert")), p99(s.get("hold"))]
+        for s in w["subscriptions"]
+        if s["topic"] in ids
+    ]
+    heads = ["topic", "node", "pid", "paths", "loaned", "deliver p50", "deliver p99"]
+    table("subscriptions", heads + ["py convert p99", "hold p99"], subs)
+
+
 def cmd_topic_watch(args):
     """Counted in the publishers and subscribers, not by subscribing as `ros2 topic` does."""
     with orma_client.connect() as c:
         select(c, args, ("dds",), topic=exact(args.topics))
+        if args.topic_command == "path":
+            return watch(c, lambda w: print_topic_paths(w, args.topics))
         return watch(c, lambda w: print_topic_window(w, args.topic_command, args.topics))
 
 
@@ -990,6 +1026,7 @@ def parser():
         ("hz", "publish calls per second, and the publishes dropped"),
         ("bw", "bytes published per second"),
         ("delay", "publish to take, and with --dds to the DDS write"),
+        ("path", "takes and hop per delivery path, take to callback, message hold"),
     ):
         x = tsub.add_parser(name, help=text)
         x.add_argument("topics", nargs="+", metavar="TOPIC").completer = TOPICS

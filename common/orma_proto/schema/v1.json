@@ -947,6 +947,27 @@
       ],
       "type": "object"
     },
+    "DeliveryPath": {
+      "description": "How a message reached its subscription (docs/instrumentation.md 2.13): the rcl broker of\nthe ROS 2 overhaul in its process, an rmw loan, a payload the rmw serialized into shared\nmemory, one it serialized into its own buffer, or not known (its publish was not seen).",
+      "enum": [
+        "broker",
+        "loan",
+        "shm",
+        "net",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "DeliveryProbe": {
+      "description": "The delivery path probes a process gets from what it maps: the broker anchors of the\noverhaul's rcl, the rcl loan functions, zenoh-c's shared memory payload, rclpy's anchors.",
+      "enum": [
+        "broker",
+        "loan",
+        "zenoh_shm",
+        "rclpy"
+      ],
+      "type": "string"
+    },
     "Detail": {
       "properties": {
         "entity": {
@@ -2313,6 +2334,33 @@
       ],
       "type": "object"
     },
+    "PathStat": {
+      "properties": {
+        "hop": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Lat"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "path": {
+          "$ref": "#/$defs/DeliveryPath"
+        },
+        "takes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path",
+        "takes"
+      ],
+      "type": "object"
+    },
     "ProbeChange": {
       "description": "One program attached to or detached from the points of one file (design 6.8): the\nkernel patched code and flushed TLBs on the CPUs then, monotonic ns.",
       "properties": {
@@ -3197,6 +3245,13 @@
     },
     "Ros": {
       "properties": {
+        "delivery_probes": {
+          "description": "Proto 1.10.",
+          "items": {
+            "$ref": "#/$defs/DeliveryProbe"
+          },
+          "type": "array"
+        },
         "distro": {
           "type": "string"
         },
@@ -3552,6 +3607,28 @@
     },
     "Subscription": {
       "properties": {
+        "deliver": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Lat"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The take to its callback's start. Proto 1.10."
+        },
+        "hold": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Lat"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "A taken broker message or loan from its take to its release or return. Proto 1.10."
+        },
         "hop": {
           "anyOf": [
             {
@@ -3572,6 +3649,15 @@
             "null"
           ]
         },
+        "loaned": {
+          "description": "Takes that were rmw loans. Proto 1.10.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "loss_pct": {
           "format": "double",
           "type": [
@@ -3589,6 +3675,24 @@
         },
         "node": {
           "type": "string"
+        },
+        "paths": {
+          "description": "The takes of each delivery path and their hop. Proto 1.10.",
+          "items": {
+            "$ref": "#/$defs/PathStat"
+          },
+          "type": "array"
+        },
+        "py_convert": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Lat"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "rclpy's take to the end of its conversion to Python, part of `deliver`. Proto 1.10."
         },
         "recv_hz": {
           "format": "double",
@@ -3864,8 +3968,26 @@
         "id": {
           "type": "string"
         },
+        "loan_hold": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Lat"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "A publisher's loan from its borrow to its publish or return. Proto 1.10."
+        },
         "name": {
           "type": "string"
+        },
+        "paths": {
+          "description": "The takes of each delivery path and their hop. Proto 1.10.",
+          "items": {
+            "$ref": "#/$defs/PathStat"
+          },
+          "type": "array"
         },
         "pub_hz": {
           "format": "double",
@@ -3890,6 +4012,17 @@
             "type": "string"
           },
           "type": "array"
+        },
+        "py_convert": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Lat"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "rclpy's publish to its `rcl_publish`: the conversion from Python. Proto 1.10."
         },
         "subscribers": {
           "items": {

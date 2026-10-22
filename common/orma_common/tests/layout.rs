@@ -172,6 +172,31 @@ fn layouts() -> Vec<Layout> {
             executor,
             registration
         }),
+        layout!(orma_ev_rcl_ipc_publish {
+            publisher,
+            message,
+            source_timestamp,
+            readers
+        }),
+        layout!(orma_ev_rcl_ipc_take {
+            subscription,
+            message,
+            data,
+            source_timestamp,
+            stamp,
+            local,
+            pad,
+        }),
+        layout!(orma_ev_rcl_loan {
+            endpoint,
+            message,
+            ret,
+            subscription
+        }),
+        layout!(orma_ev_rclpy_take {
+            subscription,
+            message
+        }),
         layout!(orma_ev_rclcpp_ipm_insert_sub_id_for_pub {
             ipm,
             sub_id,

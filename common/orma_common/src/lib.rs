@@ -17,6 +17,19 @@ pub const RCL_EXECUTOR_ANCHORS: [&str; 4] = [
     "rcl_executor_trace_item_completed",
 ];
 
+/// The broker anchors of the overhaul's rcl (`rcl/intra_process.h`) and the symbol that names
+/// their arguments. A librcl.so that exports the contract gets the broker probes.
+pub const RCL_IPC_CONTRACT: &str = "rcl_ipc_trace_contract_1";
+pub const RCL_IPC_ANCHORS: [&str; 3] = [
+    "rcl_ipc_trace_publish",
+    "rcl_ipc_trace_take",
+    "rcl_ipc_trace_release",
+];
+
+/// The conversion anchors of the overhaul's rclpy, exported by its `_rclpy_pybind11` module.
+pub const RCLPY_CONTRACT: &str = "rclpy_trace_contract_1";
+pub const RCLPY_ANCHORS: [&str; 2] = ["rclpy_trace_take_converted", "rclpy_trace_publish_enter"];
+
 /// 2^40 ns is about 18 minutes.
 pub const BUCKETS: usize = shm::ORMA_BUCKETS;
 pub const NAME_LEN: usize = 128;
@@ -129,6 +142,10 @@ mod plain {
         orma_ev_rclcpp_ipm_insert_sub_id_for_pub,
         orma_ev_rcl_executor_claim,
         orma_ev_rcl_executor_complete,
+        orma_ev_rcl_ipc_publish,
+        orma_ev_rcl_ipc_take,
+        orma_ev_rcl_loan,
+        orma_ev_rclpy_take,
         orma_ev_callback_code,
         orma_ev_rmw_topic,
         orma_ev_dds_serialized_size,

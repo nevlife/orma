@@ -71,6 +71,31 @@ pub const ORMA_EV_RCL_EXECUTOR_CLAIM: u16 = 84;
 /// The core's item completed (`rcl_executor_trace_item_completed`, uprobe only).
 pub const ORMA_EV_RCL_EXECUTOR_COMPLETE: u16 = 85;
 
+// Delivery paths of the ROS 2 overhaul (docs/instrumentation.md 2.13): the rcl broker's anchors,
+// the rcl loan functions, zenoh-c's shared memory payload and rclpy's conversion anchors.
+/// The broker queued a message for its own readers (`rcl_ipc_trace_publish`).
+pub const ORMA_EV_RCL_IPC_PUBLISH: u16 = 86;
+/// A reader took a broker message (`rcl_ipc_trace_take`).
+pub const ORMA_EV_RCL_IPC_TAKE: u16 = 87;
+/// A broker message a reader took was released (`rcl_ipc_trace_release`); `handle` is it.
+pub const ORMA_EV_RCL_IPC_RELEASE: u16 = 88;
+/// `rcl_borrow_loaned_message`, written when it returns.
+pub const ORMA_EV_RCL_LOAN_BORROW: u16 = 89;
+/// `rcl_publish_loaned_message` was called.
+pub const ORMA_EV_RCL_LOAN_PUBLISH: u16 = 90;
+/// `rcl_take_loaned_message` was called: the `rmw_take` inside it took a loan.
+pub const ORMA_EV_RCL_LOAN_TAKE: u16 = 91;
+/// `rcl_return_loaned_message_from_publisher` or `_from_subscription` was called.
+pub const ORMA_EV_RCL_LOAN_RETURN: u16 = 92;
+/// zenoh-c's `z_bytes_from_shm_mut`: rmw_zenoh made a payload of shared memory; `handle` is the
+/// bytes object.
+pub const ORMA_EV_ZENOH_SHM_PAYLOAD: u16 = 93;
+/// rclpy converted a taken message to Python (`rclpy_trace_take_converted`).
+pub const ORMA_EV_RCLPY_TAKE_CONVERTED: u16 = 94;
+/// rclpy began a publish, before converting the Python message (`rclpy_trace_publish_enter`);
+/// `handle` is the rcl publisher.
+pub const ORMA_EV_RCLPY_PUBLISH_ENTER: u16 = 95;
+
 // CUDA driver API in libcuda.so (design 20.1). Written when the call returns.
 pub const ORMA_EV_CUDA_CALL: u16 = 96;
 
@@ -405,6 +430,51 @@ pub struct orma_ev_rcl_executor_claim {
 pub struct orma_ev_rcl_executor_complete {
     pub executor: u64,
     pub registration: u64,
+}
+
+/// `readers` is how many broker readers the message was queued for.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct orma_ev_rcl_ipc_publish {
+    pub publisher: u64,
+    pub message: u64,
+    pub source_timestamp: i64,
+    pub readers: u64,
+}
+
+/// `message` is the `rcl_ipc_message_t *` the reader holds until its release, 0 when the take
+/// copied the message out; `data` the message read; `local` 0 for a remote message the rmw queued
+/// in the broker.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct orma_ev_rcl_ipc_take {
+    pub subscription: u64,
+    pub message: u64,
+    pub data: u64,
+    pub source_timestamp: i64,
+    pub stamp: u64,
+    pub local: u32,
+    pub pad: u32,
+}
+
+/// `endpoint` is the rcl publisher or subscription; `message` the loan, 0 for a take, whose
+/// loan the `rmw_take` names; `ret` the `rcl_ret_t` of a borrow, else 0; `subscription` 1 for a
+/// subscription's take or return.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct orma_ev_rcl_loan {
+    pub endpoint: u64,
+    pub message: u64,
+    pub ret: i32,
+    pub subscription: u32,
+}
+
+/// `subscription` is the rcl subscription, `message` the Python message object.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct orma_ev_rclpy_take {
+    pub subscription: u64,
+    pub message: u64,
 }
 
 #[repr(C)]

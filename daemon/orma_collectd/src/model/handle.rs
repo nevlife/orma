@@ -2,7 +2,7 @@
 
 use orma_common::events::{ORMA_FLUX_CLAIM_BACKPRESSURE, ORMA_FLUX_LOAN_TOO_LARGE};
 use orma_common::shm::*;
-use orma_proto::msg::{Aggregate, FlowKind, Method, PublishAbi, Transport};
+use orma_proto::msg::{Aggregate, DeliveryPath, FlowKind, Method, PublishAbi, Transport};
 
 use super::chain::Origins;
 use super::decode::{Added, E, Ev};
@@ -76,7 +76,12 @@ impl Model {
         }
         if !matches!(
             e,
-            E::RmwPublish { .. } | E::RmwPublishRcl | E::DdsSize { .. } | E::DdsWrite { .. }
+            E::RmwPublish { .. }
+                | E::RmwPublishRcl
+                | E::DdsSize { .. }
+                | E::DdsWrite { .. }
+                | E::ShmPayload
+                | E::IpcPublish { .. }
         ) && let Some((h, stamp, t0)) = self.thread(pid, tid).pending_rcl.take()
         {
             self.publish_rcl(pid, tid, t0, h, stamp);
@@ -188,6 +193,13 @@ impl Model {
                 th.pub_from = Some(th.rclcpp_pub.take().unwrap_or(t));
                 th.dds_write = None;
                 th.dds_topic = None;
+                th.shm_payload = false;
+                th.loan_publish = std::mem::take(&mut th.loan_next);
+                let py = th.py_publish.take();
+                if let (Some(t0), Some(ep)) = (py, self.pubs.get(&(pid, publisher)).copied()) {
+                    let tw = self.win.topics.entry(ep.topic).or_default();
+                    tw.py_convert.add(t.saturating_sub(t0));
+                }
             }
             E::RmwPublishRcl => {
                 self.proc_mut(pid).abi = Some(PublishAbi::Rcl);
@@ -217,6 +229,7 @@ impl Model {
             }
             E::RmwTake {
                 rmw,
+                message,
                 source_timestamp,
                 stamp,
             } => {
@@ -233,9 +246,93 @@ impl Model {
                 let owner = self.owner(pid, node);
                 let sub = SubKey { topic, owner };
                 self.topics[topic].subscribers.insert(owner);
-                self.thread(pid, tid).last_take_rmw = Some(rmw);
+                let th = self.thread(pid, tid);
+                th.last_take_rmw = Some(rmw);
+                if std::mem::take(&mut th.loan_take) {
+                    self.win.subs.entry(sub).or_default().loaned += 1;
+                    self.holds.insert((pid, message), (t, sub));
+                }
                 let key = (source_timestamp != 0).then_some(PairKey::Ros(topic, source_timestamp));
-                self.take(pid, tid, t, sub, stamp, key, Some(source_timestamp));
+                self.take(pid, tid, t, sub, stamp, key, Some(source_timestamp), None);
+            }
+            E::IpcPublish {
+                publisher,
+                source_timestamp,
+            } => {
+                // After an rmw_publish of the same message its key is already sent.
+                if let Some((h, stamp, t0)) = self.thread(pid, tid).pending_rcl.take()
+                    && let Some((topic, origins)) = self.publish_ipc(pid, tid, t0, h, stamp)
+                    && source_timestamp != 0
+                {
+                    let key = PubKey {
+                        pid,
+                        handle: publisher,
+                    };
+                    let k = PairKey::Ros(topic, source_timestamp);
+                    self.pair
+                        .publish(k, t0, key, topic, origins, DeliveryPath::Broker);
+                }
+            }
+            E::IpcTake {
+                subscription,
+                message,
+                source_timestamp,
+                stamp,
+                local,
+            } => {
+                let Some(ep) = self.subs.get(&(pid, subscription)).copied() else {
+                    self.proc_mut(pid).cold = true;
+                    return;
+                };
+                let owner = self.owner(pid, Some(ep.node));
+                let sub = SubKey {
+                    topic: ep.topic,
+                    owner,
+                };
+                self.topics[ep.topic].subscribers.insert(owner);
+                if message != 0 {
+                    self.holds.insert((pid, message), (t, sub));
+                }
+                let key =
+                    (source_timestamp != 0).then_some(PairKey::Ros(ep.topic, source_timestamp));
+                let path = local.then_some(DeliveryPath::Broker);
+                self.take(pid, tid, t, sub, stamp, key, Some(source_timestamp), path);
+            }
+            E::IpcRelease { message } => self.release(pid, message, t),
+            E::LoanBorrow { publisher, message } => {
+                if let Some(ep) = self.pubs.get(&(pid, publisher)).copied() {
+                    self.pub_loans.insert((pid, message), (t, ep.topic));
+                }
+            }
+            E::LoanPublish { message } => {
+                let th = self.thread(pid, tid);
+                th.loan_next = true;
+                th.py_publish = None;
+                self.loan_end(pid, message, t);
+            }
+            E::LoanTake => self.thread(pid, tid).loan_take = true,
+            E::LoanReturn {
+                message,
+                subscription,
+            } => {
+                if subscription {
+                    self.release(pid, message, t);
+                } else {
+                    self.loan_end(pid, message, t);
+                }
+            }
+            E::ShmPayload => self.thread(pid, tid).shm_payload = true,
+            E::PyPublish => self.thread(pid, tid).py_publish = Some(t),
+            E::PyConverted => {
+                let th = self.threads.entry((pid, tid)).or_default();
+                if let Some(tk) = th.last_take.filter(|tk| tk.t <= t) {
+                    let ns = t - tk.t;
+                    let d = th.delivery;
+                    self.win.subs.entry(tk.sub).or_default().py_convert.add(ns);
+                    if let Some(o) = d.and_then(|d| self.deliveries.get_mut(&d)) {
+                        o.row.py_convert_ns = Some(ns);
+                    }
+                }
             }
             E::DdsSize { size } => {
                 if let Some(topic) = self.thread(pid, tid).last_pub_topic {
@@ -589,6 +686,7 @@ impl Model {
         if input.is_some() && key.src == ORMA_SRC_FLUX {
             input = None;
         }
+        let taken = input;
         let dispatch = th.last_wake.filter(|_| iv).map(|w| t.saturating_sub(w));
         let delivery = if key.src == ORMA_SRC_ROS && input.is_some() {
             th.delivery.take()
@@ -655,6 +753,11 @@ impl Model {
             .insert(node);
         if let Some(o) = delivery.and_then(|d| self.deliveries.get_mut(&d)) {
             o.row.dispatch_ns = o.t_wake.map(|w| t.saturating_sub(w));
+            o.row.deliver_ns = taken.map(|tk| t.saturating_sub(tk.t));
+        }
+        if let Some(tk) = taken {
+            let sw = self.win.subs.entry(tk.sub).or_default();
+            sw.deliver.add(t.saturating_sub(tk.t));
         }
         self.thread(pid, tid).stack.push(Frame {
             cb: key,
@@ -772,7 +875,15 @@ impl Model {
     }
 
     fn publish_rmw(&mut self, pid: u32, tid: u32, t: u64, rmw: u64, timestamp: i64, stamp: u64) {
-        self.thread(pid, tid).pending_rcl = None;
+        let th = self.thread(pid, tid);
+        th.pending_rcl = None;
+        let path = if std::mem::take(&mut th.loan_publish) {
+            DeliveryPath::Loan
+        } else if std::mem::take(&mut th.shm_payload) {
+            DeliveryPath::Shm
+        } else {
+            DeliveryPath::Net
+        };
         self.proc_mut(pid).abi = Some(PublishAbi::Rmw);
         let rcl = self.rmw_pubs.get(&(pid, rmw)).copied();
         let found = rcl
@@ -792,7 +903,7 @@ impl Model {
         let origins = self.publish(pid, tid, t, topic, owner, key, stamp, Via::Main);
         if timestamp != 0 {
             self.pair
-                .publish(PairKey::Ros(topic, timestamp), t, key, topic, origins);
+                .publish(PairKey::Ros(topic, timestamp), t, key, topic, origins, path);
         }
     }
 
@@ -806,6 +917,59 @@ impl Model {
         let key = PubKey { pid, handle };
         self.dds_publish(pid, tid, ep.topic);
         self.publish(pid, tid, t, ep.topic, owner, key, stamp, Via::Main);
+    }
+
+    /// An `rcl_publish` that only the broker delivered: no rmw publish, so not the rcl ABI.
+    fn publish_ipc(
+        &mut self,
+        pid: u32,
+        tid: u32,
+        t: u64,
+        handle: u64,
+        stamp: u64,
+    ) -> Option<(TopicIx, Origins)> {
+        let Some(ep) = self.pubs.get(&(pid, handle)).copied() else {
+            self.proc_mut(pid).cold = true;
+            return None;
+        };
+        let owner = self.owner(pid, Some(ep.node));
+        let key = PubKey { pid, handle };
+        let origins = self.publish(pid, tid, t, ep.topic, owner, key, stamp, Via::Main);
+        Some((ep.topic, origins))
+    }
+
+    /// A taken broker message released, or a subscription's loan returned.
+    fn release(&mut self, pid: u32, message: u64, t: u64) {
+        let Some((t0, sub)) = self.holds.remove(&(pid, message)) else {
+            return;
+        };
+        let ns = t.saturating_sub(t0);
+        self.win.subs.entry(sub).or_default().hold.add(ns);
+        if self.samples.is_some() {
+            let s = Sample::Hold {
+                topic: self.topic_id(sub.topic),
+                subscription: Some(self.sub_id(&sub)),
+                ns,
+            };
+            self.sample(s);
+        }
+    }
+
+    /// A publisher's loan published or returned.
+    fn loan_end(&mut self, pid: u32, message: u64, t: u64) {
+        let Some((t0, topic)) = self.pub_loans.remove(&(pid, message)) else {
+            return;
+        };
+        let ns = t.saturating_sub(t0);
+        self.win.topics.entry(topic).or_default().loan_hold.add(ns);
+        if self.samples.is_some() {
+            let s = Sample::Hold {
+                topic: self.topic_id(topic),
+                subscription: None,
+                ns,
+            };
+            self.sample(s);
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -836,8 +1000,14 @@ impl Model {
             handle: channel,
         };
         let origins = self.publish(pid, tid, t, topic, owner, key, stamp, Via::Main);
-        self.pair
-            .publish(PairKey::Flux(dev, ino, ticket), t, key, topic, origins);
+        self.pair.publish(
+            PairKey::Flux(dev, ino, ticket),
+            t,
+            key,
+            topic,
+            origins,
+            DeliveryPath::Unknown,
+        );
     }
 
     /// The origins the message carries for the lineage chains of its topic.
@@ -1124,6 +1294,7 @@ impl Model {
             stamp,
             Some(PairKey::Flux(dev, ino, ticket)),
             None,
+            None,
         );
     }
 
@@ -1137,6 +1308,7 @@ impl Model {
         stamp: u64,
         key: Option<PairKey>,
         source_ts: Option<i64>,
+        path: Option<DeliveryPath>,
     ) {
         self.known_subs.insert(sub);
         self.win.subs.entry(sub).or_default().takes += 1;
@@ -1228,6 +1400,7 @@ impl Model {
             delivery,
             take,
             windows: 0,
+            path,
         };
         if key.is_none() || !self.pair_take(&pending, false) {
             if key.is_some() {
@@ -1254,9 +1427,12 @@ impl Model {
                 self.win.topics.entry(p.sub.topic).or_default().hop.add(h);
                 self.win.subs.entry(p.sub).or_default().hop.add(h);
             }
+            let path = p.path.unwrap_or(DeliveryPath::Unknown);
+            self.path_take(p, path, hop);
             if let Some(o) = p.delivery.and_then(|d| self.deliveries.get_mut(&d)) {
                 o.paired = true;
                 o.row.hop_ns = hop;
+                o.row.path = Some(path);
             }
             return true;
         };
@@ -1268,7 +1444,7 @@ impl Model {
             return true;
         }
         s.takers.push(p.sub);
-        let (t_pub, publisher) = (s.t, s.publisher);
+        let (t_pub, publisher, sent_path) = (s.t, s.publisher, s.path);
         if !s.origins.is_empty() {
             let origins = s.origins.clone();
             self.chains.took(p.take, p.t, origins);
@@ -1287,14 +1463,35 @@ impl Model {
         if let Some(w) = wake {
             sw.wake.add(w);
         }
+        let path = p.path.unwrap_or(sent_path);
+        self.path_take(p, path, Some(hop));
         if let Some(o) = p.delivery.and_then(|d| self.deliveries.get_mut(&d)) {
             o.paired = true;
             o.row.pub_pid = Some(publisher.pid);
             o.row.t_pub_ns = Some(t_pub);
             o.row.hop_ns = Some(hop);
             o.row.wake_ns = wake;
+            o.row.path = Some(path);
         }
         true
+    }
+
+    /// A ROS take counted under its delivery path (docs/instrumentation.md 2.13).
+    fn path_take(&mut self, p: &Pending, path: DeliveryPath, hop: Option<u64>) {
+        if self.topics[p.sub.topic].transport != Transport::Ros {
+            return;
+        }
+        let tw = self.win.topics.entry(p.sub.topic).or_default();
+        let sw = self.win.subs.entry(p.sub).or_default();
+        for w in [
+            tw.paths.entry(path).or_default(),
+            sw.paths.entry(path).or_default(),
+        ] {
+            w.takes += 1;
+            if let Some(h) = hop {
+                w.hop.add(h);
+            }
+        }
     }
 
     pub(super) fn retry_pending(&mut self) {

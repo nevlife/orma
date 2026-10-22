@@ -33,9 +33,10 @@ target_include_directories(cuda_stub PRIVATE ../include)
 set_target_properties(cuda_stub PROPERTIES OUTPUT_NAME cuda SOVERSION 1)
 target_link_options(cuda_stub PRIVATE -Wl,-Bsymbolic-functions)
 add_library(dds_stub SHARED dds_stub.c)
+add_library(delivery_stub SHARED delivery_stub.c)
 ament_add_test(preload_collect
   COMMAND $<TARGET_FILE:orma_preload_caller> collect $<TARGET_FILE:cuda_stub>
-    $<TARGET_FILE:dds_stub>
+    $<TARGET_FILE:dds_stub> $<TARGET_FILE:delivery_stub>
   ENV ${preload} ORMA_THREADS=8
   GENERATE_RESULT_FOR_RETURN_CODE_ZERO TIMEOUT 60)
 

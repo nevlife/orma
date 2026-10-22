@@ -500,6 +500,27 @@ def test_cb_view_shows_cuda_and_futex_only_when_present():
     assert out.getvalue().splitlines()[2].split()[-2:] == ["9.0us", "20.0us"]
 
 
+def test_topic_path_shows_each_path_and_the_subscription_segments():
+    w = json.loads((GOLDEN / "server" / "window.json").read_text())
+    t = w["topics"][0]
+    t["paths"] = [
+        {"path": "broker", "takes": 5, "hop": lat_ns(2_000, 4_000)},
+        {"path": "shm", "takes": 5, "hop": lat_ns(300_000, 700_000)},
+    ]
+    t["loan_hold"] = lat_ns(1_000, 3_000)
+    s = next(s for s in w["subscriptions"] if s["topic"] == t["id"])
+    s.update(paths=t["paths"], loaned=5, deliver=lat_ns(40_000, 90_000))
+    s.update(py_convert=lat_ns(20_000, 30_000), hold=lat_ns(80_000, 100_000))
+    rows = printed(lambda w: cli.print_topic_paths(w, [t["name"]]), w)
+    secs = w["window_ns"] / 1e9
+    hz = f"{5 / secs:.1f}"
+    assert [t["name"], "broker", hz, "2.0us", "2.0us", "4.0us", "4.0us"] in rows
+    assert [t["name"], "shm", hz, "300.0us", "300.0us", "700.0us", "700.0us"] in rows
+    assert [t["name"], "3.0us", "-"] in rows
+    sub = next(r for r in rows if r[:1] == [t["name"]] and "broker," in r)
+    assert sub[-6:] == ["shm", "5", "40.0us", "90.0us", "30.0us", "100.0us"]
+
+
 @pytest.mark.parametrize(
     "text,chain",
     [
@@ -551,7 +572,8 @@ def test_status_shows_options_and_chains(fake, capsys):
         "chain: perception=/camera/image,/detections,/tracks",
         "latest-input nodes: /fusion",
     ]
-    assert out[-2] == "executor probes: 4021 (camera_node) stock"
+    assert out[-3] == "executor probes: 4021 (camera_node) stock"
+    assert out[-2] == "delivery probes: 4021 (camera_node) loan+zenoh_shm"
     assert out[-1].startswith("orma: collectd cpu ")
 
 

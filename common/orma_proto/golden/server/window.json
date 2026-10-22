@@ -16,7 +16,11 @@
         "publish_abi": "rmw",
         "tracetools_lttng": true,
         "gated_register": true,
-        "executor_probes": "stock"
+        "executor_probes": "stock",
+        "delivery_probes": [
+          "loan",
+          "zenoh_shm"
+        ]
       },
       "methods_available": [
         "uprobe",
@@ -238,7 +242,22 @@
         "publish": 0,
         "record": null,
         "ambiguous": 0
-      }
+      },
+      "paths": [
+        {
+          "path": "shm",
+          "takes": 10,
+          "hop": {
+            "n": 10,
+            "mean_ns": 210000,
+            "p50_ns": 131072,
+            "p90_ns": 327680,
+            "p99_ns": 524288,
+            "p999_ns": 524288,
+            "max_ns": 400000
+          }
+        }
+      ]
     },
     {
       "id": "topic:flux:/image:9f3a0c11d2e4b5a6",
@@ -287,6 +306,30 @@
         "p99_ns": 524288,
         "p999_ns": 524288,
         "max_ns": 450000
+      },
+      "paths": [
+        {
+          "path": "shm",
+          "takes": 10,
+          "hop": {
+            "n": 10,
+            "mean_ns": 210000,
+            "p50_ns": 131072,
+            "p90_ns": 327680,
+            "p99_ns": 524288,
+            "p999_ns": 524288,
+            "max_ns": 400000
+          }
+        }
+      ],
+      "deliver": {
+        "n": 10,
+        "mean_ns": 4000,
+        "p50_ns": 4096,
+        "p90_ns": 6144,
+        "p99_ns": 8192,
+        "p999_ns": 8192,
+        "max_ns": 8000
       }
     }
   ],

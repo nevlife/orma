@@ -32,6 +32,10 @@ pub enum Lib {
     Span,
     /// The rcl_executor core of the ROS 2 overhaul.
     RclExecutor,
+    /// zenoh-c, which rmw_zenoh makes its shared memory payloads with.
+    Zenohc,
+    /// rclpy's extension module, `_rclpy_pybind11.<python abi>.so`.
+    Rclpy,
 }
 
 impl Lib {
@@ -51,6 +55,8 @@ impl Lib {
             n if versioned(n, "libcuda.so") => Lib::Cuda,
             n if versioned(n, "liborma_span.so") => Lib::Span,
             n if versioned(n, "librcl_executor.so") => Lib::RclExecutor,
+            n if versioned(n, "libzenohc.so") => Lib::Zenohc,
+            n if n.starts_with("_rclpy_pybind11.") && n.ends_with(".so") => Lib::Rclpy,
             _ => return None,
         })
     }
@@ -346,6 +352,15 @@ mod tests {
             Some(Lib::RclExecutor)
         );
         assert_eq!(Lib::of("/x/librcl_executor_repro.so"), None);
+        assert_eq!(
+            Lib::of("/v/opt/zenoh_cpp_vendor/lib/libzenohc.so"),
+            Some(Lib::Zenohc)
+        );
+        assert_eq!(
+            Lib::of("/ws/rclpy/_rclpy_pybind11.cpython-312-x86_64-linux-gnu.so"),
+            Some(Lib::Rclpy)
+        );
+        assert_eq!(Lib::of("/ws/rclpy/_rclpy_pybind11_impl.so"), None);
     }
 
     fn file(lib: Lib, symbols: &[&str]) -> LibFile {

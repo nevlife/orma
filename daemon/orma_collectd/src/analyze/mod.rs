@@ -14,8 +14,8 @@ use orma_common::read;
 use orma_common::shm::ORMA_SHM_VERSION;
 use orma_proto::Ingest;
 use orma_proto::msg::{
-    ChainMode, ChainSpec, FlowKind, HostWindow, Method, RecordMeta, RecordMethod, Window,
-    WindowLine,
+    ChainMode, ChainSpec, DeliveryPath, FlowKind, HostWindow, Method, RecordMeta, RecordMethod,
+    Window, WindowLine,
 };
 use orma_proto::records;
 
@@ -26,6 +26,16 @@ use crate::sources::ormad::Sel;
 const DRAIN_WINDOWS: u64 = 3;
 /// Samples per entity in `tails.csv`: the largest, down to its p99.
 const TAIL_ROWS: usize = 10;
+
+fn path_name(p: DeliveryPath) -> &'static str {
+    match p {
+        DeliveryPath::Broker => "broker",
+        DeliveryPath::Loan => "loan",
+        DeliveryPath::Shm => "shm",
+        DeliveryPath::Net => "net",
+        DeliveryPath::Unknown => "unknown",
+    }
+}
 
 /// Nearest-rank quantile of sorted values.
 pub fn quantile(sorted: &[u64], q: f64) -> u64 {
@@ -68,9 +78,13 @@ const CUDA_SYNC: &str = "callback CUDA synchronize";
 const FUTEX: &str = "callback futex wait";
 const PRE_DDS: &str = "publish -> DDS write start";
 const DDS: &str = "DDS write";
-const TABLES: [&str; 15] = [
-    HOP, WAKE, DISPATCH, CALLBACK, ONCPU, CUDA, CUDA_SYNC, FUTEX, WAIT, CPU_WAIT, PRE_DDS, DDS,
-    DWELL, SPAN, CHAIN,
+const PATH_HOP: &str = "transport hop by delivery path";
+const DELIVER: &str = "take -> callback start";
+const PY_CONVERT: &str = "rclpy take -> converted";
+const HOLD: &str = "message hold (take -> release, borrow -> publish)";
+const TABLES: [&str; 19] = [
+    HOP, PATH_HOP, WAKE, DELIVER, PY_CONVERT, DISPATCH, CALLBACK, ONCPU, CUDA, CUDA_SYNC, FUTEX,
+    WAIT, CPU_WAIT, PRE_DDS, DDS, HOLD, DWELL, SPAN, CHAIN,
 ];
 
 impl Tables {
@@ -252,7 +266,7 @@ pub fn run(dir: &Path, chains: Vec<ChainSpec>) -> Result<Report, String> {
     let out = dir.join("analysis");
     fs::create_dir_all(&out).map_err(|e| format!("{}: {e}", out.display()))?;
     let mut deliveries = String::from(
-        "topic,subscription,pub_pid,sub_pid,sub_tid,t_pub_ns,t_take_ns,hop_ns,wake_ns,dispatch_ns,callback,callback_ns\n",
+        "topic,subscription,pub_pid,sub_pid,sub_tid,t_pub_ns,t_take_ns,hop_ns,wake_ns,dispatch_ns,callback,callback_ns,path,deliver_ns,py_convert_ns\n",
     );
     let mut callbacks = String::from(
         "callback,node,tid,t_start_ns,duration_ns,oncpu_ns,dispatch_ns,cuda_ns,cuda_sync_ns,futex_ns\n",
@@ -278,9 +292,19 @@ pub fn run(dir: &Path, chains: Vec<ChainSpec>) -> Result<Report, String> {
                     if let Some(v) = d.wake_ns {
                         tables.add(WAKE, &d.subscription, v, at);
                     }
+                    let path = d.path.map(path_name).unwrap_or_default();
+                    if let Some(h) = d.hop_ns.filter(|_| !path.is_empty()) {
+                        tables.add(PATH_HOP, &format!("{} {path}", d.topic), h, at);
+                    }
+                    if let Some(v) = d.deliver_ns {
+                        tables.add(DELIVER, &d.subscription, v, at);
+                    }
+                    if let Some(v) = d.py_convert_ns {
+                        tables.add(PY_CONVERT, &d.subscription, v, at);
+                    }
                     let _ = writeln!(
                         deliveries,
-                        "{},{},{},{},{},{},{},{},{},{},{},{}",
+                        "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
                         d.topic,
                         d.subscription,
                         d.pub_pid.map(|p| p.to_string()).unwrap_or_default(),
@@ -293,6 +317,9 @@ pub fn run(dir: &Path, chains: Vec<ChainSpec>) -> Result<Report, String> {
                         csv_opt(d.dispatch_ns),
                         d.callback.unwrap_or_default(),
                         csv_opt(d.callback_ns),
+                        path,
+                        csv_opt(d.deliver_ns),
+                        csv_opt(d.py_convert_ns),
                     );
                 }
                 Sample::Callback {
@@ -354,6 +381,11 @@ pub fn run(dir: &Path, chains: Vec<ChainSpec>) -> Result<Report, String> {
                 Sample::CpuWait { thread, ns } => tables.add(CPU_WAIT, &thread, ns, None),
                 Sample::Flow { id, dwell_ns } => tables.add(DWELL, &id, dwell_ns, None),
                 Sample::Span { id, duration_ns } => tables.add(SPAN, &id, duration_ns, None),
+                Sample::Hold {
+                    topic,
+                    subscription,
+                    ns,
+                } => tables.add(HOLD, &subscription.unwrap_or(topic), ns, None),
                 Sample::Chain {
                     name,
                     mode,

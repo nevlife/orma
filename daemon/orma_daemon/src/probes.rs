@@ -813,6 +813,8 @@ impl Kernel {
             Cond::RclAbi => rcl_abi,
             Cond::Rclcpp16 => file.rclcpp_major == Some(16),
             Cond::Rclcpp28 => file.rclcpp_major.is_some_and(|m| m >= 28),
+            Cond::RclIpc => file.symbols.contains_key(orma_common::RCL_IPC_CONTRACT),
+            Cond::RclpyAnchors => file.symbols.contains_key(orma_common::RCLPY_CONTRACT),
         }
     }
 

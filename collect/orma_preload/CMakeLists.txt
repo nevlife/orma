@@ -41,7 +41,8 @@ set(shim_flags ${warnings} -fno-stack-protector)
 # liborma_lttng.so in orma_lttng.
 add_library(orma_intercept STATIC
   src/intercept_cuda.c src/intercept_dds.c src/intercept_flux.c src/intercept_malloc.c
-  src/intercept_rcl.c src/intercept_rclcpp.c src/intercept_ros.c src/intercept_span.c
+  src/intercept_delivery.c src/intercept_rcl.c src/intercept_rclcpp.c src/intercept_ros.c
+  src/intercept_span.c
   src/resolve.c)
 add_dependencies(orma_intercept orma_preload_symbols)
 set_target_properties(orma_intercept PROPERTIES

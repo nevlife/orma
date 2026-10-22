@@ -105,9 +105,40 @@ pub enum E {
     RmwPublishRcl,
     RmwTake {
         rmw: u64,
+        message: u64,
         source_timestamp: i64,
         stamp: u64,
     },
+    /// The broker's own readers got a message (docs/instrumentation.md 2.13).
+    IpcPublish {
+        publisher: u64,
+        source_timestamp: i64,
+    },
+    IpcTake {
+        subscription: u64,
+        message: u64,
+        source_timestamp: i64,
+        stamp: u64,
+        local: bool,
+    },
+    IpcRelease {
+        message: u64,
+    },
+    LoanBorrow {
+        publisher: u64,
+        message: u64,
+    },
+    LoanPublish {
+        message: u64,
+    },
+    LoanTake,
+    LoanReturn {
+        message: u64,
+        subscription: bool,
+    },
+    ShmPayload,
+    PyConverted,
+    PyPublish,
     DdsSize {
         size: u64,
     },
@@ -390,10 +421,56 @@ pub fn decode(r: &Record<'_>) -> Option<E> {
             }
             E::RmwTake {
                 rmw: p.rmw_subscription,
+                message: p.message,
                 source_timestamp: p.source_timestamp,
                 stamp: p.stamp,
             }
         }
+        ORMA_EV_RCL_IPC_PUBLISH => {
+            let p: orma_ev_rcl_ipc_publish = r.payload();
+            E::IpcPublish {
+                publisher: p.publisher,
+                source_timestamp: p.source_timestamp,
+            }
+        }
+        ORMA_EV_RCL_IPC_TAKE => {
+            let p: orma_ev_rcl_ipc_take = r.payload();
+            E::IpcTake {
+                subscription: p.subscription,
+                message: p.message,
+                source_timestamp: p.source_timestamp,
+                stamp: p.stamp,
+                local: p.local != 0,
+            }
+        }
+        ORMA_EV_RCL_IPC_RELEASE => E::IpcRelease {
+            message: r.payload::<orma_ev_handle>().handle,
+        },
+        ORMA_EV_RCL_LOAN_BORROW => {
+            let p: orma_ev_rcl_loan = r.payload();
+            if p.ret != 0 || p.message == 0 {
+                return None;
+            }
+            E::LoanBorrow {
+                publisher: p.endpoint,
+                message: p.message,
+            }
+        }
+        ORMA_EV_RCL_LOAN_PUBLISH => {
+            let p: orma_ev_rcl_loan = r.payload();
+            E::LoanPublish { message: p.message }
+        }
+        ORMA_EV_RCL_LOAN_TAKE => E::LoanTake,
+        ORMA_EV_RCL_LOAN_RETURN => {
+            let p: orma_ev_rcl_loan = r.payload();
+            E::LoanReturn {
+                message: p.message,
+                subscription: p.subscription != 0,
+            }
+        }
+        ORMA_EV_ZENOH_SHM_PAYLOAD => E::ShmPayload,
+        ORMA_EV_RCLPY_TAKE_CONVERTED => E::PyConverted,
+        ORMA_EV_RCLPY_PUBLISH_ENTER => E::PyPublish,
         ORMA_EV_DDS_SERIALIZED_SIZE => E::DdsSize {
             size: r.payload::<orma_ev_dds_serialized_size>().size,
         },
