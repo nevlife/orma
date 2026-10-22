@@ -95,21 +95,20 @@ impl Core {
                 .any(|r| r.method() == RecordMethod::Lttng || auto(r))
     }
 
-    /// Brings the session in line with monitoring and the recordings; part of `refresh`.
+    /// Brings the session in line with monitoring and the recordings; part of `refresh`. The
+    /// session lives as long as orma-collectd and takes the naming events of every process from
+    /// its start: a process names its nodes and topics before the session could be made for it.
     pub(super) fn lttng_refresh(&mut self) {
         if !self.lt.on() {
             return;
         }
-        if self.lttng_wanted() {
-            if self.lt.session.is_none() {
-                self.lt.session = Some(self.own_lttng_session());
-            }
-        } else {
-            self.lt.session = None;
+        if self.lt.session.is_none() {
+            self.lt.session = Some(self.own_lttng_session());
         }
         let copy_to: Vec<PathBuf> = self.active.iter().filter_map(Active::ctf_dir).collect();
         let want = Want {
             session: self.lt.session.clone(),
+            all: self.lttng_wanted(),
             ros2: !copy_to.is_empty(),
             copy_to,
         };
@@ -123,7 +122,12 @@ impl Core {
 
     /// A window ended: the session's chunk so far goes out, to reach the next window.
     pub(super) fn lttng_rotate(&self) {
-        if let Some(link) = self.lt.link.as_ref().filter(|_| self.lt.session.is_some()) {
+        let taking = self
+            .lt
+            .sent
+            .as_ref()
+            .is_some_and(|w| w.all || !w.copy_to.is_empty());
+        if let Some(link) = self.lt.link.as_ref().filter(|_| taking) {
             let _ = link.tx.send(ToWorker::Rotate);
         }
     }

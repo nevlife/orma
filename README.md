@@ -199,7 +199,8 @@ sudo install/orma_daemon/bin/ormad --pid PID [--interval 1] [--lib PATH]...
 
 - `LD_PRELOAD`에 `liborma_lttng.so` 추가
 - `LTTNG_HOME=$XDG_RUNTIME_DIR/orma/lttng` 설정. orma-collectd가 이 위치에 session daemon을 자식으로 실행
-- session은 하나. window마다 rotate
+- session은 하나이고 orma-collectd와 수명이 같다. 이름을 주는 event(node, topic, callback 등록)는 늘 켜 두고, 나머지는 monitoring이나 recording이 그 process를 받을 때만 켠다. process는 시작할 때 이름을 내므로, session을 그 뒤에 만들면 node와 topic을 모른다
+- 나머지 event를 켠 동안 window마다 rotate
 - chunk는 `lttng` method인 recording의 `ctf/`에 복사하고, babeltrace로 읽어 monitoring에 쓴 뒤 삭제
 - tracer가 버린 event는 channel 통계로 집계
 

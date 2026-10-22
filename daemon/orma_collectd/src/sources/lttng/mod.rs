@@ -18,9 +18,25 @@ use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
+use orma_common::catalog;
+
 use crate::sys;
 
 const APPS_EVERY: Duration = Duration::from_secs(2);
+const ALL: &str = "orma:*,flux:*";
+
+/// The LTTng names of the events that name and link entities (`catalog::init`).
+fn init_events() -> String {
+    catalog::CATALOG
+        .iter()
+        .filter(|e| catalog::init(e.id))
+        .map(|e| match e.name.strip_prefix("flux_") {
+            Some(flux) => format!("flux:{flux}"),
+            None => format!("orma:{}", e.name),
+        })
+        .collect::<Vec<_>>()
+        .join(",")
+}
 const SESSIOND_UP: Duration = Duration::from_secs(5);
 /// Chunks waiting for the reader.
 const READ_QUEUE: usize = 2;
@@ -30,6 +46,9 @@ const READ_QUEUE: usize = 2;
 pub struct Want {
     /// The session to have; `None` for none.
     pub session: Option<String>,
+    /// Every event; without it only the ones that name and link entities, which a process emits
+    /// once at its start, before orma-collectd could notice it and want the rest.
+    pub all: bool,
     /// Also the ros2 events, for ros2_tracing's tools reading a recording's CTF.
     pub ros2: bool,
     /// The `ctf/` directories of the LTTng recordings.
@@ -181,6 +200,7 @@ fn copy_dir(from: &Path, to: &Path) -> io::Result<u64> {
 struct Session {
     name: String,
     dir: PathBuf,
+    all: bool,
     ros2: bool,
     discarded: u64,
     /// When the chunk being written began: the session's start or its last rotation.
@@ -255,6 +275,7 @@ impl Worker {
             session: None,
             want: Want {
                 session: None,
+                all: false,
                 ros2: false,
                 copy_to: Vec::new(),
             },
@@ -319,11 +340,12 @@ impl Worker {
         self.session = Some(Session {
             name: name.into(),
             dir,
+            all: false,
             ros2: false,
             discarded: 0,
             rotated_ns: sys::mono_ns(),
         });
-        self.lttng(&["enable-event", "-u", "orma:*,flux:*", "-s", name])?;
+        self.lttng(&["enable-event", "-u", &init_events(), "-s", name])?;
         self.lttng(&["add-context", "-u", "-t", "vpid", "-t", "vtid", "-s", name])?;
         self.lttng(&["start", name])?;
         Ok(())
@@ -348,6 +370,20 @@ impl Worker {
             {
                 self.error(e);
                 self.destroy();
+            }
+        }
+        if let Some(s) = self.session.as_ref()
+            && self.want.all != s.all
+        {
+            let name = s.name.clone();
+            let verb = if self.want.all {
+                "enable-event"
+            } else {
+                "disable-event"
+            };
+            match self.lttng(&[verb, "-u", ALL, "-s", &name]) {
+                Ok(_) => self.session.as_mut().expect("checked").all = self.want.all,
+                Err(e) => self.error(e),
             }
         }
         if let Some(s) = self.session.as_ref()

@@ -239,7 +239,8 @@ fn sigterm_finalizes_and_ends_the_guard() {
     assert_eq!(m.state, RecordState::Finalized);
     assert_eq!(m.end_reason, Some(EndReason::CollectorExit));
     until(|| !alive(guard));
-    assert!(!lttng_log(&dir).contains("destroy"));
+    // orma-collectd destroyed its own session; the guard had nothing left to destroy.
+    assert_eq!(lttng_log(&dir).matches(" destroy ").count(), 1);
     assert!(!socket(&dir).exists());
 }
 
