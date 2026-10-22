@@ -80,3 +80,4 @@
 | `preload pid N` | `fail`: `LD_PRELOAD`가 orma library를 가리키는데 load되지 않았다. `AT_SECURE`가 1이면 secure-exec(setuid, file capability, LSM 전환)가 이유 |
 | `time namespace pid N` | `fail`: 다른 time namespace이고 monotonic offset이 0이 아니다. 그 process의 `preload`, `lttng` record 시각이 그만큼 어긋난다 |
 | `rcl_wait returns pid N` | `fail`: 한 thread의 진입과 반환 수가 2 이상 다르다. uretprobe가 반환을 놓쳤다 |
+| `executor probes pid N` | process의 executor probe(`stock` 또는 `rcl_executor`). `rcl_executor`이면 core의 wait, claim, rcl handle을 읽은 claim, complete 수. `unknown`: 검사 중 core의 wait와 claim이 없었다 |

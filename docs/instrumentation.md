@@ -17,6 +17,7 @@ ROS 2와 flux의 주요 execution flow마다 orma가 어느 함수에 붙고 어
   - [2.9 Timer and service callbacks](#29-timer-and-service-callbacks)
   - [2.10 rclpy](#210-rclpy)
   - [2.11 Late attach](#211-late-attach)
+  - [2.12 rcl_executor](#212-rcl_executor)
 - [3. flux execution flows](#3-flux-execution-flows)
   - [3.1 Channel and endpoint creation](#31-channel-and-endpoint-creation)
   - [3.2 Publishing](#32-publishing)
@@ -42,7 +43,7 @@ ROS 2와 flux의 주요 execution flow마다 orma가 어느 함수에 붙고 어
 | probe set | 붙는 process |
 | --- | --- |
 | `discovery` | 모든 process. init, registration, fini |
-| `hot` | 선택한 process. publish, take, callback, executor, `rcl_wait`, 나머지 flux 함수, `orma_span_begin`과 `orma_span_end` |
+| `hot` | 선택한 process. publish, take, callback, executor, `rcl_wait`, 나머지 flux 함수, `orma_span_begin`과 `orma_span_end`. rcl_executor core를 매핑한 process에는 그 anchor도(2.12) |
 | `rclcpp_symbols` | 선택한 process. rclcpp C++ 함수 |
 | `bandwidth` | 선택한 process, opt-in. DDS serialized size |
 | `sched` | 선택한 process의 thread. kernel scheduler |
@@ -205,7 +206,7 @@ sequenceDiagram
     Executor-->>orma: rclcpp_executor_execute(handle) [hot]
 ```
 
-`EventsExecutor`는 `rcl_wait`를 쓰지 않으므로 wait와 wakeup이 없다. orma는 그 칸을 비워 둔다.
+`EventsExecutor`는 `rcl_wait`를 쓰지 않으므로 wait와 wakeup이 없다. orma는 그 칸을 비워 둔다. ROS 2 overhaul의 `RclExecutor`도 `rcl_wait`를 쓰지 않는다. 그 wait와 dispatch는 2.12의 anchor에서 받는다.
 
 ### 2.6 Message publishing
 
@@ -339,6 +340,75 @@ callback_start(callback)      same thread, one level deep -> rclcpp_callback_own
 - subscription의 topic은 `rmw_subscription_topic`(2.7)에서 온다. service 이름은 읽지 않는다. late attach한 service callback은 `srv`와 함수 이름만 보인다.
 - timer는 node를 갖지 않는다. 그 callback group의 첫 subscription, service, client의 node를 쓴다. timer만 든 group의 timer는 node를 모른 채 남는다.
 - 보이지 않는 것: `execute_any_executable`을 거치지 않는 executor(Humble의 `StaticSingleThreadedExecutor`, `EventsExecutor`), intra-process로만 받는 subscription, rclpy. 이들은 `orma node` 명령의 node 열에 `unlinked`로 남는다.
+
+### 2.12 rcl_executor
+
+ROS 2 overhaul의 executor core `rcl_executor`(`librcl_executor.so`)는 `rcl_wait`를 부르지 않는다. 그 위의 `rclcpp::experimental::executors::RclExecutor`와 `rclpy.experimental.RclExecutor`는 `Executor::execute_any_executable`도 거치지 않는다. 그래서 2.5의 `rcl_wait_*`, `rclcpp_executor_get_next_ready`, `rclcpp_executor_wait_for_work`, `rclcpp_executor_execute`가 나오지 않는다. callback, take, publish event는 그대로 나온다. core는 uprobe용 빈 함수 넷(`rcl_executor/trace.h`의 `rcl_executor_trace_*`)을 export하고, orma는 uprobe method에서 그 함수에 붙는다.
+
+probe 선택:
+
+- process마다 매핑한 파일로 정한다. `librcl_executor.so`가 매핑돼 있고 그 파일이 anchor 넷을 모두 export하면 rcl_executor probe를 `hot` set에 더한다. 버전이나 환경변수는 보지 않는다
+- anchor가 하나라도 없는 `librcl_executor.so`는 거절하고 `probes_missing`에 남긴다
+- stock probe(`rcl_wait`, rclcpp executor tracepoint)는 그대로 붙는다. 한 process에 stock executor와 `RclExecutor`가 함께 있을 수 있기 때문이다
+- core를 매핑하지 않은 process에는 아무것도 더 붙지 않는다. stock ROS 2 process의 비용은 그대로다
+- 확인: `orma status`의 `executor probes:` 줄(`stock`, `rcl_executor`), `orma check`의 `executor probes pid N` 행
+
+| core 함수 | orma event | 인자 | 같은 뜻의 stock point |
+| --- | --- | --- | --- |
+| `rcl_executor_trace_wait_enter(executor, timeout_ns)` | `rcl_wait_enter`, flag `ORMA_RECORD_RCL_EXECUTOR` | `wait_set` = executor, `timeout` = timeout_ns | `rcl_wait` entry |
+| `rcl_executor_trace_wait_exit(executor, result)` | `rcl_wait_exit`, flag `ORMA_RECORD_RCL_EXECUTOR` | `wait_set` = executor, `ret` = `rcl_executor_result_t` | `rcl_wait` return |
+| `rcl_executor_next_excluding` entry | 없음. thread별로 `rcl_executor_item_t *`만 기억 | - | - |
+| `rcl_executor_trace_item_claimed(executor, id, type, group)` | `rcl_executor_claim` | executor, registration, entity, context, group, entity_type, rclcpp | `rclcpp_executor_execute`(dispatch start) |
+| `rcl_executor_trace_item_completed(executor, id)` | `rcl_executor_complete` | executor, registration | 없음 |
+
+```mermaid
+sequenceDiagram
+    participant Client as RclExecutor (rclcpp, rclpy)
+    participant core as rcl_executor
+    participant orma
+
+    Client->>core: rcl_executor_wait(timeout)
+    core-->>orma: rcl_wait_enter(executor, timeout) [hot]
+    Note over core: sleeps until an item is ready
+    core-->>orma: rcl_wait_exit(executor, result) [hot]
+    Client->>core: rcl_executor_next(item)
+    core-->>orma: rcl_executor_claim(executor, id, entity, group) [hot]
+    Client-->>orma: callback_start, callback_end [hot]
+    Client->>core: rcl_executor_complete(token)
+    core-->>orma: rcl_executor_complete(executor, id) [hot]
+```
+
+event를 고른 규칙:
+
+- wait 두 event는 stock event 번호와 payload를 그대로 쓰고, record header의 flag `ORMA_RECORD_RCL_EXECUTOR`(2)로만 구분한다. wait time, wakeup latency, dispatch latency는 분기 없이 같은 식으로 계산된다(6절)
+- core wait의 key는 wait set 대신 executor(`rcl_executor_t *`)다. `ret`는 `rcl_ret_t`가 아니라 `rcl_executor_result_t`(0 `READY`, 1 `TIMEOUT`, 2 `INTERRUPTED`, 3 `STOPPED`, 4 `ERROR`)다
+- claim은 새 event다. `rclcpp_executor_execute`는 rclcpp만 부르는 tracepoint이고 rcl handle 하나만 싣는다. core는 언어와 무관하고, claim과 complete를 잇는 데 registration id가 필요하다
+- orma-collectd는 `rclcpp`가 1인 claim을 `rclcpp_executor_execute`와 같은 dispatch start로 읽는다. `rclcpp`가 0인 claim은 stock rclpy처럼 executor event 없이 둔다. 그래서 executor 종류(`rclcpp`, `rclpy`)가 stock과 같은 규칙으로 정해진다
+- `rclcpp`는 ormad가 그 process의 `librclcpp.so` 매핑 여부로 채운다. rclcpp를 쓰는 C++ extension을 로드한 Python process는 `rclcpp`로 표시된다
+- complete는 stock에 없다. claim부터 complete까지가 core가 본 item 실행 시간이다. coroutine callback이면 callback보다 길다
+
+claim의 값과 다른 event의 대응:
+
+| 값 | rclcpp `RclExecutor` | rclpy `RclExecutor` | 같은 값을 싣는 event |
+| --- | --- | --- | --- |
+| `registration` | core가 매긴 순번(`rcl_executor_add`의 출력) | 같음 | `rcl_executor_complete` |
+| `entity` | `rcl_subscription_t *`, `rcl_timer_t *`, `rcl_service_t *`, `rcl_client_t *`. waitable(`RCL_EXECUTOR_WORK`)은 0 | `rcl_*_t *`(event, guard condition 포함) | `rcl_subscription_init`, `rcl_timer_init`, `rcl_service_init`, `rcl_client_init`의 handle. service와 timer는 `rclcpp_*_callback_added`의 handle도 |
+| `context` | `SubscriptionBase *`, `ServiceBase *`, `ClientBase *`, `TimerBase *`, `Waitable *` | entity 객체의 `id()` | subscription은 `rclcpp_subscription_init`의 subscription(rclpy는 `orma_rclpy`가 같은 `id()`를 넣는다) |
+| `group` | `CallbackGroup *` | callback group의 `id()` | `rclcpp_group_add_subscription`, `rclcpp_group_add_timer`의 group |
+
+entity 읽기:
+
+- anchor는 registration id만 넘기고 entity는 넘기지 않는다. core만 아는 id라 orma가 다른 event와 이을 수 없다
+- 그래서 `rcl_executor_next_excluding`(`rcl_executor_next`가 넘어가는 곳) 입구에서 `rcl_executor_item_t *`를 thread별로 기억하고, claim anchor에서 `item->entity`(offset 24)와 `item->context`(offset 32)를 읽는다. anchor가 불릴 때 item은 이미 채워져 있다
+- `item->registration`(offset 0)이 anchor의 id와 다르면 읽지 않고 0으로 둔다. 같은 thread의 이전 호출이 남긴 item을 읽지 않기 위해서다
+- core가 anchor에 entity와 context를 넘기면 이 probe는 빠진다. 그때까지 item 하나에 core 쪽 uprobe가 다섯 번 불린다(wait 둘, next, claim, complete). 모두 entry probe이고 uretprobe는 없다
+
+차이와 빈칸:
+
+- `rcl_executor_spin`은 claim마다 먼저 wait를 부른다. ready인 item이 있으면 바로 `READY`로 돌아오므로 길이 0에 가까운 wait가 섞인다
+- rclcpp `RclExecutor`가 `RCL_EXECUTOR_WAIT_SET` policy로 waitable을 실행하면 그 안에서 `rcl_wait(ws, 0)`를 부른다. 이 호출은 stock `rcl_wait_*`로 잡히고, 그 뒤 callback의 dispatch latency는 이 호출의 return부터 잰다
+- `preload`, `lttng` method는 anchor를 가로채지 않는다. 그 method로 실행한 `RclExecutor` process에는 wait와 claim이 없다
+- late attach(2.11)의 node 읽기는 `execute_any_executable`에 붙으므로 `RclExecutor`에서는 동작하지 않는다. 그런 callback은 `unlinked`로 남는다
 
 ## 3. flux execution flows
 
@@ -526,9 +596,9 @@ ROS topic과 flux channel을 같은 segment로 잰다.
 | publish | `rmw_publish` | `flux_commit` |
 | matching key | `(topic, source timestamp)` | `(segment, ticket)` |
 | take | `rmw_take`(`taken`이 참) | `flux_take` |
-| wait start | `rcl_wait` entry | `flux_wait` |
-| wakeup | `rcl_wait` return | `flux_wake` |
-| dispatch start | `rclcpp_executor_execute` | - |
+| wait start | `rcl_wait` entry, `rcl_executor_trace_wait_enter`(2.12) | `flux_wait` |
+| wakeup | `rcl_wait` return, `rcl_executor_trace_wait_exit` | `flux_wake` |
+| dispatch start | `rclcpp_executor_execute`, `rcl_executor_claim` | - |
 | callback | `callback_start` -> `callback_end` | `flux_callback_start` -> `flux_callback_end` |
 
 | segment | 정의 |
@@ -570,6 +640,7 @@ orma는 process마다 distro를 판정한다. 한 host에 Jazzy process와 Humbl
 | ROS tracepoint | gated tracepoint를 뺀 전부 | 전부 | 전부 |
 | callback 함수 이름 | `callback_code` | `rclcpp_callback_register` | `rclcpp_callback_register` |
 | `rcl_wait`, `rcl_timer_fini`, rclcpp C++ 함수 | O | O | O |
+| rcl_executor anchor(2.12) | O | X | X |
 | late attach일 때 topic과 node(2.11) | O | -(시작부터 부착) | - |
 | DDS serialized size | opt-in | 이 uprobe 추가 필요 | 이 uprobe 추가 필요 |
 | `header.stamp`, `/clock` | O | O | O |
@@ -602,4 +673,5 @@ ROS 2는 고치지 않는다. 한계마다 우회나 받아들인 빈칸이 있�
 | late attach하면 init과 registration event를 놓친다 | 이름과 소속이 빈다 | topic은 rmw handle에서, node는 executor에서 읽는다(2.11). 못 찾은 것은 `unlinked`로 둔다 |
 | orma는 message type을 모른다 | `header.stamp` 위치를 모른다 | 앞 8 B를 읽고 clock 검사를 통과한 값만 쓴다(2.6) |
 | `EventsExecutor`는 `rcl_wait`를 쓰지 않는다 | wait와 wakeup이 없다 | 그 칸을 비워 둔다 |
+| overhaul의 `RclExecutor`는 `rcl_wait`와 rclcpp executor tracepoint를 쓰지 않는다 | stock probe로는 wait, wakeup, dispatch start가 없다 | core의 anchor에 붙는다(2.12). anchor가 entity를 넘기지 않아 `rcl_executor_next_excluding`에서 item을 읽는다 |
 | CUDA는 host 쪽 호출만 보인다 | GPU 안의 kernel 실행 시간이 없다 | synchronize와 동기 copy의 대기 시간으로 본다(5.2) |

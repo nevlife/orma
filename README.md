@@ -49,6 +49,7 @@ colcon build --symlink-install --packages-up-to orma_cli rqt_orma orma_daemon or
 | --- | --- |
 | ROS tracetools | `libtracetools.so`의 `ros_trace_*`(rcl, rclcpp, rmw가 호출) |
 | tracepoint 없는 ROS 함수 | `librcl.so`의 `rcl_wait`(entry, return), `rcl_timer_fini`. `librclcpp.so`의 C++ 함수(callback group, executor 소속, intra-process 연결). DDS serialized size |
+| rcl_executor(ROS 2 overhaul) | `librcl_executor.so`의 `rcl_executor_trace_*`와 `rcl_executor_next_excluding`. 이 core를 매핑한 process에만, `uprobe` method에서만([`docs/instrumentation.md`](docs/instrumentation.md) 2.12) |
 | rclpy | rclpy가 부르지 않는 callback event를 `orma_rclpy`가 대신 호출 |
 | flux | `libflux_ffi.so`의 `flux_trace_*`(trace contract 2) |
 | span | `liborma_span.so`의 `orma_span_begin`, `orma_span_end`(C, C++ `orma::Span`, Python `@span`) |

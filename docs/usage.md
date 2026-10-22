@@ -16,6 +16,7 @@ orma-collectd: orma-collectd 0.0.0, /run/user/2002/orma/collectd.sock
 ormad: connected, lttng: available, preload processes: 0
 monitor: idle, window 1s, selection all, sched
 recordings: none
+executor probes: 4021 (camera_node) stock, 4107 (python3) rcl_executor
 ```
 
 | 값 | 뜻 |
@@ -26,6 +27,7 @@ recordings: none
 | `ormad: lost` | 연결이 끊긴 상태. 다시 연결되면 같은 요청 재전송 |
 | `lttng: absent` | PATH에 `lttng` 부재 |
 | `preload processes` | `preload`나 `lttng` method로 실행한 process 수 |
+| `executor probes` | ROS process마다 executor에 붙는 uprobe. `stock`: `rcl_wait`와 rclcpp executor tracepoint. `rcl_executor`: 거기에 overhaul core의 anchor 추가([instrumentation.md](instrumentation.md) 2.12) |
 
 `orma check`:
 
