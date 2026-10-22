@@ -18,6 +18,7 @@ ROS 2와 flux의 주요 execution flow마다 orma가 어느 함수에 붙고 어
   - [2.10 rclpy](#210-rclpy)
   - [2.11 Late attach](#211-late-attach)
   - [2.12 rcl_executor](#212-rcl_executor)
+  - [2.13 전달 경로](#213-전달-경로)
 - [3. flux execution flows](#3-flux-execution-flows)
   - [3.1 Channel and endpoint creation](#31-channel-and-endpoint-creation)
   - [3.2 Publishing](#32-publishing)
@@ -43,7 +44,7 @@ ROS 2와 flux의 주요 execution flow마다 orma가 어느 함수에 붙고 어
 | probe set | 붙는 process |
 | --- | --- |
 | `discovery` | 모든 process. init, registration, fini |
-| `hot` | 선택한 process. publish, take, callback, executor, `rcl_wait`, 나머지 flux 함수, `orma_span_begin`과 `orma_span_end`. rcl_executor core를 매핑한 process에는 그 anchor도(2.12) |
+| `hot` | 선택한 process. publish, take, callback, executor, `rcl_wait`, 나머지 flux 함수, `orma_span_begin`과 `orma_span_end`. rcl_executor core를 매핑한 process에는 그 anchor도(2.12). 전달 경로 probe(2.13) |
 | `rclcpp_symbols` | 선택한 process. rclcpp C++ 함수 |
 | `bandwidth` | 선택한 process, opt-in. DDS serialized size |
 | `sched` | 선택한 process의 thread. kernel scheduler |
@@ -296,6 +297,8 @@ intra-process 전달에는 rmw take가 없다. 그래서 transport latency와 ta
 
 intra-process buffer tracepoint(`rclcpp_ring_buffer_*`, `rclcpp_buffer_to_ipb`, `rclcpp_ipb_to_subscription`)는 수집하지 않는다.
 
+ROS 2 overhaul의 rcl broker(`RCL_INTRA_PROCESS=1`)는 rclcpp `IntraProcessManager`와 다른 경로다. take가 있어 transport latency와 take rate를 잰다(2.13).
+
 ### 2.9 Timer and service callbacks
 
 timer와 service callback도 `callback_start`와 `callback_end` 사이로 잰다. callback 객체는 2.3의 `*_callback_added`가 timer나 service에 이어 둔 것이다.
@@ -409,6 +412,105 @@ entity 읽기:
 - rclcpp `RclExecutor`가 `RCL_EXECUTOR_WAIT_SET` policy로 waitable을 실행하면 그 안에서 `rcl_wait(ws, 0)`를 부른다. 이 호출은 stock `rcl_wait_*`로 잡히고, 그 뒤 callback의 dispatch latency는 이 호출의 return부터 잰다
 - `preload`, `lttng` method는 anchor를 가로채지 않는다. 그 method로 실행한 `RclExecutor` process에는 wait와 claim이 없다
 - late attach(2.11)의 node 읽기는 `execute_any_executable`에 붙으므로 `RclExecutor`에서는 동작하지 않는다. 그런 callback은 `unlinked`로 남는다
+
+### 2.13 전달 경로
+
+ROS 2 overhaul에서는 같은 topic의 message도 subscription마다 다른 경로로 간다. orma는 take마다 경로를 붙이고, 경로별 take 수와 transport latency, take에서 callback까지, rclpy 변환, buffer 보유 시간을 낸다.
+
+| 경로 | 뜻 | 조건 |
+| --- | --- | --- |
+| `broker` | rcl broker가 같은 process의 reader에게 넘긴 message. rmw를 거치지 않는다 | overhaul rcl, `RCL_INTRA_PROCESS=1` |
+| `loan` | publisher가 rmw loan을 빌려 publish한 message | `borrow_loaned_message`를 쓰는 publisher, loan을 지원하는 rmw |
+| `shm` | rmw_zenoh가 zenoh shared memory에 직렬화한 payload | rmw_zenoh, SHM 켬, message가 SHM threshold 이상 |
+| `net` | rmw가 자기 buffer에 직렬화한 payload | 위 셋이 아닌 rmw publish |
+| `unknown` | publish를 보지 못한 take | publisher process를 관측하지 않음 |
+
+probe 선택:
+
+- process마다 매핑한 파일의 export로 정한다. 2.12와 같은 규칙이다. 버전이나 환경변수는 보지 않는다
+- stock Jazzy process에는 `loan`과 `zenoh_shm`만 붙는다. 둘 다 stock library의 export 함수다
+- 확인: `orma status`의 `delivery probes:` 줄
+- `preload`, `lttng` method도 같은 point를 가로챈다. rcl과 rclpy가 anchor를 PLT로 부르기 때문이다. 2.12의 core anchor와 다른 점이다
+
+| probe | 붙는 조건 | 붙는 함수 |
+| --- | --- | --- |
+| `broker` | `librcl.so`가 `rcl_ipc_trace_contract_1`을 export | `rcl_ipc_trace_publish`, `rcl_ipc_trace_take`, `rcl_ipc_trace_release` |
+| `loan` | `librcl.so`가 `rcl_borrow_loaned_message`를 export | `rcl_borrow_loaned_message`(entry, return), `rcl_publish_loaned_message`, `rcl_return_loaned_message_from_publisher`, `rcl_take_loaned_message`, `rcl_return_loaned_message_from_subscription` |
+| `zenoh_shm` | `libzenohc.so`가 `z_bytes_from_shm_mut`을 export | `z_bytes_from_shm_mut` |
+| `rclpy` | `_rclpy_pybind11.*.so`가 `rclpy_trace_contract_1`을 export | `rclpy_trace_take_converted`, `rclpy_trace_publish_enter` |
+
+| 함수 | orma event | 인자 |
+| --- | --- | --- |
+| `rcl_ipc_trace_publish(publisher, message, source_timestamp, readers)` | `rcl_ipc_publish` | broker가 같은 process reader `readers`개에 넣은 message. reader가 없으면 불리지 않는다 |
+| `rcl_ipc_trace_take(subscription, message, data, source_timestamp, local)` | `rcl_ipc_take` | reader의 take. `message`는 release까지 잡는 `rcl_ipc_message_t *`, 복사로 꺼냈으면 0. `local`이 0이면 rmw가 broker에 넣은 다른 process의 message |
+| `rcl_ipc_trace_release(message)` | `rcl_ipc_release` | take한 message의 release |
+| `rcl_borrow_loaned_message` return | `rcl_loan_borrow` | publisher, 빌린 loan, `rcl_ret_t` |
+| `rcl_publish_loaned_message` | `rcl_loan_publish` | publisher, loan |
+| `rcl_return_loaned_message_from_publisher` | `rcl_loan_return` | publisher, loan |
+| `rcl_take_loaned_message` | `rcl_loan_take` | subscription. loan은 안의 `rmw_take`가 싣는다 |
+| `rcl_return_loaned_message_from_subscription` | `rcl_loan_return` | subscription, loan |
+| `z_bytes_from_shm_mut(bytes, shm)` | `zenoh_shm_payload` | bytes 객체 |
+| `rclpy_trace_publish_enter(publisher)` | `rclpy_publish_enter` | rclpy publish 시작. Python message 변환 전 |
+| `rclpy_trace_take_converted(subscription, message)` | `rclpy_take_converted` | take한 message의 Python 변환 끝 |
+
+```mermaid
+sequenceDiagram
+    participant pub as publisher
+    participant rcl
+    participant rmw as rmw_zenoh
+    participant orma
+    participant sub as subscription
+
+    pub->>rcl: rcl_publish(message)
+    rcl-->>orma: rcl_publish [hot]
+    rcl->>rmw: rmw publish
+    rmw->>rcl: broker prepare(source_timestamp)
+    rcl-->>orma: rcl_ipc_publish(publisher, source_timestamp, readers) [hot]
+    rmw-->>orma: zenoh_shm_payload [hot, SHM일 때]
+    rmw-->>orma: rmw_publish(rmw_handle, source_timestamp) [hot, 다른 process reader가 있을 때]
+    sub->>rcl: take
+    rcl-->>orma: rcl_ipc_take(subscription, message, source_timestamp, local) [hot]
+    sub-->>orma: callback_start, callback_end [hot]
+    sub->>rcl: rcl_ipc_message_release(message)
+    rcl-->>orma: rcl_ipc_release(message) [hot]
+```
+
+경로 판정:
+
+- `broker`: `local`이 1인 `rcl_ipc_take`. publish 쪽 key는 `rcl_ipc_publish`의 `(topic, source timestamp)`다. 모든 reader가 broker reader면 rmw_zenoh가 `rmw_publish`를 부르지 않기 때문이다
+- 그 밖의 take는 짝지은 publish의 경로를 받는다. publish 경로는 같은 thread의 `rcl_publish`부터 `rmw_publish`까지 본 event로 정한다. `rcl_loan_publish`가 있으면 `loan`, `zenoh_shm_payload`가 있으면 `shm`, 둘 다 없으면 `net`이다
+- 한 publish가 broker reader와 다른 process reader를 함께 가지면, 같은 source timestamp의 take가 reader마다 다른 경로로 잡힌다
+- `orma topic path`(사용법 4절)와 window의 `paths`가 경로별 값이다. 경로별 hop 표본 수의 합은 topic과 subscription의 hop 표본 수와 같다
+
+segment:
+
+| segment | 정의 |
+| --- | --- |
+| hop by path | 경로별 transport latency. take - publish(`rmw_publish` 또는 `rcl_ipc_publish`) |
+| take -> callback start | take(`rmw_take`, `rcl_ipc_take`) - 그 take의 `callback_start` |
+| rclpy take -> converted | `rclpy_take_converted` - 같은 thread의 마지막 take. take -> callback start의 일부 |
+| rclpy publish -> rcl | `rcl_publish` - `rclpy_publish_enter`. Python message에서 C message로의 변환 |
+| subscription hold | `rcl_ipc_release` 또는 subscription의 `rcl_loan_return` - take. broker message나 loan을 잡은 시간 |
+| publisher loan hold | `rcl_loan_publish` 또는 publisher의 `rcl_loan_return` - `rcl_loan_borrow` |
+
+anchor를 둔 이유:
+
+overhaul rcl과 rclpy에는 uprobe용 빈 함수(anchor)를 더했다. 2.12의 core anchor와 같은 방식이고, 인자를 바꾸면 contract 심볼 번호를 올린다. stock 함수로 잡을 수 있는 point(`loan`, `zenoh_shm`)에는 anchor를 두지 않았다.
+
+| point | stock 함수로 안 되는 이유 |
+| --- | --- |
+| broker publish | broker만 받는 publish에는 `rmw_publish`가 없다. source timestamp는 rmw_zenoh가 만들어 rcl 안의 내부 함수(broker의 prepare)로만 넘긴다 |
+| broker take | take 함수가 셋(`rcl_take_ipc_message`, `rcl_take_ipc_adapted`, `rcl_ipc_take_serialized_copy`)이고 source timestamp와 message는 출력 인자다. uprobe로는 함수마다 entry와 return 두 probe가 필요하다. anchor는 entry probe 하나다 |
+| broker release | `rcl_ipc_take_copy`가 안에서 message를 지운다. anchor가 그 경로도 release로 센다 |
+| rclpy 변환 | `_rclpy_pybind11`은 심볼을 숨긴다. take는 Python executor 말고도 C++ executor(`EventsExecutor`, `RclExecutor`)에서 불려 Python 쪽에서 감쌀 곳이 없다 |
+
+차이와 빈칸:
+
+- rmw_zenoh는 SHM provider를 첫 SHM publish 때 만든다. 그 전의 몇 message는 `net`으로 잡힌다
+- `shm`은 publisher가 SHM payload를 만들었다는 뜻이다. subscriber가 SHM을 매핑하지 못해 받은 쪽에서 복사했는지는 보지 않는다
+- `rcl_take_loaned_message`는 entry만 본다. take하지 못한 호출 뒤 같은 thread의 다음 take가 loan으로 잡힐 수 있다
+- `rcl_take`가 broker message를 사용자 message로 복사하는 경로(`rcl_ipc_take_copy`)는 take 직후 release하므로 hold가 0에 가깝다
+- `rclpy` probe는 overhaul rclpy에만 있다. stock rclpy의 변환 시간은 take -> callback start 안에 섞여 있다
 
 ## 3. flux execution flows
 
@@ -593,9 +695,9 @@ ROS topic과 flux channel을 같은 segment로 잰다.
 
 | event | ROS | flux |
 | --- | --- | --- |
-| publish | `rmw_publish` | `flux_commit` |
+| publish | `rmw_publish`, broker만 받는 publish는 `rcl_ipc_publish`(2.13) | `flux_commit` |
 | matching key | `(topic, source timestamp)` | `(segment, ticket)` |
-| take | `rmw_take`(`taken`이 참) | `flux_take` |
+| take | `rmw_take`(`taken`이 참), `rcl_ipc_take` | `flux_take` |
 | wait start | `rcl_wait` entry, `rcl_executor_trace_wait_enter`(2.12) | `flux_wait` |
 | wakeup | `rcl_wait` return, `rcl_executor_trace_wait_exit` | `flux_wake` |
 | dispatch start | `rclcpp_executor_execute`, `rcl_executor_claim` | - |
@@ -613,6 +715,7 @@ ROS topic과 flux channel을 같은 segment로 잰다.
 | pub to dds | DDS write start - `rclcpp_publish`(없으면 `rcl_publish`), 같은 thread(5.3) |
 | dds write | DDS write 호출 시간(5.3) |
 | span duration | `span_end` - `span_begin`(5.1) |
+| 전달 경로별 segment | hop by path, take -> callback start, rclpy 변환, hold(2.13) |
 
 - process 안 segment(callback duration, dispatch latency): instrumentation point에서 aggregate. `lttng`만 orma-collectd에서
 - process 사이 segment(transport latency, wakeup latency): orma-collectd가 matching
@@ -641,6 +744,7 @@ orma는 process마다 distro를 판정한다. 한 host에 Jazzy process와 Humbl
 | callback 함수 이름 | `callback_code` | `rclcpp_callback_register` | `rclcpp_callback_register` |
 | `rcl_wait`, `rcl_timer_fini`, rclcpp C++ 함수 | O | O | O |
 | rcl_executor anchor(2.12) | O | X | X |
+| 전달 경로 probe(2.13) | O | O | O |
 | late attach일 때 topic과 node(2.11) | O | -(시작부터 부착) | - |
 | DDS serialized size | opt-in | 이 uprobe 추가 필요 | 이 uprobe 추가 필요 |
 | `header.stamp`, `/clock` | O | O | O |
@@ -674,4 +778,5 @@ ROS 2는 고치지 않는다. 한계마다 우회나 받아들인 빈칸이 있�
 | orma는 message type을 모른다 | `header.stamp` 위치를 모른다 | 앞 8 B를 읽고 clock 검사를 통과한 값만 쓴다(2.6) |
 | `EventsExecutor`는 `rcl_wait`를 쓰지 않는다 | wait와 wakeup이 없다 | 그 칸을 비워 둔다 |
 | overhaul의 `RclExecutor`는 `rcl_wait`와 rclcpp executor tracepoint를 쓰지 않는다 | stock probe로는 wait, wakeup, dispatch start가 없다 | core의 anchor에 붙는다(2.12). anchor가 entity를 넘기지 않아 `rcl_executor_next_excluding`에서 item을 읽는다 |
+| overhaul broker만 받는 publish에는 `rmw_publish`가 없다 | stock point로는 broker 전달의 publish와 경로가 없다 | rcl과 rclpy의 anchor에 붙는다(2.13) |
 | CUDA는 host 쪽 호출만 보인다 | GPU 안의 kernel 실행 시간이 없다 | synchronize와 동기 copy의 대기 시간으로 본다(5.2) |

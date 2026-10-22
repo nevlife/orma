@@ -17,6 +17,7 @@ ormad: connected, lttng: available, preload processes: 0
 monitor: idle, window 1s, selection all, sched
 recordings: none
 executor probes: 4021 (camera_node) stock, 4107 (python3) rcl_executor
+delivery probes: 4021 (camera_node) loan+zenoh_shm, 4107 (python3) broker+loan+zenoh_shm+rclpy
 ```
 
 | 값 | 뜻 |
@@ -28,6 +29,7 @@ executor probes: 4021 (camera_node) stock, 4107 (python3) rcl_executor
 | `lttng: absent` | PATH에 `lttng` 부재 |
 | `preload processes` | `preload`나 `lttng` method로 실행한 process 수 |
 | `executor probes` | ROS process마다 executor에 붙는 uprobe. `stock`: `rcl_wait`와 rclcpp executor tracepoint. `rcl_executor`: 거기에 overhaul core의 anchor 추가([instrumentation.md](instrumentation.md) 2.12) |
+| `delivery probes` | ROS process마다 붙는 전달 경로 probe. `broker`, `loan`, `zenoh_shm`, `rclpy`([instrumentation.md](instrumentation.md) 2.13) |
 
 `orma check`:
 
@@ -116,7 +118,7 @@ orma node cpu [NODE...]               # CPU%, busy%, callback Hz, RSS
 orma node cb NODE [CB] [--gpu] [--futex]
 orma node sub NODE [TOPIC]
 orma span [NAME...]
-orma topic list|info|hz|bw|delay ...  # see orma topic below
+orma topic list|info|hz|bw|delay|path ...  # see orma topic below
 ```
 
 | 명령 | 열 |
@@ -223,6 +225,7 @@ orma topic info TOPIC
 orma topic hz TOPIC... [--window S]
 orma topic bw TOPIC... [--window S]
 orma topic delay TOPIC... [--window S] [--dds]
+orma topic path TOPIC... [--window S]
 ```
 
 ```text
@@ -239,6 +242,7 @@ window 381  1s
 | `hz` | publish Hz, expected Hz, publish drop 수 |
 | `bw` | publish byte rate |
 | `delay` | transport latency(publish에서 take까지) p50, p90, p99, max. `--dds`면 `pub to dds p99`(`rclcpp_publish`에서 DDS write 시작까지), `dds write p99`(write 호출 시간) 열 추가 |
+| `path` | 표 셋. `paths`: 전달 경로(`broker`, `loan`, `shm`, `net`, `unknown`)별 take Hz와 transport latency. `publishers`: loan을 빌려서 publish까지(`loan hold p99`), rclpy publish의 변환(`py convert p99`). `subscriptions`: subscription마다 받은 경로, loan take 수, take에서 callback 시작까지 p50과 p99, rclpy 변환 p99, broker message나 loan을 잡은 시간 p99([instrumentation.md](instrumentation.md) 2.13) |
 
 - `ros2 topic`과 달리 subscriber를 만들어 받는 쪽에서 세지 않는다. publisher와 subscriber process 안에서 잰다. DDS 전송이 새로 생기지 않고 `hz`에 network loss가 섞이지 않는다. 받은 수는 `orma node sub`의 take Hz
 - `delay`는 `ros2 topic delay`처럼 header stamp를 쓰지 않는다. 같은 message의 publish와 take 시각 차
@@ -312,6 +316,7 @@ orma export <directory> -o out.csv [--metric M]...
 ```
 
 - `analyze`: event recording을 transport, wakeup, dispatch, callback segment로 나눠 message별, callback별 표와 tail 요약(p50, p90, p99, max) 출력. CSV는 `<directory>/analysis/`. `summary.csv`에는 p99.9도 있다(`n,p50_ns,p90_ns,p99_ns,p999_ns,max_ns`)
+- message별 표(`deliveries.csv`)에는 전달 경로(`path`), take에서 callback 시작까지(`deliver_ns`), rclpy 변환(`py_convert_ns`) 열이 있다. 요약에는 경로별 transport latency, take -> callback start, rclpy 변환, hold 표가 있다([instrumentation.md](instrumentation.md) 2.13)
 - `--gpu`, `--futex`로 기록했으면 `callbacks.csv`에 callback 한 번마다 CUDA driver 호출 시간(`cuda_ns`), 그중 synchronize 시간(`cuda_sync_ns`), futex 대기(`futex_ns`) 열 추가. 요약에 같은 tail 표 추가
 - `--dds`로 기록했으면 publish마다 `publishes.csv`(publish에서 DDS write 시작까지, write 시간)
 - window에 장비 상태(`host`)가 있으면 `tails.csv`. 표와 entity마다 p99 이상인 sample(최대 10개)에 그 sample이 난 window의 장비 상태를 붙인다. 열은 그 thread가 돈 CPU의 최저 clock(thread를 모르면 전체 CPU), 가장 뜨거운 thermal zone, throttle 횟수, GPU별 clock, 온도, clock 제한 이유. 요약 끝의 `tail context`는 표마다 가장 나쁜 entity의 max를 같은 정보와 함께 한 줄로 출력. 장비 상태는 window 단위 값
