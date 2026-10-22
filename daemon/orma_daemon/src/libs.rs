@@ -106,6 +106,8 @@ pub struct LibFile {
     pub imports: Vec<String>,
     pub needs_lttng: bool,
     pub build_id: Option<String>,
+    /// The inode's change time when read: a file rebuilt in place may reuse the inode number.
+    pub changed: (i64, i64),
     /// The major version in `<prefix>/share/rclcpp/package.xml` (design 2.7.2).
     pub rclcpp_major: Option<u32>,
     /// Why this file is not attached to at all.
@@ -197,6 +199,7 @@ pub fn read(lib: Lib, root: &Path, mapped: &str) -> Result<(FileKey, LibFile), S
         imports,
         needs_lttng,
         build_id,
+        changed: (meta.ctime(), meta.ctime_nsec()),
         rclcpp_major,
         refused,
         debug_symbols,
@@ -375,6 +378,7 @@ mod tests {
             imports: Vec::new(),
             needs_lttng: false,
             build_id: None,
+            changed: (0, 0),
             rclcpp_major: None,
             refused: None,
             debug_symbols: Err(String::new()),

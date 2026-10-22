@@ -53,6 +53,7 @@ type FileId = (u64, u64);
 fn file_id(key: FileKey, f: &LibFile) -> FileId {
     let mut h = DefaultHasher::new();
     f.build_id.hash(&mut h);
+    f.changed.hash(&mut h);
     (key.1, h.finish())
 }
 
@@ -1226,12 +1227,36 @@ fn sync(map: &mut BpfHashMap<MapData, u32, u8>, want: &BTreeSet<u32>) {
 /// Whether `f`'s path still opens the file of `key`.
 fn opens(f: &LibFile, key: FileKey) -> bool {
     use std::os::unix::fs::MetadataExt;
-    fs::metadata(&f.path).is_ok_and(|m| (m.dev(), m.ino()) == key)
+    fs::metadata(&f.path)
+        .is_ok_and(|m| (m.dev(), m.ino()) == key && (m.ctime(), m.ctime_nsec()) == f.changed)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// ext4 gives a deleted file's inode number to the next file at once, so a library rebuilt in
+    /// place can come back under the key ormad already read.
+    #[test]
+    fn a_file_replaced_under_its_inode_number_is_read_again() {
+        let dir = std::env::temp_dir().join(format!("orma_reuse_{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let lib = dir.join("libtracetools.so");
+        let exe = std::env::current_exe().unwrap();
+        let read = || libs::read(Lib::Tracetools, Path::new("/"), lib.to_str().unwrap()).unwrap();
+        fs::copy(&exe, &lib).unwrap();
+        let (key, old) = read();
+        assert!(opens(&old, key));
+        fs::remove_file(&lib).unwrap();
+        fs::copy(&exe, &lib).unwrap();
+        let (again, new) = read();
+        if again == key {
+            assert!(!opens(&old, key));
+            assert!(opens(&new, key));
+            assert_ne!(file_id(key, &old), file_id(key, &new));
+        }
+        fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn fdinfo_counters() {
