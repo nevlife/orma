@@ -364,8 +364,21 @@ def cmd_status(args):
             print(f"latest-input nodes: {' '.join(m['latest_nodes'])}")
         print_recordings(c.state["recordings"])
         c.request("subscribe", streams=["window"])
-        print_agent(next_window(c))
+        w = next_window(c)
+        print_executor_probes(w)
+        print_agent(w)
     return 0
+
+
+def print_executor_probes(w):
+    """The executor probes of each ROS process: stock, or stock and the rcl_executor core's."""
+    rows = [
+        f"{p['pid']} ({p['comm']}) {p['ros']['executor_probes']}"
+        for p in w["processes"]
+        if (p.get("ros") or {}).get("executor_probes")
+    ]
+    if rows:
+        print(f"executor probes: {', '.join(rows)}")
 
 
 def exact(names):

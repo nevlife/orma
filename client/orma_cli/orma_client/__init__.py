@@ -12,7 +12,7 @@ import time
 
 from ament_index_python.packages import get_package_prefix, get_package_share_directory
 
-PROTO = [1, 8]
+PROTO = [1, 9]
 MAX_LENGTH = 16 << 20
 KIND_JSON = 1
 UNIT = "orma-collectd.service"

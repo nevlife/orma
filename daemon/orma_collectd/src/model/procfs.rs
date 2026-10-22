@@ -8,7 +8,8 @@ use std::path::PathBuf;
 
 use object::read::elf::ElfFile64;
 use object::{Object, elf};
-use orma_proto::msg::{PublishAbi, Ros};
+use orma_common::RCL_EXECUTOR_ANCHORS;
+use orma_proto::msg::{ExecutorProbes, PublishAbi, Ros};
 
 pub fn proc_path(pid: u32, rest: &str) -> PathBuf {
     PathBuf::from(format!("/proc/{pid}/{rest}"))
@@ -284,6 +285,41 @@ fn needs(elf: &ElfFile64<'_>, prefix: &[u8]) -> bool {
         .any(|d| d.tag == elf::DT_NEEDED && table.string(d).is_ok_and(|s| s.starts_with(prefix)))
 }
 
+/// ormad's choice for the process (its `libs::executor_probes`): the rcl_executor probes when a
+/// mapped librcl_executor.so exports every anchor.
+fn executor_probes(pid: u32, maps: &[Mapping]) -> ExecutorProbes {
+    let mut paths: Vec<&str> = maps
+        .iter()
+        .map(|m| m.path.as_str())
+        .filter(|p| {
+            p.rsplit('/').next().is_some_and(|n| {
+                n.strip_prefix("librcl_executor.so")
+                    .is_some_and(|v| v.is_empty() || v.starts_with('.'))
+            })
+        })
+        .collect();
+    paths.dedup();
+    let core = paths.into_iter().any(|path| {
+        let Some(data) = read_mapped(pid, path) else {
+            return false;
+        };
+        let Ok(file) = object::File::parse(&*data) else {
+            return false;
+        };
+        let Ok(exports) = file.exports() else {
+            return false;
+        };
+        RCL_EXECUTOR_ANCHORS
+            .iter()
+            .all(|a| exports.iter().any(|e| e.name() == a.as_bytes()))
+    });
+    if core {
+        ExecutorProbes::RclExecutor
+    } else {
+        ExecutorProbes::Stock
+    }
+}
+
 /// The process's ROS as the distro check decides it; `None` when it maps no `libtracetools.so`.
 pub fn ros(pid: u32) -> Option<Ros> {
     let maps = maps(pid);
@@ -323,6 +359,7 @@ pub fn ros(pid: u32) -> Option<Ros> {
         distro,
         tracetools_lttng,
         gated_register,
+        executor_probes: Some(executor_probes(pid, &maps)),
     })
 }
 

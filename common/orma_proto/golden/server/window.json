@@ -15,7 +15,8 @@
         "distro": "jazzy",
         "publish_abi": "rmw",
         "tracetools_lttng": true,
-        "gated_register": true
+        "gated_register": true,
+        "executor_probes": "stock"
       },
       "methods_available": [
         "uprobe",

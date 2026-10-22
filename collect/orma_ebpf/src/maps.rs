@@ -72,6 +72,10 @@ pub struct Pending {
     pub pad: u32,
 }
 
+/// The `rcl_executor_item_t *` of the claim this thread is making, for the claim anchor.
+#[map]
+pub static CLAIMING: LruHashMap<u32, u64> = LruHashMap::with_max_entries(MAX_THREADS, 0);
+
 #[map]
 pub static CUDA_CALLS: LruHashMap<u32, Pending> = LruHashMap::with_max_entries(MAX_THREADS, 0);
 

@@ -9,6 +9,8 @@ use std::{
 };
 
 use object::{Object as _, ObjectSection as _, ObjectSymbol as _};
+use orma_common::RCL_EXECUTOR_ANCHORS;
+use orma_proto::msg::ExecutorProbes;
 
 /// The event names and arguments the flux programs read. libflux_ffi.so exports a symbol of this
 /// name for exactly that set (design 11.1).
@@ -28,6 +30,8 @@ pub enum Lib {
     Ddsc,
     Cuda,
     Span,
+    /// The rcl_executor core of the ROS 2 overhaul.
+    RclExecutor,
 }
 
 impl Lib {
@@ -46,6 +50,7 @@ impl Lib {
             // libcuda.so.<driver version>; libcuda.so.1.1 under nvidia/ or tegra/ on Jetson.
             n if versioned(n, "libcuda.so") => Lib::Cuda,
             n if versioned(n, "liborma_span.so") => Lib::Span,
+            n if versioned(n, "librcl_executor.so") => Lib::RclExecutor,
             _ => return None,
         })
     }
@@ -152,11 +157,24 @@ pub fn read(lib: Lib, root: &Path, mapped: &str) -> Result<(FileKey, LibFile), S
         .and_then(Path::parent)
         .unwrap_or(Path::new("/"));
     let rclcpp_major = package_major(root, prefix, "rclcpp");
-    let refused = lib.contract().and_then(|c| {
-        (!symbols.contains_key(c)).then(|| {
-            format!("{mapped} does not export {c}: its trace events are not the ones ormad reads")
+    let refused = lib
+        .contract()
+        .and_then(|c| {
+            (!symbols.contains_key(c)).then(|| {
+                format!(
+                    "{mapped} does not export {c}: its trace events are not the ones ormad reads"
+                )
+            })
         })
-    });
+        .or_else(|| {
+            let missing = missing_anchors(&symbols);
+            (lib == Lib::RclExecutor && !missing.is_empty()).then(|| {
+                format!(
+                    "{mapped} does not export {}: not the rcl_executor core ormad reads",
+                    missing.join(" ")
+                )
+            })
+        });
     let debug_symbols = if lib == Lib::Cyclone {
         debug_symbols(root, &elf, build_id.as_deref())
     } else {
@@ -175,6 +193,27 @@ pub fn read(lib: Lib, root: &Path, mapped: &str) -> Result<(FileKey, LibFile), S
         debug_symbols,
     };
     Ok(((meta.dev(), meta.ino()), file))
+}
+
+fn missing_anchors(symbols: &HashMap<String, u64>) -> Vec<&'static str> {
+    RCL_EXECUTOR_ANCHORS
+        .into_iter()
+        .filter(|a| !symbols.contains_key(*a))
+        .collect()
+}
+
+/// The executor probes of a process with these files (docs/instrumentation.md 2.12): the
+/// rcl_executor ones when it maps a librcl_executor.so that exports every anchor, added to the
+/// stock ones, which stay for the executors that still call `rcl_wait`.
+pub fn executor_probes<'a>(files: impl IntoIterator<Item = &'a LibFile>) -> ExecutorProbes {
+    let core = files
+        .into_iter()
+        .any(|f| f.lib == Lib::RclExecutor && missing_anchors(&f.symbols).is_empty());
+    if core {
+        ExecutorProbes::RclExecutor
+    } else {
+        ExecutorProbes::Stock
+    }
 }
 
 /// The file offset of a virtual address, through the section holding it.
@@ -302,6 +341,39 @@ mod tests {
         assert_eq!(Lib::of("/x/libfastdds.so.3.2.1"), Some(Lib::Fastrtps));
         assert_eq!(Lib::of("/x/libfastcdr.so.2"), None);
         assert_eq!(Lib::of("/x/liborma_span.so"), Some(Lib::Span));
+        assert_eq!(
+            Lib::of("/ws/install/rcl_executor/lib/librcl_executor.so"),
+            Some(Lib::RclExecutor)
+        );
+        assert_eq!(Lib::of("/x/librcl_executor_repro.so"), None);
+    }
+
+    fn file(lib: Lib, symbols: &[&str]) -> LibFile {
+        LibFile {
+            lib,
+            path: PathBuf::new(),
+            mapped: String::new(),
+            symbols: symbols.iter().map(|s| (s.to_string(), 0)).collect(),
+            imports: Vec::new(),
+            needs_lttng: false,
+            build_id: None,
+            rclcpp_major: None,
+            refused: None,
+            debug_symbols: Err(String::new()),
+        }
+    }
+
+    #[test]
+    fn the_core_with_every_anchor_selects_the_rcl_executor_probes() {
+        let rcl = file(Lib::Rcl, &["rcl_wait"]);
+        let core = file(Lib::RclExecutor, &RCL_EXECUTOR_ANCHORS);
+        let old = file(Lib::RclExecutor, &RCL_EXECUTOR_ANCHORS[..3]);
+        assert_eq!(executor_probes([&rcl]), ExecutorProbes::Stock);
+        assert_eq!(executor_probes([&rcl, &old]), ExecutorProbes::Stock);
+        assert_eq!(executor_probes([&rcl, &core]), ExecutorProbes::RclExecutor);
+        // The anchors name the core; another library exporting them is not it.
+        let other = file(Lib::Rclcpp, &RCL_EXECUTOR_ANCHORS);
+        assert_eq!(executor_probes([&other]), ExecutorProbes::Stock);
     }
 
     #[test]

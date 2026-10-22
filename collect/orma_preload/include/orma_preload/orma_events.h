@@ -111,6 +111,13 @@
 // `DataWriter::write` (design 20.2). Written when the call returns.
 #define ORMA_EV_DDS_WRITE 83
 
+// The rcl_executor core claimed a ready item (`rcl_executor_trace_item_claimed`, uprobe only;
+// docs/instrumentation.md 2.12).
+#define ORMA_EV_RCL_EXECUTOR_CLAIM 84
+
+// The core's item completed (`rcl_executor_trace_item_completed`, uprobe only).
+#define ORMA_EV_RCL_EXECUTOR_COMPLETE 85
+
 #define ORMA_EV_CUDA_CALL 96
 
 #define ORMA_EV_SPAN_BEGIN 104
@@ -168,6 +175,10 @@
 #define ORMA_RECORD_ALIGN 8
 
 #define ORMA_RECORD_TRUNCATED 1
+
+// The record's point is an rcl_executor anchor in place of the stock function of its event:
+// `rcl_wait_enter` and `rcl_wait_exit` from the core's wait, `wait_set` then the executor.
+#define ORMA_RECORD_RCL_EXECUTOR 2
 
 // "ORMAEV1\0" read as a little-endian u64.
 #define ORMA_EVFILE_MAGIC 13887129307140687
@@ -431,6 +442,25 @@ typedef struct orma_ev_rclcpp_callback_owner {
   uint32_t kind;
   uint32_t pad;
 } orma_ev_rclcpp_callback_owner;
+
+// `entity` is the rcl handle of the claimed subscription, timer, service, client, event or guard
+// condition, 0 for work or when unread; `context` and `group` are what the client registered (an
+// rclcpp `CallbackGroup *` as `group`); `entity_type` an `rcl_executor_entity_type_t`. ormad sets
+// `rclcpp` to 1 when the process maps librclcpp.so.
+typedef struct orma_ev_rcl_executor_claim {
+  uint64_t executor;
+  uint64_t registration;
+  uint64_t entity;
+  uint64_t context;
+  uint64_t group;
+  uint32_t entity_type;
+  uint32_t rclcpp;
+} orma_ev_rcl_executor_claim;
+
+typedef struct orma_ev_rcl_executor_complete {
+  uint64_t executor;
+  uint64_t registration;
+} orma_ev_rcl_executor_complete;
 
 typedef struct orma_ev_rclcpp_ipm_insert_sub_id_for_pub {
   uint64_t ipm;

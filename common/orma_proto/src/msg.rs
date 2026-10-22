@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 /// `[major, minor]`.
 pub type Version = [u16; 2];
-pub const PROTO: Version = [1, 8];
+pub const PROTO: Version = [1, 9];
 pub const META_SCHEMA: u32 = 1;
 pub const HIST_LOG2: &str = "log2";
 
@@ -48,6 +48,9 @@ enums! {
     pub enum CheckStatus { Pass, Fail, Unknown }
     pub enum ProbeSet { Discovery, Hot, Sched, Bandwidth, RclcppSymbols, Names, Gpu, Dds, Futex }
     pub enum PublishAbi { Rmw, Rcl }
+    /// The uprobes on a process's executor: `rcl_wait` and the rclcpp executor tracepoints, and
+    /// with `rcl_executor` also the anchors of the rcl_executor core it maps.
+    pub enum ExecutorProbes { Stock, RclExecutor }
     pub enum CpuSource { Sched, WallBound }
     pub enum ExecutorKind { Rclcpp, Rclpy, #[serde(alias = "flux2")] Flux }
     pub enum CallbackKind { Sub, Timer, Service, #[serde(alias = "flux2")] Flux, Unknown }
@@ -496,6 +499,9 @@ types! {
         pub publish_abi: PublishAbi,
         pub tracetools_lttng: bool,
         pub gated_register: bool,
+        /// Proto 1.9.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub executor_probes: Option<ExecutorProbes>,
     }
 
     pub struct Thread {

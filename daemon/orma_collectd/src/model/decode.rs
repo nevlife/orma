@@ -352,6 +352,13 @@ pub fn decode(r: &Record<'_>) -> Option<E> {
         ORMA_EV_RCLCPP_EXECUTOR_GET_NEXT_READY
         | ORMA_EV_RCLCPP_EXECUTOR_WAIT_FOR_WORK
         | ORMA_EV_RCLCPP_EXECUTOR_EXECUTE => E::RclcppExecutor,
+        // The core's claim is the execute of an rclcpp client; an rclpy one has no such event.
+        ORMA_EV_RCL_EXECUTOR_CLAIM => {
+            if r.payload::<orma_ev_rcl_executor_claim>().rclcpp == 0 {
+                return None;
+            }
+            E::RclcppExecutor
+        }
         ORMA_EV_RCLCPP_PUBLISH => E::RclcppPublish,
         ORMA_EV_RCL_PUBLISH | ORMA_EV_RCLCPP_INTRA_PUBLISH => {
             let p: orma_ev_publish = r.payload();

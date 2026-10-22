@@ -1,6 +1,7 @@
 //! Ring buffer entries into positioned records (design 13.4). The programs write each string into
-//! its own fixed slot; here they are packed, cut and flagged as the record format says, and the
-//! rmw gid length is set from the process's distro.
+//! its own fixed slot; here they are packed, cut and flagged as the record format says, the rmw
+//! gid length is set from the process's distro, and an rcl_executor claim says whether the process
+//! maps librclcpp.so.
 
 use orma_common::{bpf::STRING_SLOT, catalog, events::*, read};
 
@@ -15,8 +16,15 @@ pub struct Head {
     pub event: u16,
 }
 
-/// Appends the record in `raw` to `out`. `gid_len` is the process's `RMW_GID_STORAGE_SIZE`.
-pub fn convert(raw: &[u8], gid_len: impl Fn(u32) -> u32, out: &mut Vec<u8>) -> Option<Head> {
+/// What a record takes from its process.
+pub struct ProcFacts {
+    /// `RMW_GID_STORAGE_SIZE` of its distro.
+    pub gid_len: u32,
+    pub rclcpp: bool,
+}
+
+/// Appends the record in `raw` to `out`.
+pub fn convert(raw: &[u8], facts: impl Fn(u32) -> ProcFacts, out: &mut Vec<u8>) -> Option<Head> {
     let pos: orma_position = read(raw)?;
     let rec: orma_record = read(&raw[POSITION..])?;
     let info = catalog::info(rec.event)?;
@@ -26,8 +34,13 @@ pub fn convert(raw: &[u8], gid_len: impl Fn(u32) -> u32, out: &mut Vec<u8>) -> O
     out.extend_from_slice(&raw[..body]);
     let payload_at = out.len();
     out.extend_from_slice(&raw[body..strings_at]);
-    gid(rec.event, &mut out[payload_at..], gid_len(pos.pid));
-    let mut flags = 0;
+    let facts = facts(pos.pid);
+    gid(rec.event, &mut out[payload_at..], facts.gid_len);
+    if rec.event == ORMA_EV_RCL_EXECUTOR_CLAIM {
+        let at = payload_at + std::mem::offset_of!(orma_ev_rcl_executor_claim, rclcpp);
+        out[at..at + 4].copy_from_slice(&u32::from(facts.rclcpp).to_le_bytes());
+    }
+    let mut flags = rec.flags & ORMA_RECORD_RCL_EXECUTOR;
     for i in 0..info.strings as usize {
         let slot = &raw[strings_at + i * STRING_SLOT..strings_at + (i + 1) * STRING_SLOT];
         let len = slot.iter().position(|b| *b == 0).unwrap_or(STRING_SLOT);
@@ -77,6 +90,13 @@ mod tests {
     use orma_common::bytes_of;
     use orma_proto::records;
 
+    fn jazzy(_: u32) -> ProcFacts {
+        ProcFacts {
+            gid_len: 16,
+            rclcpp: false,
+        }
+    }
+
     fn raw<T: orma_common::Plain>(event: u16, payload: &T, strings: &[&[u8]]) -> Vec<u8> {
         let mut v = Vec::new();
         v.extend_from_slice(bytes_of(&orma_position { pid: 7, tid: 8 }));
@@ -107,7 +127,7 @@ mod tests {
         let mut out = Vec::new();
         let h = convert(
             &raw(ORMA_EV_RCL_NODE_INIT, &ev, &[b"talker", b"/"]),
-            |_| 16,
+            jazzy,
             &mut out,
         )
         .unwrap();
@@ -127,7 +147,7 @@ mod tests {
         let mut out = Vec::new();
         convert(
             &raw(ORMA_EV_RCLCPP_CALLBACK_REGISTER, &ev, &[&long]),
-            |_| 16,
+            jazzy,
             &mut out,
         )
         .unwrap();
@@ -137,7 +157,7 @@ mod tests {
         let mut out = Vec::new();
         convert(
             &raw(ORMA_EV_RCLCPP_CALLBACK_REGISTER, &ev, &[&long[..254]]),
-            |_| 16,
+            jazzy,
             &mut out,
         )
         .unwrap();
@@ -148,6 +168,54 @@ mod tests {
                 .unwrap()
                 .truncated()
         );
+    }
+
+    #[test]
+    fn a_core_wait_keeps_its_flag_and_a_claim_names_its_client() {
+        let wait = orma_ev_rcl_wait_enter {
+            wait_set: 0x10,
+            timeout: -1,
+        };
+        let mut v = raw(ORMA_EV_RCL_WAIT_ENTER, &wait, &[]);
+        v[size_of::<orma_position>() + 4] = (ORMA_RECORD_RCL_EXECUTOR | 0x80) as u8;
+        let mut out = Vec::new();
+        convert(&v, jazzy, &mut out).unwrap();
+        let r = records::positioned(&out).next().unwrap().unwrap();
+        assert_eq!(r.header.flags, ORMA_RECORD_RCL_EXECUTOR);
+        assert_eq!(r.payload::<orma_ev_rcl_wait_enter>(), wait);
+
+        let claim = orma_ev_rcl_executor_claim {
+            executor: 0x10,
+            registration: 3,
+            entity: 0x20,
+            context: 0x30,
+            group: 0x40,
+            entity_type: 1,
+            rclcpp: 7,
+        };
+        for rclcpp in [false, true] {
+            let mut out = Vec::new();
+            let facts = |_| ProcFacts {
+                gid_len: 16,
+                rclcpp,
+            };
+            convert(
+                &raw(ORMA_EV_RCL_EXECUTOR_CLAIM, &claim, &[]),
+                facts,
+                &mut out,
+            )
+            .unwrap();
+            let r = records::positioned(&out).next().unwrap().unwrap();
+            assert_eq!(r.header.flags, 0);
+            let got: orma_ev_rcl_executor_claim = r.payload();
+            assert_eq!(
+                got,
+                orma_ev_rcl_executor_claim {
+                    rclcpp: rclcpp as u32,
+                    ..claim
+                }
+            );
+        }
     }
 
     #[test]
@@ -162,7 +230,10 @@ mod tests {
             let mut out = Vec::new();
             convert(
                 &raw(ORMA_EV_RMW_PUBLISHER_INIT, &ev, &[]),
-                |_| len,
+                |_| ProcFacts {
+                    gid_len: len,
+                    rclcpp: false,
+                },
                 &mut out,
             )
             .unwrap();

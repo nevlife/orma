@@ -30,6 +30,18 @@ pub fn emit<T: Copy + 'static, const N: usize>(
     payload: &T,
     strings: [u64; N],
 ) {
+    emit_flagged(event, 0, ns, payload, strings);
+}
+
+/// `emit` with record flags that say where the point is (`ORMA_RECORD_RCL_EXECUTOR`).
+#[inline(always)]
+pub fn emit_flagged<T: Copy + 'static, const N: usize>(
+    event: u16,
+    flags: u32,
+    ns: u64,
+    payload: &T,
+    strings: [u64; N],
+) {
     let Some(mut entry) = EVENTS.reserve::<Out<T, N>>(0) else {
         lost(LOST_RING);
         return;
@@ -45,7 +57,7 @@ pub fn emit<T: Copy + 'static, const N: usize>(
         (*out).rec = orma_record {
             event,
             len: 0,
-            flags: 0,
+            flags,
             t_mono_ns: ns,
         };
         (*out).payload = *payload;

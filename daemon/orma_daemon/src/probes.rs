@@ -27,7 +27,7 @@ use aya::{
     sys::{Stats, enable_stats},
 };
 use orma_common::bpf::*;
-use orma_proto::msg::ProbeChange;
+use orma_proto::msg::{ExecutorProbes, ProbeChange};
 
 use crate::{
     libs::{self, FileKey, Lib, LibFile},
@@ -284,6 +284,8 @@ pub struct Proc {
     /// Its librclcpp calls `rclcpp_callback_register` only through the gate (2.4).
     pub gated: Option<bool>,
     pub tracetools_lttng: Option<bool>,
+    /// It maps librclcpp.so: the rcl_executor client that claims is rclcpp's.
+    pub rclcpp: bool,
 }
 
 /// What a set's attachments could not cover: `pid` None for a file every process shares.
@@ -674,15 +676,25 @@ impl Kernel {
                 rcl_abi,
                 gated,
                 tracetools_lttng: tracetools.map(|f| f.needs_lttng),
+                rclcpp: rclcpp.is_some(),
             };
             self.procs.insert(pid, proc);
         } else if let Some(p) = self.procs.get_mut(&pid) {
             for k in keys {
                 if !p.files.contains(&k) {
+                    p.rclcpp |= self.files.get(&k).is_some_and(|f| f.lib == Lib::Rclcpp);
                     p.files.push(k);
                 }
             }
         }
+    }
+
+    /// The executor probes `pid` gets, from the files it maps (docs/instrumentation.md 2.12).
+    pub fn executor_probes(&self, pid: u32) -> Option<ExecutorProbes> {
+        let p = self.procs.get(&pid)?;
+        Some(libs::executor_probes(
+            p.files.iter().filter_map(|k| self.files.get(k)),
+        ))
     }
 
     /// Forgets exited processes and their kernel entries.

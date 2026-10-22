@@ -1194,6 +1194,14 @@
       ],
       "type": "string"
     },
+    "ExecutorProbes": {
+      "description": "The uprobes on a process's executor: `rcl_wait` and the rclcpp executor tracepoints, and\nwith `rcl_executor` also the anchors of the rcl_executor core it maps.",
+      "enum": [
+        "stock",
+        "rcl_executor"
+      ],
+      "type": "string"
+    },
     "Flow": {
       "properties": {
         "ambiguous": {
@@ -3191,6 +3199,17 @@
       "properties": {
         "distro": {
           "type": "string"
+        },
+        "executor_probes": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ExecutorProbes"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Proto 1.9."
         },
         "gated_register": {
           "type": "boolean"

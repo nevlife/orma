@@ -8,6 +8,15 @@ pub mod catalog;
 pub mod events;
 pub mod shm;
 
+/// The uprobe anchors of the rcl_executor core (`rcl_executor/trace.h`). A process whose mapped
+/// librcl_executor.so exports all of them gets the rcl_executor probes.
+pub const RCL_EXECUTOR_ANCHORS: [&str; 4] = [
+    "rcl_executor_trace_wait_enter",
+    "rcl_executor_trace_wait_exit",
+    "rcl_executor_trace_item_claimed",
+    "rcl_executor_trace_item_completed",
+];
+
 /// 2^40 ns is about 18 minutes.
 pub const BUCKETS: usize = shm::ORMA_BUCKETS;
 pub const NAME_LEN: usize = 128;
@@ -118,6 +127,8 @@ mod plain {
         orma_ev_rclcpp_object,
         orma_ev_rclcpp_callback_owner,
         orma_ev_rclcpp_ipm_insert_sub_id_for_pub,
+        orma_ev_rcl_executor_claim,
+        orma_ev_rcl_executor_complete,
         orma_ev_callback_code,
         orma_ev_rmw_topic,
         orma_ev_dds_serialized_size,

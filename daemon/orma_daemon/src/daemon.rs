@@ -569,8 +569,11 @@ impl Daemon {
         while let Some(item) = self.k.events.next() {
             self.scratch.clear();
             let procs = &self.k.procs;
-            let gid_len = |pid: u32| procs.get(&pid).map_or(16, |p| p.gid_len);
-            let Some(head) = ring::convert(&item, gid_len, &mut self.scratch) else {
+            let facts = |pid: u32| ring::ProcFacts {
+                gid_len: procs.get(&pid).map_or(16, |p| p.gid_len),
+                rclcpp: procs.get(&pid).is_some_and(|p| p.rclcpp),
+            };
+            let Some(head) = ring::convert(&item, facts, &mut self.scratch) else {
                 continue;
             };
             drop(item);

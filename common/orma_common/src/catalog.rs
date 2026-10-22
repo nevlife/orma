@@ -382,6 +382,20 @@ pub const CATALOG: &[EventInfo] = &[
         false
     ),
     ev!(ORMA_EV_DDS_WRITE, "dds_write", orma_ev_dds_write, 0, true),
+    ev!(
+        ORMA_EV_RCL_EXECUTOR_CLAIM,
+        "rcl_executor_claim",
+        orma_ev_rcl_executor_claim,
+        0,
+        false
+    ),
+    ev!(
+        ORMA_EV_RCL_EXECUTOR_COMPLETE,
+        "rcl_executor_complete",
+        orma_ev_rcl_executor_complete,
+        0,
+        false
+    ),
     ev!(ORMA_EV_CUDA_CALL, "cuda_call", orma_ev_cuda_call, 0, true),
     ev!(ORMA_EV_SPAN_BEGIN, "span_begin", orma_ev_span, 1, true),
     ev!(ORMA_EV_SPAN_END, "span_end", orma_ev_span, 0, true),

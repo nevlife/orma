@@ -9,7 +9,7 @@ use std::{
 
 use orma_common::{bpf::*, events::*};
 use orma_proto::{
-    msg::{Check, CheckStatus},
+    msg::{Check, CheckStatus, ExecutorProbes},
     records,
 };
 
@@ -68,6 +68,9 @@ pub struct Session {
     /// Per thread: `rcl_wait` entries and returns. A return the uretprobe missed (the kernel's
     /// nesting limit, a full return instance pool) leaves an entry unmatched.
     waits: BTreeMap<(u32, u32), (u64, u64)>,
+    /// Per process, from the rcl_executor probes: waits, claims, claims with an rcl handle,
+    /// completions.
+    core: BTreeMap<u32, [u64; 4]>,
     /// Per thread: the last record's event, and whether it was paired as below.
     last: HashMap<(u32, u32), (u16, bool)>,
     /// Per process: `rmw_publish` records, and those next to a DDS write on their thread, the
@@ -110,6 +113,7 @@ impl Session {
             rclcpp_subs: Vec::new(),
             cxx: BTreeMap::new(),
             waits: BTreeMap::new(),
+            core: BTreeMap::new(),
             last: HashMap::new(),
             dds: BTreeMap::new(),
         }
@@ -224,8 +228,22 @@ impl Session {
                 let e: orma_ev_rclcpp_subscription_init = r.payload();
                 self.rclcpp_subs.push((pid, e.subscription_handle));
             }
+            ORMA_EV_RCL_WAIT_ENTER | ORMA_EV_RCL_WAIT_EXIT
+                if r.header.flags & ORMA_RECORD_RCL_EXECUTOR != 0 =>
+            {
+                if head.event == ORMA_EV_RCL_WAIT_ENTER {
+                    self.core.entry(pid).or_default()[0] += 1;
+                }
+            }
             ORMA_EV_RCL_WAIT_ENTER => self.waits.entry((pid, head.tid)).or_default().0 += 1,
             ORMA_EV_RCL_WAIT_EXIT => self.waits.entry((pid, head.tid)).or_default().1 += 1,
+            ORMA_EV_RCL_EXECUTOR_CLAIM => {
+                let e: orma_ev_rcl_executor_claim = r.payload();
+                let c = self.core.entry(pid).or_default();
+                c[1] += 1;
+                c[2] += u64::from(e.entity != 0);
+            }
+            ORMA_EV_RCL_EXECUTOR_COMPLETE => self.core.entry(pid).or_default()[3] += 1,
             ev @ ORMA_EV_RCLCPP_PUBLISHER_BASE..=ORMA_EV_RCLCPP_COLLECTOR_ADD_GROUP
             | ev @ ORMA_EV_RCLCPP_EXECUTOR_ADD_GROUP => {
                 *self.cxx.entry(pid).or_default().entry(ev).or_default() += 1;
@@ -263,6 +281,40 @@ impl Session {
         let age = t_mono as i64 + self.offset - (sec * NS + nsec);
         if (-NS..600 * NS).contains(&age) {
             s.1 += 1;
+        }
+    }
+
+    /// Which executor probes the process got, and what the rcl_executor ones saw.
+    fn executor_probes(&self, k: &Kernel, pid: u32, comm: &str) -> Check {
+        let item = format!("executor probes pid {pid} ({comm})");
+        if k.executor_probes(pid) != Some(ExecutorProbes::RclExecutor) {
+            return Check {
+                item,
+                status: CheckStatus::Pass,
+                detail: "stock: rcl_wait and the rclcpp executor tracepoints".into(),
+            };
+        }
+        let core = k
+            .procs
+            .get(&pid)
+            .into_iter()
+            .flat_map(|p| p.files.iter())
+            .filter_map(|f| k.files.get(f))
+            .find(|f| f.lib == Lib::RclExecutor)
+            .map_or("", |f| f.mapped.as_str());
+        let [waits, claims, handles, completions] =
+            self.core.get(&pid).copied().unwrap_or_default();
+        Check {
+            item,
+            status: if waits + claims > 0 {
+                CheckStatus::Pass
+            } else {
+                CheckStatus::Unknown
+            },
+            detail: format!(
+                "rcl_executor ({core}) and stock: {waits} core waits, {claims} claims \
+                 ({handles} with an rcl handle), {completions} completions"
+            ),
         }
     }
 
@@ -424,6 +476,7 @@ impl Session {
                     p.gid_len
                 ),
             ));
+            out.push(self.executor_probes(k, *pid, &p.comm));
         }
         out.extend(self.gpu(k));
         for (pid, p) in k.procs.iter().filter(|(p, _)| self.target.contains(**p)) {
@@ -767,6 +820,7 @@ mod tests {
             rclcpp_subs: Vec::new(),
             cxx: BTreeMap::new(),
             waits: BTreeMap::new(),
+            core: BTreeMap::new(),
             last: HashMap::new(),
             dds: BTreeMap::new(),
         }
@@ -856,6 +910,35 @@ mod tests {
         assert_eq!(s.rcl_lag, vec![500]);
         assert_eq!(s.takes, (0, 0));
         assert_eq!(s.stamps["/t"], (1, 1));
+    }
+
+    #[test]
+    fn core_waits_are_counted_apart_from_rcl_wait() {
+        let mut s = session();
+        let enter = orma_ev_rcl_wait_enter::default();
+        let exit = orma_ev_rcl_wait_exit::default();
+        let mut flagged = record(ORMA_EV_RCL_WAIT_ENTER, 1, &enter, "");
+        flagged[size_of::<orma_position>() + 4] = ORMA_RECORD_RCL_EXECUTOR as u8;
+        let head = |event| Head {
+            pid: 10,
+            tid: 11,
+            event,
+        };
+        s.observe(head(ORMA_EV_RCL_WAIT_ENTER), &flagged);
+        flagged = record(ORMA_EV_RCL_WAIT_EXIT, 2, &exit, "");
+        flagged[size_of::<orma_position>() + 4] = ORMA_RECORD_RCL_EXECUTOR as u8;
+        s.observe(head(ORMA_EV_RCL_WAIT_EXIT), &flagged);
+        observe(&mut s, 10, ORMA_EV_RCL_WAIT_ENTER, 3, &enter);
+        let claim = |entity| orma_ev_rcl_executor_claim {
+            entity,
+            ..Default::default()
+        };
+        observe(&mut s, 10, ORMA_EV_RCL_EXECUTOR_CLAIM, 4, &claim(0x20));
+        observe(&mut s, 10, ORMA_EV_RCL_EXECUTOR_CLAIM, 5, &claim(0));
+        let done = orma_ev_rcl_executor_complete::default();
+        observe(&mut s, 10, ORMA_EV_RCL_EXECUTOR_COMPLETE, 6, &done);
+        assert_eq!(s.core[&10], [1, 2, 1, 1]);
+        assert_eq!(s.waits[&(10, 11)], (1, 0));
     }
 
     #[test]

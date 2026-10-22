@@ -341,6 +341,53 @@ pub const PROGS: &[Prog] = &[
         Hot,
         Sym::Name("flux_trace_record_drop"),
     ),
+    // The rcl_executor core, which waits and claims without rcl_wait and the rclcpp executor
+    // tracepoints (docs/instrumentation.md 2.12). Only its processes map the file.
+    Prog {
+        point: "rcl_wait_enter",
+        ..p(
+            "rcl_executor_wait_enter",
+            Lib::RclExecutor,
+            Hot,
+            Sym::Name("rcl_executor_trace_wait_enter"),
+        )
+    },
+    Prog {
+        point: "rcl_wait_exit",
+        ..p(
+            "rcl_executor_wait_exit",
+            Lib::RclExecutor,
+            Hot,
+            Sym::Name("rcl_executor_trace_wait_exit"),
+        )
+    },
+    Prog {
+        point: "rcl_executor_claim",
+        ..p(
+            "rcl_executor_next",
+            Lib::RclExecutor,
+            Hot,
+            Sym::Name("rcl_executor_next_excluding"),
+        )
+    },
+    Prog {
+        point: "rcl_executor_claim",
+        ..p(
+            "rcl_executor_claimed",
+            Lib::RclExecutor,
+            Hot,
+            Sym::Name("rcl_executor_trace_item_claimed"),
+        )
+    },
+    Prog {
+        point: "rcl_executor_complete",
+        ..p(
+            "rcl_executor_completed",
+            Lib::RclExecutor,
+            Hot,
+            Sym::Name("rcl_executor_trace_item_completed"),
+        )
+    },
     p("span_begin", Lib::Span, Hot, Sym::Name("orma_span_begin")),
     p("span_end", Lib::Span, Hot, Sym::Name("orma_span_end")),
     // rclcpp C++ symbols, by rclcpp major (design 2.1.2, 4.5).
@@ -622,6 +669,24 @@ mod tests {
     }
 
     #[test]
+    fn the_rcl_executor_programs_attach_to_the_core_only() {
+        let core: Vec<&Prog> = PROGS
+            .iter()
+            .filter(|p| p.name.starts_with("rcl_executor_"))
+            .collect();
+        assert_eq!(core.len(), 5);
+        assert!(
+            core.iter()
+                .all(|p| p.lib == Lib::RclExecutor && p.set == Hot && !p.ret)
+        );
+        for anchor in orma_common::RCL_EXECUTOR_ANCHORS {
+            assert!(core.iter().any(|p| p.sym == Sym::Name(anchor)), "{anchor}");
+        }
+        let on_core = PROGS.iter().filter(|p| p.lib == Lib::RclExecutor).count();
+        assert_eq!(on_core, core.len());
+    }
+
+    #[test]
     fn naming_events_are_the_rare_ones() {
         assert!(naming(ORMA_EV_RCL_NODE_INIT));
         assert!(naming(ORMA_EV_CALLBACK_CODE));
@@ -638,5 +703,7 @@ mod tests {
         assert!(!naming(ORMA_EV_CUDA_CALL));
         assert!(!naming(ORMA_EV_SPAN_BEGIN));
         assert!(!naming(ORMA_EV_FUTEX_WAIT));
+        assert!(!naming(ORMA_EV_RCL_EXECUTOR_CLAIM));
+        assert!(!naming(ORMA_EV_RCL_EXECUTOR_COMPLETE));
     }
 }

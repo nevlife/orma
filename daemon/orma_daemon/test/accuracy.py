@@ -79,6 +79,11 @@ PAYLOAD = {
     "rclcpp_group_add_timer": ("<QQ", "object arg"),
     "rcl_wait_enter": ("<Qq", "wait_set timeout"),
     "rcl_wait_exit": ("<Qii", "wait_set ret pad"),
+    "rcl_executor_claim": (
+        "<QQQQQII",
+        "executor registration entity context group entity_type rclcpp",
+    ),
+    "rcl_executor_complete": ("<QQ", "executor registration"),
     "dds_serialized_size": ("<Q", "size"),
     "sched_switch": ("<qII", "prev_state next_tid cpu"),
     "sched_wakeup": ("<II", "tid target_cpu"),

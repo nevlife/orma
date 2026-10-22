@@ -14,6 +14,7 @@ mod flux;
 mod futex;
 mod maps;
 mod rcl;
+mod rcl_executor;
 mod rclcpp;
 mod ros;
 mod sched;

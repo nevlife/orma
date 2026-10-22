@@ -65,6 +65,11 @@ pub const ORMA_EV_RCLCPP_CALLBACK_OWNER: u16 = 82;
 /// The DDS write call under `rmw_publish`: Cyclone DDS `dds_write`, `dds_writecdr`, Fast DDS
 /// `DataWriter::write` (design 20.2). Written when the call returns.
 pub const ORMA_EV_DDS_WRITE: u16 = 83;
+/// The rcl_executor core claimed a ready item (`rcl_executor_trace_item_claimed`, uprobe only;
+/// docs/instrumentation.md 2.12).
+pub const ORMA_EV_RCL_EXECUTOR_CLAIM: u16 = 84;
+/// The core's item completed (`rcl_executor_trace_item_completed`, uprobe only).
+pub const ORMA_EV_RCL_EXECUTOR_COMPLETE: u16 = 85;
 
 // CUDA driver API in libcuda.so (design 20.1). Written when the call returns.
 pub const ORMA_EV_CUDA_CALL: u16 = 96;
@@ -106,6 +111,9 @@ pub const ORMA_EV_LIMIT: u16 = 256;
 pub const ORMA_STRING_MAX: usize = 255;
 pub const ORMA_RECORD_ALIGN: usize = 8;
 pub const ORMA_RECORD_TRUNCATED: u32 = 1;
+/// The record's point is an rcl_executor anchor in place of the stock function of its event:
+/// `rcl_wait_enter` and `rcl_wait_exit` from the core's wait, `wait_set` then the executor.
+pub const ORMA_RECORD_RCL_EXECUTOR: u32 = 2;
 /// "ORMAEV1\0" read as a little-endian u64.
 pub const ORMA_EVFILE_MAGIC: u64 = 0x0031_5645_414D_524F;
 pub const ORMA_GID_MAX: usize = 24;
@@ -374,6 +382,29 @@ pub struct orma_ev_rclcpp_callback_owner {
     pub node: u64,
     pub kind: u32,
     pub pad: u32,
+}
+
+/// `entity` is the rcl handle of the claimed subscription, timer, service, client, event or guard
+/// condition, 0 for work or when unread; `context` and `group` are what the client registered (an
+/// rclcpp `CallbackGroup *` as `group`); `entity_type` an `rcl_executor_entity_type_t`. ormad sets
+/// `rclcpp` to 1 when the process maps librclcpp.so.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct orma_ev_rcl_executor_claim {
+    pub executor: u64,
+    pub registration: u64,
+    pub entity: u64,
+    pub context: u64,
+    pub group: u64,
+    pub entity_type: u32,
+    pub rclcpp: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct orma_ev_rcl_executor_complete {
+    pub executor: u64,
+    pub registration: u64,
 }
 
 #[repr(C)]

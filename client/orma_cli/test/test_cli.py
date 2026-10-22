@@ -551,6 +551,7 @@ def test_status_shows_options_and_chains(fake, capsys):
         "chain: perception=/camera/image,/detections,/tracks",
         "latest-input nodes: /fusion",
     ]
+    assert out[-2] == "executor probes: 4021 (camera_node) stock"
     assert out[-1].startswith("orma: collectd cpu ")
 
 

@@ -159,6 +159,19 @@ fn layouts() -> Vec<Layout> {
             kind,
             pad,
         }),
+        layout!(orma_ev_rcl_executor_claim {
+            executor,
+            registration,
+            entity,
+            context,
+            group,
+            entity_type,
+            rclcpp,
+        }),
+        layout!(orma_ev_rcl_executor_complete {
+            executor,
+            registration
+        }),
         layout!(orma_ev_rclcpp_ipm_insert_sub_id_for_pub {
             ipm,
             sub_id,
