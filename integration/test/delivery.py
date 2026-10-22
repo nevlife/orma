@@ -59,6 +59,19 @@ CASES = {
         {"s": "loan"},
         False,
     ),
+    "py_loan": (
+        [
+            ("p", {}, [f"pub={T}/plain:plain:0:30:loan"], 1),
+            (
+                "s",
+                {"ROS_DISABLE_LOANED_MESSAGES": "0", "RCLPY_MESSAGE_ARRAYS": "numpy"},
+                [f"sub={T}/plain:plain"],
+                1,
+            ),
+        ],
+        {"s": "loan"},
+        False,
+    ),
     "mixed": (
         [
             ("a", {"RCL_INTRA_PROCESS": "1"}, [f"pub={IMG}:image:{MIB}:50", f"sub={IMG}:image"], 0),

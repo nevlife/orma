@@ -1,7 +1,8 @@
 // The delivery path points of the ROS 2 overhaul (docs/instrumentation.md 2.13): the broker
-// anchors and the loan functions of librcl.so, zenoh-c's shared memory payload, and rclpy's
-// anchors. librcl and rclpy call their anchors through the PLT, so the shim catches them. A
-// process without them never calls these definitions.
+// anchors and the loan functions of librcl.so, the loan returns of librmw_implementation.so (rclpy
+// returns its loans there directly), zenoh-c's shared memory payload, and rclpy's anchors. librcl
+// and rclpy call their anchors through the PLT, so the shim catches them. A process without them
+// never calls these definitions.
 #include "orma_preload/intercept.h"
 #include "orma_preload/orma_emit.h"
 
@@ -10,12 +11,14 @@
 #include <stdint.h>
 
 #define RCL "librcl.so"
+#define RMW "librmw_implementation.so"
 #define ZENOHC "libzenohc.so"
 #define RCL_RET_OK 0
 #define RCL_RET_ERROR 1
 #define Z_EGENERIC (-128)
 
 typedef int32_t rcl_ret_t;
+typedef int32_t rmw_ret_t;
 typedef int8_t z_result_t;
 
 ORMA_EXPORT void rcl_ipc_trace_publish(
@@ -28,12 +31,12 @@ ORMA_EXPORT rcl_ret_t
 rcl_borrow_loaned_message(const void * publisher, const void * type_support, void ** ros_message);
 ORMA_EXPORT rcl_ret_t
 rcl_publish_loaned_message(const void * publisher, void * ros_message, void * allocation);
-ORMA_EXPORT rcl_ret_t
-rcl_return_loaned_message_from_publisher(const void * publisher, void * loaned_message);
+ORMA_EXPORT rmw_ret_t
+rmw_return_loaned_message_from_publisher(const void * publisher, void * loaned_message);
 ORMA_EXPORT rcl_ret_t rcl_take_loaned_message(
   const void * subscription, void ** loaned_message, void * message_info, void * allocation);
-ORMA_EXPORT rcl_ret_t
-rcl_return_loaned_message_from_subscription(const void * subscription, void * loaned_message);
+ORMA_EXPORT rmw_ret_t
+rmw_return_loaned_message_from_subscription(const void * subscription, void * loaned_message);
 ORMA_EXPORT z_result_t z_bytes_from_shm_mut(void * bytes, void * shm);
 ORMA_EXPORT void rclpy_trace_take_converted(const void * subscription, const void * message);
 ORMA_EXPORT void rclpy_trace_publish_enter(const void * publisher);
@@ -111,11 +114,11 @@ rcl_ret_t rcl_publish_loaned_message(const void * publisher, void * ros_message,
   return next != NULL ? next(publisher, ros_message, allocation) : RCL_RET_ERROR;
 }
 
-rcl_ret_t rcl_return_loaned_message_from_publisher(const void * publisher, void * loaned_message)
+rmw_ret_t rmw_return_loaned_message_from_publisher(const void * publisher, void * loaned_message)
 {
-  loan(orma_emit_rcl_loan_return, publisher, loaned_message, RCL_RET_OK, false);
-  rcl_ret_t (*next)(const void *, void *) =
-    ORMA_NEXT(rcl_return_loaned_message_from_publisher, RCL, ORMA_EV_RCL_LOAN_RETURN);
+  loan(orma_emit_rmw_loan_return, publisher, loaned_message, RCL_RET_OK, false);
+  rmw_ret_t (*next)(const void *, void *) =
+    ORMA_NEXT(rmw_return_loaned_message_from_publisher, RMW, ORMA_EV_RMW_LOAN_RETURN);
   return next != NULL ? next(publisher, loaned_message) : RCL_RET_ERROR;
 }
 
@@ -129,12 +132,12 @@ rcl_ret_t rcl_take_loaned_message(
                       : RCL_RET_ERROR;
 }
 
-rcl_ret_t rcl_return_loaned_message_from_subscription(
+rmw_ret_t rmw_return_loaned_message_from_subscription(
   const void * subscription, void * loaned_message)
 {
-  loan(orma_emit_rcl_loan_return, subscription, loaned_message, RCL_RET_OK, true);
-  rcl_ret_t (*next)(const void *, void *) =
-    ORMA_NEXT(rcl_return_loaned_message_from_subscription, RCL, ORMA_EV_RCL_LOAN_RETURN);
+  loan(orma_emit_rmw_loan_return, subscription, loaned_message, RCL_RET_OK, true);
+  rmw_ret_t (*next)(const void *, void *) =
+    ORMA_NEXT(rmw_return_loaned_message_from_subscription, RMW, ORMA_EV_RMW_LOAN_RETURN);
   return next != NULL ? next(subscription, loaned_message) : RCL_RET_ERROR;
 }
 

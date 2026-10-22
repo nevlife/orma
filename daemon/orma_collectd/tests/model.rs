@@ -2050,7 +2050,7 @@ fn zenoh_paths_follow_the_publish() {
         h.ev(30, 30, t + (i + 1) * 100 * US, ORMA_EV_RMW_TAKE, p, &[]);
         h.cb(30, 30, t + (i + 1) * 100 * US + US, t + 400 * US, 0x33);
         if i == 2 {
-            h.loan(30, t + 410 * US, ORMA_EV_RCL_LOAN_RETURN, 0x30, 0x802, true);
+            h.loan(30, t + 410 * US, ORMA_EV_RMW_LOAN_RETURN, 0x30, 0x802, true);
         }
     }
     let w = h.window(T0 + W);
@@ -2089,4 +2089,21 @@ fn rclpy_anchors_time_the_conversions() {
     assert_eq!(s.py_convert.as_ref().unwrap().max_ns, 20 * US);
     assert_eq!(s.deliver.as_ref().unwrap().max_ns, 50 * US);
     assert_eq!(path(&s.paths, DeliveryPath::Net), (1, 100 * US));
+    // A loaned publish converts into the loan before rcl_publish_loaned_message.
+    let t = T0 + W + 10 * MS;
+    h.loan(40, t - 50 * US, ORMA_EV_RCL_LOAN_BORROW, 0x10, 0x700, false);
+    h.handle(40, t - 40 * US, ORMA_EV_RCLPY_PUBLISH_ENTER, 0x10);
+    h.loan(
+        40,
+        t - 10 * US,
+        ORMA_EV_RCL_LOAN_PUBLISH,
+        0x10,
+        0x700,
+        false,
+    );
+    h.publish(40, 40, t, 0x10, 0x11, 8, 0);
+    let w = h.window(T0 + 2 * W);
+    let t = topic(&w, "topic:ros:/py");
+    assert_eq!(t.py_convert.as_ref().unwrap().max_ns, 40 * US - 1);
+    assert_eq!(t.loan_hold.as_ref().unwrap().max_ns, 40 * US);
 }

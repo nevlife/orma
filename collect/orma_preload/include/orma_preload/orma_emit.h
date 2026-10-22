@@ -85,7 +85,7 @@ void orma_emit_rcl_ipc_release(const orma_ev_handle * ev);
 void orma_emit_rcl_loan_borrow(const orma_ev_rcl_loan * ev);
 void orma_emit_rcl_loan_publish(const orma_ev_rcl_loan * ev);
 void orma_emit_rcl_loan_take(const orma_ev_rcl_loan * ev);
-void orma_emit_rcl_loan_return(const orma_ev_rcl_loan * ev);
+void orma_emit_rmw_loan_return(const orma_ev_rcl_loan * ev);
 void orma_emit_zenoh_shm_payload(const orma_ev_handle * ev);
 void orma_emit_rclpy_take_converted(const orma_ev_rclpy_take * ev);
 void orma_emit_rclpy_publish_enter(const orma_ev_handle * ev);

@@ -36,6 +36,8 @@ pub enum Lib {
     Zenohc,
     /// rclpy's extension module, `_rclpy_pybind11.<python abi>.so`.
     Rclpy,
+    /// The rmw dispatch library, where every loan is returned (rclpy calls it directly).
+    RmwImplementation,
 }
 
 impl Lib {
@@ -45,6 +47,7 @@ impl Lib {
             "libtracetools.so" => Lib::Tracetools,
             "librcl.so" => Lib::Rcl,
             "librclcpp.so" => Lib::Rclcpp,
+            "librmw_implementation.so" => Lib::RmwImplementation,
             "librmw_fastrtps_shared_cpp.so" => Lib::Fastdds,
             "librmw_cyclonedds_cpp.so" => Lib::Cyclone,
             // A process maps the file its soname names, libflux_ffi.so.<abi>.

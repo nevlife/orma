@@ -307,7 +307,6 @@ impl Model {
             E::LoanPublish { message } => {
                 let th = self.thread(pid, tid);
                 th.loan_next = true;
-                th.py_publish = None;
                 self.loan_end(pid, message, t);
             }
             E::LoanTake => self.thread(pid, tid).loan_take = true,

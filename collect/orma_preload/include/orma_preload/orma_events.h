@@ -136,8 +136,9 @@
 // `rcl_take_loaned_message` was called: the `rmw_take` inside it took a loan.
 #define ORMA_EV_RCL_LOAN_TAKE 91
 
-// `rcl_return_loaned_message_from_publisher` or `_from_subscription` was called.
-#define ORMA_EV_RCL_LOAN_RETURN 92
+// `rmw_return_loaned_message_from_publisher` or `_from_subscription` was called: rcl's returns
+// and rclpy's own go through them.
+#define ORMA_EV_RMW_LOAN_RETURN 92
 
 // zenoh-c's `z_bytes_from_shm_mut`: rmw_zenoh made a payload of shared memory; `handle` is the
 // bytes object.

@@ -430,12 +430,13 @@ probe 선택:
 - process마다 매핑한 파일의 export로 정한다. 2.12와 같은 규칙이다. 버전이나 환경변수는 보지 않는다
 - stock Jazzy process에는 `loan`과 `zenoh_shm`만 붙는다. 둘 다 stock library의 export 함수다
 - 확인: `orma status`의 `delivery probes:` 줄
+- loan 반환은 rmw 함수에서 잡는다. rcl의 반환 함수도 그것을 부르고, rclpy는 subscription loan을 rmw 함수로 바로 돌려준다
 - `preload`, `lttng` method도 같은 point를 가로챈다. rcl과 rclpy가 anchor를 PLT로 부르기 때문이다. 2.12의 core anchor와 다른 점이다
 
 | probe | 붙는 조건 | 붙는 함수 |
 | --- | --- | --- |
 | `broker` | `librcl.so`가 `rcl_ipc_trace_contract_1`을 export | `rcl_ipc_trace_publish`, `rcl_ipc_trace_take`, `rcl_ipc_trace_release` |
-| `loan` | `librcl.so`가 `rcl_borrow_loaned_message`를 export | `rcl_borrow_loaned_message`(entry, return), `rcl_publish_loaned_message`, `rcl_return_loaned_message_from_publisher`, `rcl_take_loaned_message`, `rcl_return_loaned_message_from_subscription` |
+| `loan` | `librcl.so`가 `rcl_borrow_loaned_message`를 export | `librcl.so`의 `rcl_borrow_loaned_message`(entry, return), `rcl_publish_loaned_message`, `rcl_take_loaned_message`. `librmw_implementation.so`의 `rmw_return_loaned_message_from_publisher`, `rmw_return_loaned_message_from_subscription` |
 | `zenoh_shm` | `libzenohc.so`가 `z_bytes_from_shm_mut`을 export | `z_bytes_from_shm_mut` |
 | `rclpy` | `_rclpy_pybind11.*.so`가 `rclpy_trace_contract_1`을 export | `rclpy_trace_take_converted`, `rclpy_trace_publish_enter` |
 
@@ -446,11 +447,11 @@ probe 선택:
 | `rcl_ipc_trace_release(message)` | `rcl_ipc_release` | take한 message의 release |
 | `rcl_borrow_loaned_message` return | `rcl_loan_borrow` | publisher, 빌린 loan, `rcl_ret_t` |
 | `rcl_publish_loaned_message` | `rcl_loan_publish` | publisher, loan |
-| `rcl_return_loaned_message_from_publisher` | `rcl_loan_return` | publisher, loan |
+| `rmw_return_loaned_message_from_publisher` | `rmw_loan_return` | rmw publisher, loan |
 | `rcl_take_loaned_message` | `rcl_loan_take` | subscription. loan은 안의 `rmw_take`가 싣는다 |
-| `rcl_return_loaned_message_from_subscription` | `rcl_loan_return` | subscription, loan |
+| `rmw_return_loaned_message_from_subscription` | `rmw_loan_return` | rmw subscription, loan |
 | `z_bytes_from_shm_mut(bytes, shm)` | `zenoh_shm_payload` | bytes 객체 |
-| `rclpy_trace_publish_enter(publisher)` | `rclpy_publish_enter` | rclpy publish 시작. Python message 변환 전 |
+| `rclpy_trace_publish_enter(publisher)` | `rclpy_publish_enter` | rclpy publish 시작(loan publish 포함). Python message 변환 전 |
 | `rclpy_trace_take_converted(subscription, message)` | `rclpy_take_converted` | take한 message의 Python 변환 끝 |
 
 ```mermaid
@@ -490,8 +491,8 @@ segment:
 | take -> callback start | take(`rmw_take`, `rcl_ipc_take`) - 그 take의 `callback_start` |
 | rclpy take -> converted | `rclpy_take_converted` - 같은 thread의 마지막 take. take -> callback start의 일부 |
 | rclpy publish -> rcl | `rcl_publish` - `rclpy_publish_enter`. Python message에서 C message로의 변환 |
-| subscription hold | `rcl_ipc_release` 또는 subscription의 `rcl_loan_return` - take. broker message나 loan을 잡은 시간 |
-| publisher loan hold | `rcl_loan_publish` 또는 publisher의 `rcl_loan_return` - `rcl_loan_borrow` |
+| subscription hold | `rcl_ipc_release` 또는 subscription의 `rmw_loan_return` - take. broker message나 loan을 잡은 시간 |
+| publisher loan hold | `rcl_loan_publish` 또는 publisher의 `rmw_loan_return` - `rcl_loan_borrow` |
 
 anchor를 둔 이유:
 

@@ -439,8 +439,8 @@ pub const CATALOG: &[EventInfo] = &[
         true
     ),
     ev!(
-        ORMA_EV_RCL_LOAN_RETURN,
-        "rcl_loan_return",
+        ORMA_EV_RMW_LOAN_RETURN,
+        "rmw_loan_return",
         orma_ev_rcl_loan,
         0,
         true

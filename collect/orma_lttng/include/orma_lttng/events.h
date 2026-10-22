@@ -55,7 +55,7 @@
   X0(rcl_loan_borrow, orma_ev_rcl_loan)                                          \
   X0(rcl_loan_publish, orma_ev_rcl_loan)                                         \
   X0(rcl_loan_take, orma_ev_rcl_loan)                                            \
-  X0(rcl_loan_return, orma_ev_rcl_loan)                                          \
+  X0(rmw_loan_return, orma_ev_rcl_loan)                                          \
   X0(zenoh_shm_payload, orma_ev_handle)                                          \
   X0(rclpy_take_converted, orma_ev_rclpy_take)                                   \
   X0(rclpy_publish_enter, orma_ev_handle)                                        \

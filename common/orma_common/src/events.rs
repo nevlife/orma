@@ -85,8 +85,9 @@ pub const ORMA_EV_RCL_LOAN_BORROW: u16 = 89;
 pub const ORMA_EV_RCL_LOAN_PUBLISH: u16 = 90;
 /// `rcl_take_loaned_message` was called: the `rmw_take` inside it took a loan.
 pub const ORMA_EV_RCL_LOAN_TAKE: u16 = 91;
-/// `rcl_return_loaned_message_from_publisher` or `_from_subscription` was called.
-pub const ORMA_EV_RCL_LOAN_RETURN: u16 = 92;
+/// `rmw_return_loaned_message_from_publisher` or `_from_subscription` was called: rcl's returns
+/// and rclpy's own go through them.
+pub const ORMA_EV_RMW_LOAN_RETURN: u16 = 92;
 /// zenoh-c's `z_bytes_from_shm_mut`: rmw_zenoh made a payload of shared memory; `handle` is the
 /// bytes object.
 pub const ORMA_EV_ZENOH_SHM_PAYLOAD: u16 = 93;

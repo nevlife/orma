@@ -461,7 +461,7 @@ pub fn decode(r: &Record<'_>) -> Option<E> {
             E::LoanPublish { message: p.message }
         }
         ORMA_EV_RCL_LOAN_TAKE => E::LoanTake,
-        ORMA_EV_RCL_LOAN_RETURN => {
+        ORMA_EV_RMW_LOAN_RETURN => {
             let p: orma_ev_rcl_loan = r.payload();
             E::LoanReturn {
                 message: p.message,

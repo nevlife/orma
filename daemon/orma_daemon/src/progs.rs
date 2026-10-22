@@ -444,12 +444,12 @@ pub const PROGS: &[Prog] = &[
         Sym::Name("rcl_publish_loaned_message"),
     ),
     Prog {
-        point: "rcl_loan_return",
+        point: "rmw_loan_return",
         ..p(
-            "rcl_loan_return_pub",
-            Lib::Rcl,
+            "rmw_loan_return_pub",
+            Lib::RmwImplementation,
             Hot,
-            Sym::Name("rcl_return_loaned_message_from_publisher"),
+            Sym::Name("rmw_return_loaned_message_from_publisher"),
         )
     },
     p(
@@ -459,12 +459,12 @@ pub const PROGS: &[Prog] = &[
         Sym::Name("rcl_take_loaned_message"),
     ),
     Prog {
-        point: "rcl_loan_return",
+        point: "rmw_loan_return",
         ..p(
-            "rcl_loan_return_sub",
-            Lib::Rcl,
+            "rmw_loan_return_sub",
+            Lib::RmwImplementation,
             Hot,
-            Sym::Name("rcl_return_loaned_message_from_subscription"),
+            Sym::Name("rmw_return_loaned_message_from_subscription"),
         )
     },
     p(
@@ -817,9 +817,9 @@ mod tests {
             "rcl_ipc_release",
             "rcl_loan_borrow",
             "rcl_loan_publish",
-            "rcl_loan_return_pub",
+            "rmw_loan_return_pub",
             "rcl_loan_take",
-            "rcl_loan_return_sub",
+            "rmw_loan_return_sub",
             "zenoh_shm_payload",
         ];
         assert!(delivery.iter().all(|n| !on(n).ret && on(n).set == Hot));

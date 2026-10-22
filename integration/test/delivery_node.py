@@ -1,5 +1,5 @@
-"""rclpy twin of delivery_node.cpp, image only: delivery_node.py NAME
-[pub=TOPIC:image:BYTES:HZ]... [sub=TOPIC:image]... [seconds=S] [executor=rcl]."""
+"""rclpy twin of delivery_node.cpp: delivery_node.py NAME [pub=TOPIC:TYPE:BYTES:HZ[:loan]]...
+[sub=TOPIC:TYPE]... [seconds=S] [executor=rcl]. TYPE: image or plain (4 MiB, overhaul only)."""
 
 import resource
 import sys
@@ -18,6 +18,19 @@ def cpu_us():
     return round((u.ru_utime + u.ru_stime) * 1e6)
 
 
+def plain_type():
+    from test_rmw_zenoh_cpp.msg import PlainPayload
+
+    return PlainPayload
+
+
+def stamp(msg, ns):
+    if isinstance(msg, Image):
+        msg.header.stamp.sec, msg.header.stamp.nanosec = divmod(ns, 1_000_000_000)
+    else:
+        msg.stamp = ns
+
+
 def main():
     name = sys.argv[1]
     opts = [a.split("=", 1) for a in sys.argv[2:]]
@@ -32,9 +45,14 @@ def main():
         elif key == "executor" and f[0] == "rcl":
             from rclpy.experimental import RclExecutor as executor
         elif key == "pub":
-            pub = node.create_publisher(Image, f[0], qos)
-            msg = Image(height=1, width=int(f[2]), step=int(f[2]), encoding="mono8")
-            msg.data = bytes(int(f[2]))
+            loan = len(f) > 4 and f[4] == "loan"
+            if f[1] == "image":
+                pub = node.create_publisher(Image, f[0], qos)
+                msg = Image(height=1, width=int(f[2]), step=int(f[2]), encoding="mono8")
+                msg.data = bytes(int(f[2]))
+            else:
+                pub = node.create_publisher(plain_type(), f[0], qos)
+                msg = None if loan else plain_type()()
             pubs.append([f[0], pub, msg, float(f[3]), 0])
         elif key == "sub":
             got[f[0]] = 0
@@ -42,14 +60,18 @@ def main():
             def cb(m, topic=f[0]):
                 got[topic] += 1
 
-            node.create_subscription(Image, f[0], cb, qos)
+            node.create_subscription(Image if f[1] == "image" else plain_type(), f[0], cb, qos)
     timers = []
     for p in pubs:
 
         def tick(p=p):
-            now = time.time_ns()
-            p[2].header.stamp.sec, p[2].header.stamp.nanosec = divmod(now, 1_000_000_000)
-            p[1].publish(p[2])
+            if p[2] is None:
+                loaned = p[1].borrow_loaned_message()
+                stamp(loaned.msg, time.time_ns())
+                p[1].publish(loaned)
+            else:
+                stamp(p[2], time.time_ns())
+                p[1].publish(p[2])
             p[4] += 1
 
         t = node.create_timer(1.0 / p[3], tick)
@@ -57,6 +79,7 @@ def main():
         timers.append(t)
     ex = executor()
     ex.add_node(node)
+
     def run():
         try:
             ex.spin()

@@ -127,10 +127,10 @@ pub fn rcl_loan_publish(ctx: ProbeContext) -> u32 {
     0
 }
 
-// rcl_ret_t rcl_return_loaned_message_from_publisher(const rcl_publisher_t *, void * loaned)
+// rmw_ret_t rmw_return_loaned_message_from_publisher(const rmw_publisher_t *, void * loaned)
 #[uprobe]
-pub fn rcl_loan_return_pub(ctx: ProbeContext) -> u32 {
-    loan(&ctx, ORMA_EV_RCL_LOAN_RETURN, a(&ctx, 1), 0);
+pub fn rmw_loan_return_pub(ctx: ProbeContext) -> u32 {
+    loan(&ctx, ORMA_EV_RMW_LOAN_RETURN, a(&ctx, 1), 0);
     0
 }
 
@@ -141,10 +141,10 @@ pub fn rcl_loan_take(ctx: ProbeContext) -> u32 {
     0
 }
 
-// rcl_ret_t rcl_return_loaned_message_from_subscription(const rcl_subscription_t *, void * loaned)
+// rmw_ret_t rmw_return_loaned_message_from_subscription(const rmw_subscription_t *, void * loaned)
 #[uprobe]
-pub fn rcl_loan_return_sub(ctx: ProbeContext) -> u32 {
-    loan(&ctx, ORMA_EV_RCL_LOAN_RETURN, a(&ctx, 1), 1);
+pub fn rmw_loan_return_sub(ctx: ProbeContext) -> u32 {
+    loan(&ctx, ORMA_EV_RMW_LOAN_RETURN, a(&ctx, 1), 1);
     0
 }
 
