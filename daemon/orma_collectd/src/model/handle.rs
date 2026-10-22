@@ -74,15 +74,20 @@ impl Model {
             p.methods.insert(method);
             p.method = Some(method);
         }
-        if !matches!(
-            e,
-            E::RmwPublish { .. }
-                | E::RmwPublishRcl
-                | E::DdsSize { .. }
-                | E::DdsWrite { .. }
-                | E::ShmPayload
-                | E::IpcPublish { .. }
-        ) && let Some((h, stamp, t0)) = self.thread(pid, tid).pending_rcl.take()
+        // A pending rcl_publish is not ended by a kernel record of its thread (a switch inside the
+        // publish) or by the uprobe's first read of the rmw publisher's topic before rmw_publish.
+        if !kernel
+            && !matches!(
+                e,
+                E::RmwPublish { .. }
+                    | E::RmwTopic { .. }
+                    | E::RmwPublishRcl
+                    | E::DdsSize { .. }
+                    | E::DdsWrite { .. }
+                    | E::ShmPayload
+                    | E::IpcPublish { .. }
+            )
+            && let Some((h, stamp, t0)) = self.thread(pid, tid).pending_rcl.take()
         {
             self.publish_rcl(pid, tid, t0, h, stamp);
         }

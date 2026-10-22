@@ -2107,3 +2107,37 @@ fn rclpy_anchors_time_the_conversions() {
     assert_eq!(t.py_convert.as_ref().unwrap().max_ns, 40 * US - 1);
     assert_eq!(t.loan_hold.as_ref().unwrap().max_ns, 40 * US);
 }
+
+/// A context switch between `rcl_publish` and `rmw_publish`, or the uprobe's first read of the
+/// rmw publisher's topic there, is not a publish of the rcl ABI: the message counts once and the
+/// topic keeps its pairing (each once counted it twice and lost one).
+#[test]
+fn a_switch_or_topic_read_inside_a_publish_does_not_count_it_twice() {
+    let mut h = H::offline();
+    h.node(20, 0xa0, "p", "/");
+    h.publisher(20, 0x10, 0xa0, 0x11, "/s");
+    h.node(30, 0xc0, "s", "/");
+    h.subscription(30, 0x30, 0xc0, "/s");
+    for i in 0..10u64 {
+        let t = T0 + i * 10 * MS;
+        h.rcl_publish(20, 20, t - 3 * US, 0x10, 0);
+        if i == 0 {
+            let p = orma_ev_rmw_topic { rmw_handle: 0x11 };
+            h.ev(20, 20, t - 2 * US, ORMA_EV_RMW_PUBLISHER_TOPIC, p, &[b"/s"]);
+        }
+        if i % 2 == 1 {
+            h.switch(20, 20, t - 2 * US, 7);
+            h.switch(7, 7, t - US, 20);
+        }
+        h.rmw_publish(20, 20, t, 0x11, 1 + i as i64);
+        h.take(30, 30, t + 100 * US, 0x31, 1 + i as i64, 0);
+    }
+    let mut pubs = 0.0;
+    let mut lost = 0;
+    for k in 1..=4 {
+        let w = h.window(T0 + k * W);
+        pubs += topic(&w, "topic:ros:/s").pub_hz.unwrap_or(0.0);
+        lost += sub(&w, "topic:ros:/s", 30).lost.unwrap_or(0);
+    }
+    assert_eq!((pubs, lost), (10.0, 0));
+}
