@@ -204,8 +204,13 @@ impl Core {
                 v.insert((monitored, takers, entity));
             }
             let (monitored, takers, _) = &by_pid[&r.pid];
-            if *monitored || !takers.is_empty() {
+            let taken = *monitored || !takers.is_empty();
+            // As from a preload file: the session rotates for other processes while this one
+            // names its entities before it is selected.
+            if taken || catalog::init(r.header.event) {
                 self.ingest.record(Method::Lttng, &r);
+            }
+            if taken {
                 match runs.last_mut() {
                     Some((pid, _, end, n)) if *pid == r.pid && *end == at => {
                         *end += len;
@@ -296,5 +301,86 @@ impl Core {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{Arc, Mutex};
+
+    use orma_common::events::*;
+    use orma_proto::Ingest;
+    use orma_proto::records::{Record, encode_positioned};
+    use regex::Regex;
+
+    use super::*;
+    use crate::server::{Config, Model};
+    use crate::sources::ormad::Sel;
+
+    #[derive(Clone, Default)]
+    struct Seen(Arc<Mutex<Vec<(u32, u16)>>>);
+
+    impl Ingest for Seen {
+        fn record(&mut self, _: Method, r: &Record<'_>) {
+            self.0.lock().unwrap().push((r.pid, r.header.event));
+        }
+        fn aggregates(&mut self, _: Method, _: &[Aggregate]) {}
+        fn window(&mut self, _: u64, _: u64, _: u64, _: bool) -> Window {
+            unreachable!()
+        }
+    }
+
+    impl Model for Seen {
+        fn set_sched(&mut self, _: Sel) {}
+        fn set_hot(&mut self, _: Sel) {}
+        fn set_pss(&mut self, _: bool) {}
+        fn set_expected_hz(&mut self, _: BTreeMap<String, f64>) {}
+        fn set_lttng_span(&mut self, _: u64) {}
+        fn unowned(&self) -> BTreeSet<u32> {
+            BTreeSet::new()
+        }
+        fn set_probes(&mut self, _: bool, _: Sel) {}
+        fn set_flows(&mut self, _: Vec<ChainSpec>, _: Vec<Regex>) {}
+    }
+
+    #[test]
+    fn a_process_not_yet_monitored_keeps_its_names() {
+        let dir = std::env::temp_dir().join(format!("orma_lttng_names_{}", std::process::id()));
+        let config = Config {
+            runtime_dir: dir.join("run"),
+            data_dir: dir.join("data"),
+            shm_dir: dir.join("shm"),
+            ormad_socket: dir.join("ormad.sock"),
+            caps: Default::default(),
+            idle: Duration::from_secs(300),
+            disk: sys::disk,
+            guard: None,
+            lttng: false,
+        };
+        let seen = Seen::default();
+        let mut core = Core::new(config, Box::new(seen.clone()), None);
+        let mut records = Vec::new();
+        let node = orma_ev_rcl_node_init {
+            node: 1,
+            rmw_node: 2,
+        };
+        encode_positioned(
+            &mut records,
+            7,
+            7,
+            ORMA_EV_RCL_NODE_INIT,
+            1,
+            &node,
+            &[b"n", b"/"],
+        );
+        let publish = orma_ev_rmw_publish::default();
+        encode_positioned(&mut records, 7, 7, ORMA_EV_RMW_PUBLISH, 2, &publish, &[]);
+        core.lttng_chunk(Trace {
+            records,
+            events: 2,
+            skipped: 0,
+            missing: Vec::new(),
+        });
+        assert_eq!(*seen.0.lock().unwrap(), [(7, ORMA_EV_RCL_NODE_INIT)]);
     }
 }
