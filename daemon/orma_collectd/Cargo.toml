@@ -23,7 +23,7 @@ libc = { workspace = true, features = ["std"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 toml = { version = "0.9", default-features = false, features = ["parse", "serde"] }
-zstd = { version = "0.13", default-features = false }
+zstd = { version = "0.14", default-features = false }
 
 [lints]
 workspace = true
