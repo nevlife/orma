@@ -41,7 +41,9 @@ def main():
         child()
         return
     assert fit(2) == 4, "runs on liborma_span.so alone"
-    env = dict(os.environ, LD_PRELOAD=sys.argv[1])
+    env = dict(
+        os.environ, LD_PRELOAD=":".join(filter(None, [os.environ.get("LD_PRELOAD"), sys.argv[1]]))
+    )
     subprocess.run([sys.executable, __file__], env=env, check=True)
     print("ok")
 
