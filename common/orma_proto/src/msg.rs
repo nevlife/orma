@@ -52,9 +52,9 @@ enums! {
     /// with `rcl_executor` also the anchors of the rcl_executor core it maps.
     pub enum ExecutorProbes { Stock, RclExecutor }
     pub enum CpuSource { Sched, WallBound }
-    pub enum ExecutorKind { Rclcpp, Rclpy, #[serde(alias = "flux2")] Flux }
-    pub enum CallbackKind { Sub, Timer, Service, #[serde(alias = "flux2")] Flux, Unknown }
-    pub enum Transport { Ros, #[serde(alias = "flux2")] Flux }
+    pub enum ExecutorKind { Rclcpp, Rclpy, Flux }
+    pub enum CallbackKind { Sub, Timer, Service, Flux, Unknown }
+    pub enum Transport { Ros, Flux }
     pub enum FlowKind { Sync, Stamp, Blind, Latest }
     pub enum ChainMode { Lineage, First }
     /// How a message reached its subscription (docs/instrumentation.md 2.13): the rcl broker of
@@ -472,7 +472,7 @@ types! {
         pub overflow: Option<Overflow>,
         /// The `CUresult` that wedged the process's GPU (`flux_trace_gpu_wedged`); its GPU
         /// channels refuse claims, loans and takes from then on. Proto 1.7.
-        #[serde(default, alias = "flux2_gpu_wedged", skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         pub flux_gpu_wedged: Option<i32>,
         /// Proto 1.8 (design 20.1).
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -897,7 +897,6 @@ types! {
         pub id: String,
         pub host: Host,
         pub ros: Vec<ProcessRos>,
-        #[serde(alias = "flux2_contract")]
         pub flux_contract: Option<String>,
         pub options: RecordOptions,
         pub methods_by_pid: BTreeMap<String, Method>,
