@@ -21,9 +21,9 @@ colcon build --symlink-install --packages-up-to orma_cli rqt_orma orma_daemon or
 source install/setup.bash
 ```
 
-- nightly toolchain, `bpf-linker`: eBPF 프로그램 빌드용
-- `bpf-linker`: LLVM 23 필요. Ubuntu 24.04에 package가 없어 release binary 사용
-- `lttng-tools`, `babeltrace`(1.5): `lttng` method 전용
+- nightly toolchain과 `bpf-linker`는 eBPF 프로그램을 빌드할 때 쓴다.
+- `bpf-linker`에는 LLVM 23이 필요하다. Ubuntu 24.04에는 그 package가 없어서, LLVM 23을 담은 release binary를 쓴다.
+- `lttng-tools`, `babeltrace`(1.5)는 `lttng` method에서만 쓴다.
 
 ## 2. ormad service
 
@@ -36,14 +36,14 @@ sudo systemctl enable --now ormad
 
 `install.sh`가 하는 일:
 
-1. `ormad`를 `/usr/local/sbin/ormad`에 복사
-2. 사용자와 group `orma` 생성(`/etc/sysusers.d/orma.conf`)
-3. unit을 `/etc/systemd/system/ormad.service`에 설치
-4. 현재 사용자를 group `orma`에 추가
+1. `ormad`를 `/usr/local/sbin/ormad`에 복사한다.
+2. 사용자와 group `orma`를 만든다(`/etc/sysusers.d/orma.conf`).
+3. unit을 `/etc/systemd/system/ormad.service`에 설치한다.
+4. 현재 사용자를 group `orma`에 넣는다.
 
-- 복사 이유: service 사용자 `orma`는 홈 디렉터리(`0750`) 아래 workspace에 접근 불가
-- group은 다음 로그인부터 적용. 모든 session에서 로그아웃 후 다시 로그인한다. 그 전에는 `orma status`가 `ormad: denied`
-- `sg orma`로 orma-collectd 실행 금지. 주 group이 바뀌어 같은 사용자 process의 `smaps_rollup`도 막히고, rqt의 `pss` 체크를 켜도 PSS가 `-`로 나온다
+- 실행 파일을 복사하는 이유: service 사용자 `orma`는 홈 디렉터리(`0750`) 아래의 workspace에 들어갈 수 없다.
+- group은 다음 로그인부터 적용된다. 모든 session에서 로그아웃한 뒤 다시 로그인한다. 그 전에는 `orma status`에 `ormad: denied`가 나온다.
+- orma-collectd를 `sg orma`로 실행하지 않는다. 주 group이 바뀌어 같은 사용자 process의 `smaps_rollup`도 읽지 못한다. 그러면 rqt의 `pss` 체크를 켜도 PSS가 `-`로 나온다.
 
 service의 capability:
 
@@ -56,11 +56,11 @@ service의 capability:
 
 unit의 sandbox:
 
-- file system은 읽기 전용(`/run/orma` 제외), socket은 unix만, namespace 생성 금지
-- system call은 `@system-service`에 `bpf`, `perf_event_open`만 더한 목록. 그 밖은 `EPERM`
-- `ProtectProc=invisible`, `ProcSubset=pid`는 쓰지 않는다. 다른 사용자의 `/proc/<pid>/maps`를 가린다
-- `LimitMEMLOCK=infinity`: 5.11 미만 kernel(JetPack 5)은 map memory를 `RLIMIT_MEMLOCK`에 단다
-- `install.sh`가 끝에 `systemd-analyze security ormad.service` 점수를 출력(3.4, sandbox 전 7.2)
+- file system은 `/run/orma`를 빼고 읽기 전용이다. socket은 unix socket만 열 수 있고, namespace는 만들 수 없다.
+- 허용하는 system call은 `@system-service`에 `bpf`, `perf_event_open`만 더한 목록이다. 그 밖의 system call은 `EPERM`으로 실패한다.
+- `ProtectProc=invisible`, `ProcSubset=pid`는 쓰지 않는다. 이 둘은 다른 사용자의 `/proc/<pid>/maps`를 가리기 때문이다.
+- `LimitMEMLOCK=infinity`를 둔다. 5.11 미만 kernel(JetPack 5)은 map memory를 `RLIMIT_MEMLOCK`에 넣어 세기 때문이다.
+- `install.sh`는 마지막에 `systemd-analyze security ormad.service` 점수를 출력한다. 점수는 3.4이고, sandbox를 두기 전에는 7.2였다.
 
 확인:
 
@@ -72,7 +72,7 @@ orma check             # exit code 0 when nothing fails
 
 ### 다시 빌드한 뒤
 
-service는 복사한 실행 파일을 쓰므로 복사와 재시작을 다시 한다.
+service는 복사해 둔 실행 파일을 쓴다. 그래서 다시 복사하고 재시작한다.
 
 ```bash
 src/orma/daemon/orma_daemon/systemd/install.sh
@@ -92,10 +92,10 @@ sudo userdel orma
 
 따로 설치하지 않는다.
 
-- 시작: `orma` 명령이나 rqt plugin이 붙을 때 없으면 자동 시작
-- 종료: recording도 client도 없는 상태가 5분 지속되면 자동 종료
-- socket: `$XDG_RUNTIME_DIR/orma/collectd.sock`. `XDG_RUNTIME_DIR`이 없는 shell(예: `docker exec --user`)에서는 사용 불가
-- 설정 파일: `~/.config/orma/collectd.toml`. recording 한도의 상한([usage.md](usage.md) 5절)
+- 시작: `orma` 명령이나 rqt plugin이 붙을 때 orma-collectd가 없으면 자동으로 시작한다.
+- 종료: recording도 client도 없는 상태가 5분 이어지면 자동으로 끝난다.
+- socket: `$XDG_RUNTIME_DIR/orma/collectd.sock`. `XDG_RUNTIME_DIR`이 없는 shell(예: `docker exec --user`)에서는 쓸 수 없다.
+- 설정 파일: `~/.config/orma/collectd.toml`. recording 한도의 상한을 여기서 정한다([usage.md](usage.md) 5절).
 
 systemd user unit으로 두려면:
 

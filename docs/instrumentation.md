@@ -36,10 +36,10 @@ ROS 2와 flux의 주요 execution flow마다 orma가 어느 함수에 붙고 어
 
 ## 1. General rules
 
-- instrumentation point 목록은 하나. 세 method(`preload`, `lttng`, `uprobe`)가 같은 함수, 같은 field, 같은 latency segment. method별 차이는 8절
+- instrumentation point 목록은 하나다. 세 method(`preload`, `lttng`, `uprobe`)는 같은 함수에 붙고, 같은 field와 같은 latency segment를 낸다. method별 차이는 8절에 있다.
 - event timestamp: `CLOCK_MONOTONIC`
-- 없는 함수: 그 point만 빠지고 `probes_missing`에 기록. 빈 열이 "일이 없었다"인지 "볼 수 없었다"인지 구분용
-- uprobe method는 probe set 단위로 부착
+- 함수가 없으면 그 point만 빠지고 `probes_missing`에 기록된다. 빈 열이 "일이 없었다"인지 "볼 수 없었다"인지 가리기 위해서다.
+- uprobe method는 probe set 단위로 붙는다.
 
 | probe set | 붙는 process |
 | --- | --- |
@@ -57,9 +57,9 @@ ROS 2와 flux의 주요 execution flow마다 orma가 어느 함수에 붙고 어
 
 | method | gated tracepoint |
 | --- | --- |
-| `preload` | `ros_trace_enabled_<name>`도 가로채 참을 반환, `do_` 쪽 수신 |
-| `lttng` | 같은 방법으로 수신 |
-| `uprobe` | 수신 불가(uprobe는 반환값을 바꾸지 못한다). callback 함수 이름은 2.7의 code address로 보완 |
+| `preload` | `ros_trace_enabled_<name>`도 가로채 참을 반환하고, `do_` 쪽을 받는다 |
+| `lttng` | 같은 방법으로 받는다 |
+| `uprobe` | 받지 못한다(uprobe는 반환값을 바꾸지 못한다). callback 함수 이름은 2.7의 code address로 채운다 |
 
 gate는 이름을 주는 event에만 걸려 있고, timestamp를 재는 event에는 없다. 그래서 측정값은 method와 무관하게 같다.
 
@@ -176,9 +176,9 @@ callback이 어느 callback group과 executor에 속하는지에는 tracepoint�
 
 규칙:
 
-- 함수 탐색: mangled name의 앞부분(namespace, class, method). 둘 이상에 맞으면 부착하지 않고 `probes_missing`에 기록
-- 함수 목록: rclcpp major 버전(16, 28 이후)별. rclcpp를 올리면 orma 재빌드(`preload`, `lttng`은 같은 이름의 함수를 정의해 가로채기 때문)
-- caller에 inline된 함수는 어느 method로도 보이지 않는다. `orma check`의 `probes` 행에서 확인
+- 함수는 mangled name의 앞부분(namespace, class, method)으로 찾는다. 둘 이상이 맞으면 붙이지 않고 `probes_missing`에 기록한다.
+- 함수 목록은 rclcpp major 버전(16, 28 이후)마다 따로 있다. rclcpp를 올리면 orma를 다시 빌드한다. `preload`, `lttng`은 같은 이름의 함수를 정의해 가로채기 때문이다.
+- caller에 inline된 함수는 어느 method로도 보이지 않는다. `orma check`의 `probes` 행에서 확인한다.
 
 ### 2.5 Wait and wakeup
 
@@ -218,8 +218,8 @@ sequenceDiagram
 - publish 수와 rate(`rmw_publish`의 rmw handle)
 - source timestamp(`rmw_publish`). take 쪽과 짝짓는 값이다(2.7)
 - message 앞 8 B. message가 `header.stamp`로 시작하면 data age가 된다. orma는 message type을 모르므로, clock 검사를 통과한 값만 쓴다
-- `/clock` publisher의 message 앞 8 B. sim time 기준 data age에 쓴다
-- serialized size(`dds_serialized_size`, opt-in). Fast DDS의 `TypeSupport::serialize`, Cyclone DDS의 `serdata_rmw_from_sample`(dbgsym package가 있을 때만)에 붙는다. function pointer로만 불려 uprobe로만 잰다
+- `/clock` publisher의 message 앞 8 B. sim time으로 data age를 잴 때 쓴다
+- serialized size(`dds_serialized_size`, opt-in). Fast DDS의 `TypeSupport::serialize`, Cyclone DDS의 `serdata_rmw_from_sample`(dbgsym package가 있을 때만)에 붙는다. 이 함수들은 function pointer로만 불리므로 uprobe로만 잰다
 - late attach일 때 publisher의 topic 이름(`rmw_publisher_topic`, uprobe). rmw publisher handle에서 처음 한 번 읽는다
 - Jazzy rclcpp는 `rclcpp_publish`의 publisher handle 자리에 NULL을 넘긴다. publisher는 `rcl_publish`와 `rmw_publish`의 handle로 안다
 
@@ -313,18 +313,18 @@ rclpy는 `ros_trace_*`를 직접 부르지 않는다. rcl과 rmw를 거치는 ev
 | event | rclpy에서 나오나 | `orma_rclpy`가 하는 일 |
 | --- | --- | --- |
 | `rcl_*_init`, `rcl_publish`, `rmw_publish`, `rmw_take`, `rcl_wait` | 나온다 | - |
-| `rclcpp_subscription_init`, `rclcpp_subscription_callback_added` | 안 나온다 | subscription 생성 시 호출. rclcpp subscription 객체 자리에 Python `Subscription` 객체 주소 |
-| `rclcpp_service_callback_added` | 안 나온다 | service 생성 시 호출 |
-| `rclcpp_timer_callback_added`, `rclcpp_timer_link_node` | 안 나온다 | timer 생성 시 호출 |
-| `rclcpp_callback_register` | 안 나온다 | callback의 `__qualname__`으로 호출. gate 없는 이름이라 uprobe method도 수신 |
-| `rclcpp_executor_*` | 안 나온다 | 호출하지 않는다. wakeup은 `rcl_wait` return으로 측정 |
-| `callback_start`, `callback_end` | 안 나온다 | entity의 `callback` 속성을 감싼 함수가 callback 앞뒤에서 호출 |
+| `rclcpp_subscription_init`, `rclcpp_subscription_callback_added` | 안 나온다 | subscription을 만들 때 부른다. rclcpp subscription 객체 자리에는 Python `Subscription` 객체 주소를 넣는다 |
+| `rclcpp_service_callback_added` | 안 나온다 | service를 만들 때 부른다 |
+| `rclcpp_timer_callback_added`, `rclcpp_timer_link_node` | 안 나온다 | timer를 만들 때 부른다 |
+| `rclcpp_callback_register` | 안 나온다 | callback의 `__qualname__`을 넘겨 부른다. 이 이름에는 gate가 없어 uprobe method도 받는다 |
+| `rclcpp_executor_*` | 안 나온다 | 부르지 않는다. wakeup은 `rcl_wait` return으로 잰다 |
+| `callback_start`, `callback_end` | 안 나온다 | entity의 `callback` 속성을 감싼 함수가 callback 앞뒤에서 부른다 |
 
 - 감싸는 함수: `rclpy.node.Node`의 `create_subscription`, `create_service`, `create_timer`
-- module은 process 시작 시 로드(`orma run`, `OrmaTrace`가 `PYTHONPATH`에 추가). 실행 중인 Python node는 재시작 필요. uprobe method도 마찬가지
-- user site가 꺼진 process(가상환경, `python3 -s`, `-I`)에서는 로드되지 않는다
-- 사용자가 `callback` 속성을 다시 바꾼 entity는 `callback_*` 미발생(예: `create_rate`의 timer)
-- coroutine callback: `await`로 멈춘 시간도 callback duration에 포함
+- module은 process가 시작할 때 load된다(`orma run`, `OrmaTrace`가 `PYTHONPATH`에 더한다). 이미 실행 중인 Python node는 다시 시작해야 한다. uprobe method도 마찬가지다.
+- user site가 꺼진 process(가상환경, `python3 -s`, `-I`)에서는 load되지 않는다.
+- 사용자가 `callback` 속성을 다시 바꾼 entity에서는 `callback_*`이 나오지 않는다(예: `create_rate`의 timer).
+- coroutine callback은 `await`로 멈춘 시간도 callback duration에 들어간다.
 
 ### 2.11 Late attach
 
@@ -394,7 +394,7 @@ claim의 값과 다른 event의 대응:
 
 | 값 | rclcpp `RclExecutor` | rclpy `RclExecutor` | 같은 값을 싣는 event |
 | --- | --- | --- | --- |
-| `registration` | core가 매긴 순번(`rcl_executor_add`의 출력) | 같음 | `rcl_executor_complete` |
+| `registration` | core가 매긴 순번(`rcl_executor_add`의 출력) | rclcpp `RclExecutor`와 같다 | `rcl_executor_complete` |
 | `entity` | `rcl_subscription_t *`, `rcl_timer_t *`, `rcl_service_t *`, `rcl_client_t *`. waitable(`RCL_EXECUTOR_WORK`)은 0 | `rcl_*_t *`(event, guard condition 포함) | `rcl_subscription_init`, `rcl_timer_init`, `rcl_service_init`, `rcl_client_init`의 handle. service와 timer는 `rclcpp_*_callback_added`의 handle도 |
 | `context` | `SubscriptionBase *`, `ServiceBase *`, `ClientBase *`, `TimerBase *`, `Waitable *` | entity 객체의 `id()` | subscription은 `rclcpp_subscription_init`의 subscription(rclpy는 `orma_rclpy`가 같은 `id()`를 넣는다) |
 | `group` | `CallbackGroup *` | callback group의 `id()` | `rclcpp_group_add_subscription`, `rclcpp_group_add_timer`의 group |
@@ -423,7 +423,7 @@ ROS 2 overhaul에서는 같은 topic의 message도 subscription마다 다른 경
 | `loan` | publisher가 rmw loan을 빌려 publish한 message | `borrow_loaned_message`를 쓰는 publisher, loan을 지원하는 rmw |
 | `shm` | rmw_zenoh가 zenoh shared memory에 직렬화한 payload | rmw_zenoh, SHM 켬, message가 SHM threshold 이상 |
 | `net` | rmw가 자기 buffer에 직렬화한 payload | 위 셋이 아닌 rmw publish |
-| `unknown` | publish를 보지 못한 take | publisher process를 관측하지 않음 |
+| `unknown` | publish를 보지 못한 take | publisher process를 관측하지 않을 때 |
 
 probe 선택:
 
@@ -518,8 +518,8 @@ overhaul rcl과 rclpy에는 uprobe용 빈 함수(anchor)를 더했다. 2.12의 c
 flux는 `libflux_ffi.so`가 export하는 `flux_trace_*` 함수를 부른다. 몸체는 비어 있고 enabled 검사가 없어, 세 method가 모두 함수 자체에 붙는다. 함수 이름과 인자가 계약이고, 버전은 아무것도 하지 않는 symbol `flux_trace_contract_2`다. orma는 이 symbol을 export하는 library에만 붙는다. 다른 버전의 library는 인자가 다르므로 잘못 읽는 대신 거절한다.
 
 - channel id는 flux channel 공유 상태의 주소이고, re-attach 전까지 고정이다. executor id는 executor control block의 주소다.
-- 문자열 인자: 255 B까지
-- flux를 정적으로 링크한 프로그램은 함수를 직접 불러 `preload`, `lttng`에 보이지 않는다.
+- 문자열 인자는 255 B까지 읽는다.
+- flux를 정적으로 링크한 프로그램은 함수를 직접 부르므로 `preload`, `lttng`에 보이지 않는다.
 
 ### 3.1 Channel and endpoint creation
 
@@ -572,7 +572,7 @@ sequenceDiagram
     end
 ```
 
-flux_bag recorder가 frame을 bag에 쓰지 못하고 버리면 `flux_record_drop`이 나온다. orma는 recording loss로 보인다.
+flux_bag recorder가 frame을 bag에 쓰지 못하고 버리면 `flux_record_drop`이 나온다. orma는 이를 recording loss로 보인다.
 
 sticky CUDA error가 process의 GPU를 멈추면 `flux_gpu_wedged(result)`가 process마다 한 번 나온다. `result`는 그 `CUresult`다. 그 뒤로 GPU channel의 claim, loan, take는 `CLAIM_GPU_WEDGED`, `LOAN_GPU_WEDGED`, `REFUSED_GPU_WEDGED`로 실패하고 orma는 topic의 publish drop으로 센다. `orma node cpu`는 그 process에 경고 한 줄을 붙인다. ormad는 이 함수를 discovery set으로 모든 flux process에 붙인다. 이 함수가 없는 이전 flux build에서는 `probes_missing`에 남는다.
 
@@ -582,12 +582,12 @@ flux executor는 wait word에서 잠들고, publisher가 깨우면 callback을 �
 
 수집하는 것:
 
-- wait start(`flux_wait`). wait word 수와 timeout
-- wakeup과 깨운 것(`flux_wake`)
+- wait start(`flux_wait`). 기다리는 wait word의 수와 timeout을 싣는다
+- wakeup과 무엇이 깨웠는지(`flux_wake`)
 - callback start와 end(`flux_callback_start`, `flux_callback_end`). start는 endpoint를, end는 delivered 여부, channel, segment를 싣는다
 - take(`flux_take`). ticket, slot, 놓친 frame 수, `header.stamp`를 싣는다. publish 쪽 `flux_commit`과 `(segment, ticket)`으로 짝짓는다
 - borrow refused와 이유(`flux_refused`)
-- lease end(`flux_release`). `held`가 1이면 fence 실패로 borrow를 쥔 채 남는다
+- lease end(`flux_release`). `held`가 1이면 fence가 실패해 borrow를 쥔 채 남았다는 뜻이다
 - Python: GIL wait(`flux_py_gil`, phase 0과 1 사이)와 frame을 Python 객체로 만든 시점(`flux_py_ready`). `py_ready`는 같은 `(channel, ticket)`의 `take`와 짝짓는다
 
 ```mermaid
@@ -611,18 +611,18 @@ sequenceDiagram
 
 ## 4. Scheduling
 
-thread의 wakeup, CPU를 받은 시각(switch-in), CPU를 놓은 시각(switch-out)이다. kernel tracepoint `sched_switch`와 `sched_wakeup`을 eBPF로 받으므로 ormad가 있어야 한다. collection method와는 무관하다. 대상 thread만 kernel 안에서 거른다.
+orma는 thread가 깨어난 시각(wakeup), CPU를 받은 시각(switch-in), CPU를 놓은 시각(switch-out)을 받는다. kernel tracepoint `sched_switch`와 `sched_wakeup`을 eBPF로 받으므로 ormad가 있어야 한다. collection method와는 상관없다. 대상 thread만 kernel 안에서 거른다.
 
 두 가지에 쓴다.
 
 - scheduling latency: switch-in 시각 - wakeup 시각
-- callback 안 off-CPU time: callback start와 end 사이에 thread가 CPU를 놓은 시간. ormad는 그 thread가 지금 어느 callback 안에 있는지 알아야 한다. uprobe method는 eBPF가 callback stack을 쥐고, `preload`와 `lttng`은 thread마다 지금 callback을 shared memory 파일에 두고 ormad가 읽는다
+- callback 안 off-CPU time: callback start와 end 사이에 thread가 CPU를 놓은 시간. ormad는 그 thread가 지금 어느 callback 안에 있는지 알아야 한다. uprobe method에서는 eBPF 프로그램이 callback stack을 갖고 있다. `preload`와 `lttng`에서는 thread마다 지금 callback을 shared memory 파일에 적고, ormad가 그 파일을 읽는다
 
-node별 CPU는 callback 안 on-CPU time(callback duration - callback 안 off-CPU time)으로 node에 나눈다. DDS와 SDK thread처럼 callback 밖에서 도는 몫은 process 공용 몫으로 따로 보인다. `sched`가 없으면 callback wall time으로 낸 상한을 쓰고, `orma node cpu`의 CPU source 열이 `wall_bound`가 된다.
+orma는 callback 안 on-CPU time(callback duration - callback 안 off-CPU time)을 기준으로 CPU를 node에 나눈다. DDS와 SDK thread처럼 callback 밖에서 도는 몫은 process 공용 몫으로 따로 보인다. `sched`가 없으면 callback wall time으로 낸 상한을 쓰고, `orma node cpu`의 CPU source 열이 `wall_bound`가 된다.
 
 ## 5. Additional collection
 
-span은 항상 수집한다. 나머지는 client가 켤 때만 붙는다(`--gpu`, `--dds`, `--futex`, rqt의 Selection tab). event마다 thread와 시각이 있어 orma-collectd가 그 thread의 지금 callback에 붙인다.
+span은 항상 수집한다. 나머지는 client가 켤 때만 붙는다(`--gpu`, `--dds`, `--futex`, rqt의 Selection tab). event마다 thread와 시각이 있다. orma-collectd는 이 값으로 event를 그 thread에서 지금 도는 callback에 붙인다.
 
 ### 5.1 Spans
 
@@ -657,7 +657,7 @@ sequenceDiagram
 | 종류 | 함수 |
 | --- | --- |
 | launch | kernel launch, graph launch |
-| copy | 동기 copy, 비동기 copy(`_v2` 이름과 `_ptds`/`_ptsz` 변형). byte 수는 인자에서. 2D, 3D copy는 width x height(x depth) |
+| copy | 동기 copy, 비동기 copy(`_v2` 이름과 `_ptds`/`_ptsz` 변형). byte 수는 인자에서 읽는다. 2D, 3D copy는 width x height(x depth) |
 | synchronize | stream, context, event synchronize |
 | memory | 할당, 해제 |
 
@@ -680,7 +680,7 @@ DDS write 함수의 entry와 return이다. 호출 하나가 record 하나다.
 수집하는 것(`dds_write`): writer, 호출 시간
 
 - orma-collectd는 write를 같은 thread의 진행 중인 `rcl_publish`와 짝지어 topic을 붙인다. 짝이 없는 write는 버린다
-- segment 두 개를 낸다(6절): publish에서 DDS write 시작까지, DDS write 호출 시간
+- segment 두 개를 낸다(6절): publish에서 DDS write 시작까지, DDS write 호출에 걸린 시간
 
 ### 5.4 futex waits
 
@@ -718,9 +718,9 @@ ROS topic과 flux channel을 같은 segment로 잰다.
 | span duration | `span_end` - `span_begin`(5.1) |
 | 전달 경로별 segment | hop by path, take -> callback start, rclpy 변환, hold(2.13) |
 
-- process 안 segment(callback duration, dispatch latency): instrumentation point에서 aggregate. `lttng`만 orma-collectd에서
-- process 사이 segment(transport latency, wakeup latency): orma-collectd가 matching
-- `orma analyze`: recording을 이 segment로 분할
+- process 안 segment(callback duration, dispatch latency)는 instrumentation point에서 aggregate한다. `lttng`만 orma-collectd에서 aggregate한다.
+- process 사이 segment(transport latency, wakeup latency)는 orma-collectd가 matching해서 낸다.
+- `orma analyze`는 recording을 이 segment로 나눈다.
 
 ## 7. Distro differences
 
@@ -728,11 +728,11 @@ orma는 process마다 distro를 판정한다. 한 host에 Jazzy process와 Humbl
 
 | 항목 | Humble | Jazzy |
 | --- | --- | --- |
-| `libtracetools.so`의 LTTng | X. `lttng` method는 `liborma_lttng.so`의 `ros2` provider가 대신 생성 | O |
-| `rclcpp_callback_register` | gate 미적용. 이름 문자열이 빌 수 있어 `callback_code`로 보완 | gated(1절) |
+| `libtracetools.so`의 LTTng | X. `lttng` method에서는 `liborma_lttng.so`의 `ros2` provider가 대신 event를 만든다 | O |
+| `rclcpp_callback_register` | gate가 없다. 이름 문자열이 빌 수 있어 `callback_code`로 채운다 | gated(1절) |
 | publish ABI | rcl: `ros_trace_rmw_publish(message)`(orma event `rmw_publish_rcl`). publisher key는 `rcl_publish`의 rcl handle | rmw: `ros_trace_rmw_publish(rmw_handle, message, timestamp)` |
-| transport latency | take 시각 - source timestamp(wall clock). publish 쪽 timestamp 부재로 matching 불가, 같은 host에서만 유효 | matching한 monotonic 시각 차 |
-| `rclcpp_intra_publish` | X. intra-process 전용 topic은 행 미생성 | O |
+| transport latency | take 시각 - source timestamp(wall clock). publish 쪽 timestamp가 없어 matching할 수 없고, 같은 host에서만 맞는 값이다 | matching한 monotonic 시각 차 |
+| `rclcpp_intra_publish` | X. intra-process로만 오가는 topic은 행이 생기지 않는다 | O |
 | executor 소속 | `Executor::add_callback_group_to_map`(`rclcpp_executor_add_group`) | `ExecutorEntitiesCollector` 함수 |
 | rmw client, service tracepoint | X(orma 미부착) | X(orma 미부착) |
 
@@ -758,11 +758,11 @@ orma는 process마다 distro를 판정한다. 한 host에 Jazzy process와 Humbl
 | malloc attribution(opt-in) | X | O | X |
 | 권한 | ormad | 불필요 | 사용자 session daemon |
 
-`liborma_preload.so`와 `liborma_lttng.so`는 함께 넣을 수 있다. 둘 다 원래 함수를 `dlsym(RTLD_NEXT)`로 부르므로, 앞의 것이 받고 넘기면 뒤의 것이 받고, 마지막에 원래 함수(uprobe가 붙는 곳)가 불린다.
+`liborma_preload.so`와 `liborma_lttng.so`는 함께 넣을 수 있다. 둘 다 원래 함수를 `dlsym(RTLD_NEXT)`로 부른다. 그래서 호출은 앞의 library가 먼저 받아 뒤의 library로 넘기고, 마지막에 원래 함수(uprobe가 붙는 곳)가 불린다.
 
 ## 9. Limitations
 
-ROS 2는 고치지 않는다. 한계마다 우회나 받아들인 빈칸이 있다.
+orma는 ROS 2를 고치지 않는다. 그래서 한계마다 우회 방법을 두거나, 빈칸을 그대로 받아들였다.
 
 | 한계 | 결과 | 대응 |
 | --- | --- | --- |
