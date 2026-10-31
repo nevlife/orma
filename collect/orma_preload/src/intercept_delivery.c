@@ -53,7 +53,9 @@ void rcl_ipc_trace_publish(
   orma_emit_rcl_ipc_publish(&ev);
   void (*next)(const void *, const void *, int64_t, size_t) =
     ORMA_NEXT(rcl_ipc_trace_publish, RCL, ORMA_EV_RCL_IPC_PUBLISH);
-  if (next != NULL) next(publisher, message, source_timestamp, readers);
+  if (next != NULL) {
+    next(publisher, message, source_timestamp, readers);
+  }
 }
 
 void rcl_ipc_trace_take(
@@ -71,7 +73,9 @@ void rcl_ipc_trace_take(
   orma_emit_rcl_ipc_take(&ev);
   void (*next)(const void *, const void *, const void *, int64_t, bool) =
     ORMA_NEXT(rcl_ipc_trace_take, RCL, ORMA_EV_RCL_IPC_TAKE);
-  if (next != NULL) next(subscription, message, data, source_timestamp, local);
+  if (next != NULL) {
+    next(subscription, message, data, source_timestamp, local);
+  }
 }
 
 void rcl_ipc_trace_release(const void * message)
@@ -79,7 +83,9 @@ void rcl_ipc_trace_release(const void * message)
   orma_ev_handle ev = {.handle = ORMA_U64(message)};
   orma_emit_rcl_ipc_release(&ev);
   void (*next)(const void *) = ORMA_NEXT(rcl_ipc_trace_release, RCL, ORMA_EV_RCL_IPC_RELEASE);
-  if (next != NULL) next(message);
+  if (next != NULL) {
+    next(message);
+  }
 }
 
 static void loan(
@@ -156,7 +162,9 @@ void rclpy_trace_take_converted(const void * subscription, const void * message)
   orma_emit_rclpy_take_converted(&ev);
   void (*next)(const void *, const void *) =
     ORMA_NEXT(rclpy_trace_take_converted, NULL, ORMA_EV_RCLPY_TAKE_CONVERTED);
-  if (next != NULL) next(subscription, message);
+  if (next != NULL) {
+    next(subscription, message);
+  }
 }
 
 void rclpy_trace_publish_enter(const void * publisher)
@@ -165,5 +173,7 @@ void rclpy_trace_publish_enter(const void * publisher)
   orma_emit_rclpy_publish_enter(&ev);
   void (*next)(const void *) =
     ORMA_NEXT(rclpy_trace_publish_enter, NULL, ORMA_EV_RCLPY_PUBLISH_ENTER);
-  if (next != NULL) next(publisher);
+  if (next != NULL) {
+    next(publisher);
+  }
 }

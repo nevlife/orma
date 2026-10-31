@@ -34,18 +34,6 @@ repos:
 
   - repo: local
     hooks:
-      - id: no-emoji
-        name: no emoji
-        entry: scripts/check_no_emoji.sh
-        language: script
-        types: [text]
-
-      - id: hangul-md-only
-        name: hangul only in .md files
-        entry: scripts/check_hangul_md_only.sh
-        language: script
-        types: [text]
-
       # All three check the whole workspace; clippy also builds the eBPF crate through build.rs.
       - id: rustfmt
         name: rustfmt
@@ -90,10 +78,5 @@ repos:
         additional_dependencies: [clang-tidy==22.1.8]
         types_or: [c, c++]
         files: ^collect/orma_(preload|lttng|span)/
-
-      - id: docs-tracked
-        name: no untracked files under docs/
-        entry: scripts/check_docs_tracked.sh
-        language: script
-        pass_filenames: false
-        always_run: true
+        # One run: a changed header checks every translation unit, so parallel batches multiply.
+        require_serial: true

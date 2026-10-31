@@ -63,7 +63,9 @@ static const struct entry entries[] = {
 static void * find(const char * name)
 {
   for (size_t i = 0; i < sizeof entries / sizeof entries[0]; i++) {
-    if (strcmp(entries[i].name, name) == 0) return entries[i].f;
+    if (strcmp(entries[i].name, name) == 0) {
+      return entries[i].f;
+    }
   }
   return NULL;
 }
@@ -71,8 +73,12 @@ static void * find(const char * name)
 // The _v2 of most functions dates from CUDA 3.2; these two gained one later.
 static int v2_since(const char * symbol)
 {
-  if (strcmp(symbol, "cuCtxSynchronize") == 0) return 13000;
-  if (strcmp(symbol, "cuGetProcAddress") == 0) return 12000;
+  if (strcmp(symbol, "cuCtxSynchronize") == 0) {
+    return 13000;
+  }
+  if (strcmp(symbol, "cuGetProcAddress") == 0) {
+    return 12000;
+  }
   return 3020;
 }
 
@@ -89,7 +95,9 @@ STUB CUresult cuGetProcAddress(const char * symbol, void ** pfn, int version, ui
     snprintf(name, sizeof name, "%s_v2", symbol);
     *pfn = find(name);
   }
-  if (*pfn == NULL) *pfn = find(symbol);
+  if (*pfn == NULL) {
+    *pfn = find(symbol);
+  }
   return *pfn != NULL ? 0 : CUDA_ERROR_NOT_FOUND;
 }
 
@@ -98,6 +106,8 @@ cuGetProcAddress_v2(const char * symbol, void ** pfn, int version, uint64_t flag
 {
   CUresult r = cuGetProcAddress(symbol, pfn, version, flags);
   // CU_GET_PROC_ADDRESS_SUCCESS, CU_GET_PROC_ADDRESS_SYMBOL_NOT_FOUND
-  if (status != NULL) *status = r == 0 ? 0 : 1;
+  if (status != NULL) {
+    *status = r == 0 ? 0 : 1;
+  }
   return r;
 }

@@ -67,7 +67,9 @@ struct orma_thread * orma_thread_claim(void);
 static inline struct orma_thread * orma_thread(void)
 {
   orma_thread_slot * s = orma_self.slot;
-  if (s != NULL) return s == ORMA_SLOT_DEAD ? NULL : &orma_self;
+  if (s != NULL) {
+    return s == ORMA_SLOT_DEAD ? NULL : &orma_self;
+  }
   return orma_thread_claim();
 }
 
@@ -113,7 +115,9 @@ static inline bool orma_pop(
   bool found = i > 0;
   if (found) {
     *t0 = t->stack[i - 1].t0;
-    for (; i < t->n; i++) t->stack[i - 1] = t->stack[i];
+    for (; i < t->n; i++) {
+      t->stack[i - 1] = t->stack[i];
+    }
     t->n--;
   } else if (t->untracked > 0) {
     t->untracked--;

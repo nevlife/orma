@@ -14,7 +14,9 @@ static uint64_t counts[17];
 TRACE uint64_t stub_calls(void)
 {
   uint64_t n = 0;
-  for (int i = 0; i < 17; i++) n += counts[i];
+  for (int i = 0; i < 17; i++) {
+    n += counts[i];
+  }
   return n;
 }
 

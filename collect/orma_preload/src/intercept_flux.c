@@ -15,7 +15,9 @@ static int contract;
 static bool agreed(void)
 {
   int c = __atomic_load_n(&contract, __ATOMIC_RELAXED);
-  if (c != 0) return c > 0;
+  if (c != 0) {
+    return c > 0;
+  }
   c = orma_find(CONTRACT) != NULL ? 1 : -1;
   int unset = 0;
   if (

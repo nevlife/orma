@@ -58,7 +58,9 @@ static orma_thread_slot * slot_of(uint32_t tid)
 {
   for (uint32_t i = 0; i < header->n_threads; i++) {
     orma_thread_slot * s = slot_at(i);
-    if (s->tid == tid && s->state != ORMA_THREAD_FREE) return s;
+    if (s->tid == tid && s->state != ORMA_THREAD_FREE) {
+      return s;
+    }
   }
   return NULL;
 }
@@ -68,8 +70,9 @@ static const orma_table_entry * row(
 {
   const orma_table_entry * t = (const orma_table_entry *)(s + 1);
   for (uint32_t i = 0; i < header->table_entries; i++) {
-    if (t[i].kind == kind && t[i].src == src && t[i].entry == entry && t[i].key == key)
+    if (t[i].kind == kind && t[i].src == src && t[i].entry == entry && t[i].key == key) {
       return &t[i];
+    }
   }
   return NULL;
 }
@@ -77,9 +80,13 @@ static const orma_table_entry * row(
 static uint64_t count(const orma_thread_slot * s, uint16_t kind, uint64_t key)
 {
   const orma_table_entry * e = row(s, kind, ORMA_SRC_ROS, 0, key);
-  if (e == NULL) return 0;
+  if (e == NULL) {
+    return 0;
+  }
   uint64_t hist = 0;
-  for (int b = 0; b < ORMA_BUCKETS; b++) hist += e->hist[b];
+  for (int b = 0; b < ORMA_BUCKETS; b++) {
+    hist += e->hist[b];
+  }
   CHECK(hist == e->count && e->max <= e->sum);
   return e->count;
 }
@@ -93,7 +100,9 @@ static void each_record(
   for (uint64_t at = s->ring_tail; at < head;) {
     const orma_record * r = (const orma_record *)(ring + at % header->ring_bytes);
     CHECK(r->len % 8 == 0 && r->len >= 8);
-    if (r->event != ORMA_EV_PAD) fn(r, arg);
+    if (r->event != ORMA_EV_PAD) {
+      fn(r, arg);
+    }
     at += r->len;
   }
 }
@@ -110,7 +119,9 @@ static void tally_one(const orma_record * r, void * arg)
   struct tally * t = arg;
   uint64_t first;
   memcpy(&first, r + 1, sizeof first);
-  if (r->event == t->event && (t->key == 0 || first == t->key)) t->n++;
+  if (r->event == t->event && (t->key == 0 || first == t->key)) {
+    t->n++;
+  }
 }
 
 static uint64_t records(const orma_thread_slot * s, uint16_t event, uint64_t key)
@@ -123,7 +134,9 @@ static uint64_t records(const orma_thread_slot * s, uint16_t event, uint64_t key
 static const orma_record * last;
 static void keep_last(const orma_record * r, void * arg)
 {
-  if (r->event == *(uint16_t *)arg) last = r;
+  if (r->event == *(uint16_t *)arg) {
+    last = r;
+  }
 }
 
 static const orma_record * last_record(const orma_thread_slot * s, uint16_t event)
@@ -186,8 +199,12 @@ static void * worker(void * arg)
 static void check_workers(void)
 {
   pthread_t t[WORKERS];
-  for (int i = 0; i < WORKERS; i++) pthread_create(&t[i], NULL, worker, (void *)(intptr_t)i);
-  for (int i = 0; i < WORKERS; i++) pthread_join(t[i], NULL);
+  for (int i = 0; i < WORKERS; i++) {
+    pthread_create(&t[i], NULL, worker, (void *)(intptr_t)i);
+  }
+  for (int i = 0; i < WORKERS; i++) {
+    pthread_join(t[i], NULL);
+  }
   for (int i = 0; i < WORKERS; i++) {
     orma_thread_slot * s = slot_of(worker_tids[i]);
     CHECK(s != NULL && s->state == ORMA_THREAD_EXITED && s->depth == 0 && s->cur_cb == 0);
@@ -262,7 +279,9 @@ static void check_fields(void)
   CHECK(r->flags == ORMA_RECORD_TRUNCATED && strlen(strs) == ORMA_STRING_MAX - 1);
   CHECK(strcmp(strs + ORMA_STRING_MAX, "/ns") == 0 && r->len % 8 == 0);
 
-  if (asan) return;
+  if (asan) {
+    return;
+  }
   // malloc attribution, switched on by the reader: inside a callback to its key, outside to 0.
   __atomic_store_n(&header->options, ORMA_OPTION_MALLOC, __ATOMIC_RELAXED);
   ros_trace_callback_start(K(0xF), false);
@@ -283,13 +302,21 @@ static void check_fields(void)
 static void * nest_deep(void * arg)
 {
   (void)arg;
-  for (int k = 0; k < 20; k++) ros_trace_callback_start(K(0x100 + k), false);
+  for (int k = 0; k < 20; k++) {
+    ros_trace_callback_start(K(0x100 + k), false);
+  }
   orma_thread_slot * s = slot_of((uint32_t)gettid());
   CHECK(s->depth == 20 && s->depth_overflow == 4 && s->cur_cb == 0x100 + 15);
-  for (int k = 19; k >= 0; k--) ros_trace_callback_end(K(0x100 + k));
+  for (int k = 19; k >= 0; k--) {
+    ros_trace_callback_end(K(0x100 + k));
+  }
   CHECK(s->depth == 0 && s->cur_cb == 0);
-  for (int k = 0; k < 16; k++) CHECK(count(s, ORMA_AGG_CALLBACK, 0x100 + k) == 1);
-  for (int k = 16; k < 20; k++) CHECK(count(s, ORMA_AGG_CALLBACK, 0x100 + k) == 0);
+  for (int k = 0; k < 16; k++) {
+    CHECK(count(s, ORMA_AGG_CALLBACK, 0x100 + k) == 1);
+  }
+  for (int k = 16; k < 20; k++) {
+    CHECK(count(s, ORMA_AGG_CALLBACK, 0x100 + k) == 0);
+  }
   return NULL;
 }
 
@@ -302,7 +329,9 @@ static void check_resident(const orma_thread_slot * s)
   size_t pages = ((uintptr_t)s + header->thread_size - from + page - 1) / page;
   unsigned char * resident = calloc(pages, 1);
   CHECK(mincore((void *)from, pages * page, resident) == 0);
-  for (size_t i = 0; i < pages; i++) CHECK(resident[i] & 1);
+  for (size_t i = 0; i < pages; i++) {
+    CHECK(resident[i] & 1);
+  }
   free(resident);
 }
 
@@ -315,7 +344,9 @@ static void * many_keys(void * arg)
   }
   orma_thread_slot * s = slot_of((uint32_t)gettid());
   uint64_t rows = 0;
-  for (int k = 0; k < 130; k++) rows += count(s, ORMA_AGG_CALLBACK, 0x200 + k);
+  for (int k = 0; k < 130; k++) {
+    rows += count(s, ORMA_AGG_CALLBACK, 0x200 + k);
+  }
   CHECK(rows == 128 && s->table_overflow == 2);
   check_resident(s);
   return NULL;
@@ -368,16 +399,22 @@ static void * hold(void * arg)
 // threads alive together leave one uncounted; with a reader present exited slots wait for it.
 static void check_slots(void)
 {
-  for (int i = 0; i < 20; i++) run(touch);
+  for (int i = 0; i < 20; i++) {
+    run(touch);
+  }
   CHECK(header->threads_overflow == 0);
 
   pthread_t t[8];
   pthread_barrier_init(&all_live, NULL, 9);
-  for (int i = 0; i < 8; i++) pthread_create(&t[i], NULL, hold, NULL);
+  for (int i = 0; i < 8; i++) {
+    pthread_create(&t[i], NULL, hold, NULL);
+  }
   pthread_barrier_wait(&all_live);
   CHECK(header->threads_overflow == 1);
   pthread_barrier_wait(&all_live);
-  for (int i = 0; i < 8; i++) pthread_join(t[i], NULL);
+  for (int i = 0; i < 8; i++) {
+    pthread_join(t[i], NULL);
+  }
 
   reader_lock(F_WRLCK);
   run(touch);
@@ -429,10 +466,13 @@ struct flux_tally
 static void flux_one(const orma_record * r, void * arg)
 {
   struct flux_tally * t = arg;
-  if (r->event < ORMA_EV_FLUX_CHANNEL_INIT || r->event > ORMA_EV_FLUX_GPU_WEDGED) return;
+  if (r->event < ORMA_EV_FLUX_CHANNEL_INIT || r->event > ORMA_EV_FLUX_GPU_WEDGED) {
+    return;
+  }
   t->events++;
-  if (r->event == ORMA_EV_FLUX_GPU_WEDGED)
+  if (r->event == ORMA_EV_FLUX_GPU_WEDGED) {
     t->wedged = ((const orma_ev_flux_gpu_wedged *)(r + 1))->result;
+  }
   if (r->event == ORMA_EV_FLUX_COMMIT) {
     t->commits++;
     t->last_stamp = ((const orma_ev_flux_commit *)(r + 1))->stamp;
@@ -503,7 +543,9 @@ struct cuda_tally
 static void cuda_one(const orma_record * r, void * arg)
 {
   struct cuda_tally * t = arg;
-  if (r->event != ORMA_EV_CUDA_CALL) return;
+  if (r->event != ORMA_EV_CUDA_CALL) {
+    return;
+  }
   const orma_ev_cuda_call * c = (const void *)(r + 1);
   t->n++;
   t->by_api[c->api]++;
@@ -574,7 +616,9 @@ static void * driver_lookup(const char * name)
   }
   cut = strstr(base, "_v2");
   int version = cut != NULL || strcmp(base, "cuCtxSynchronize") != 0 ? 13000 : 2000;
-  if (cut != NULL) *cut = '\0';
+  if (cut != NULL) {
+    *cut = '\0';
+  }
   void * p = NULL;
   int status = -1;
   CHECK(gpa(base, &p, version, flags, &status) == 0 && status == 0);
@@ -794,7 +838,9 @@ int main(int argc, char ** argv)
     check_slots();
     check_fork();
   }
-  for (int w = 0; w < ORMA_MISSING_WORDS; w++) CHECK(header->missing[w] == 0);
+  for (int w = 0; w < ORMA_MISSING_WORDS; w++) {
+    CHECK(header->missing[w] == 0);
+  }
   printf("ok\n");
   return 0;
 }

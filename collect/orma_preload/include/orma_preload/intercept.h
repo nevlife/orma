@@ -42,7 +42,9 @@ void orma_rclcpp_report_unbound(void);
 static inline uint64_t orma_stamp(const void * message)
 {
   uint64_t s = 0;
-  if (message != NULL) memcpy(&s, message, sizeof s);
+  if (message != NULL) {
+    memcpy(&s, message, sizeof s);
+  }
   return s;
 }
 

@@ -85,14 +85,18 @@ int main(int argc, char ** argv)
 {
   int threads = argc > 1 ? (int)strtol(argv[1], NULL, 10) : 1;
   int armed = argc > 2 && strcmp(argv[2], "armed") == 0;
-  if (argc > 3) first_cpu = (int)strtol(argv[3], NULL, 10);
+  if (argc > 3) {
+    first_cpu = (int)strtol(argv[3], NULL, 10);
+  }
   pthread_t drain;
   if (armed) {
     ros_trace_rcl_init(NULL);
     char pattern[64];
     snprintf(pattern, sizeof pattern, "/dev/shm/orma.%d.*", (int)getpid());
     glob_t g;
-    if (glob(pattern, 0, NULL, &g) != 0) return 1;
+    if (glob(pattern, 0, NULL, &g) != 0) {
+      return 1;
+    }
     int fd = open(g.gl_pathv[0], O_RDWR);
     header = mmap(NULL, lseek(fd, 0, SEEK_END), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     __atomic_store_n(&header->armed, 1, __ATOMIC_RELAXED);
@@ -102,12 +106,16 @@ int main(int argc, char ** argv)
   for (int r = 0; r < RUNS; r++) {
     pthread_t t[64];
     pthread_barrier_init(&start, NULL, (unsigned)threads);
-    for (int i = 0; i < threads; i++) pthread_create(&t[i], NULL, worker, (void *)(intptr_t)i);
+    for (int i = 0; i < threads; i++) {
+      pthread_create(&t[i], NULL, worker, (void *)(intptr_t)i);
+    }
     uint64_t slowest = 0;
     for (int i = 0; i < threads; i++) {
       void * ns;
       pthread_join(t[i], &ns);
-      if ((uint64_t)(uintptr_t)ns > slowest) slowest = (uint64_t)(uintptr_t)ns;
+      if ((uint64_t)(uintptr_t)ns > slowest) {
+        slowest = (uint64_t)(uintptr_t)ns;
+      }
     }
     pthread_barrier_destroy(&start);
     runs[r] = (double)slowest / PAIRS;

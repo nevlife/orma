@@ -29,7 +29,9 @@ static inline __attribute__((always_inline)) void entered(
   uint16_t src, uint64_t key, uint32_t entry)
 {
   struct orma_thread * t = orma_thread();
-  if (t != NULL) orma_push(t, src, key, entry, 0);
+  if (t != NULL) {
+    orma_push(t, src, key, entry, 0);
+  }
 }
 
 static inline __attribute__((always_inline)) void leaving(
@@ -37,7 +39,9 @@ static inline __attribute__((always_inline)) void leaving(
 {
   struct orma_thread * t = orma_thread();
   uint64_t t0;
-  if (t != NULL) orma_pop(t, src, key, entry, &t0);
+  if (t != NULL) {
+    orma_pop(t, src, key, entry, &t0);
+  }
 }
 
 #define CHECK(name, type) \

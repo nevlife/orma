@@ -58,7 +58,9 @@ static void dump(uint32_t i, orma_thread_slot * s, uint32_t state)
 {
   const orma_table_entry * t = (const orma_table_entry *)(s + 1);
   for (uint32_t k = 0; k < header->table_entries; k++) {
-    if (__atomic_load_n(&t[k].kind, __ATOMIC_ACQUIRE) == 0) continue;
+    if (__atomic_load_n(&t[k].kind, __ATOMIC_ACQUIRE) == 0) {
+      continue;
+    }
     printf(
       "T %u %u %u %u %u %u %llu %llu %llu %llu\n", i, s->generation, s->tid, t[k].kind, t[k].src,
       t[k].entry, (unsigned long long)t[k].key, (unsigned long long)t[k].count,
@@ -75,7 +77,9 @@ static void pass(void)
   for (uint32_t i = 0; i < header->n_threads; i++) {
     orma_thread_slot * s = slot_at(i);
     uint32_t state = __atomic_load_n(&s->state, __ATOMIC_ACQUIRE);
-    if (state == ORMA_THREAD_FREE) continue;
+    if (state == ORMA_THREAD_FREE) {
+      continue;
+    }
     drain(i, s);
     if (state == ORMA_THREAD_EXITED) {
       dump(i, s, state);
@@ -86,21 +90,31 @@ static void pass(void)
 
 int main(int argc, char ** argv)
 {
-  if (argc != 2) return 2;
+  if (argc != 2) {
+    return 2;
+  }
   char pattern[64];
   snprintf(pattern, sizeof pattern, "/dev/shm/orma.%s.*", argv[1]);
   glob_t g = {0};
   for (int tries = 0; glob(pattern, 0, NULL, &g) != 0; tries++) {
-    if (tries == 20000) return 3;
+    if (tries == 20000) {
+      return 3;
+    }
     usleep(500);
   }
   int fd = open(g.gl_pathv[0], O_RDWR | O_NOFOLLOW | O_CLOEXEC);
   struct stat st;
-  if (fd < 0 || lock(fd, F_OFD_SETLK, F_WRLCK, ORMA_LOCK_READER) != 0) return 4;
+  if (fd < 0 || lock(fd, F_OFD_SETLK, F_WRLCK, ORMA_LOCK_READER) != 0) {
+    return 4;
+  }
   // The writer sizes the file, takes its lock, then writes the magic last.
-  while (fstat(fd, &st) == 0 && st.st_size == 0) usleep(100);
+  while (fstat(fd, &st) == 0 && st.st_size == 0) {
+    usleep(100);
+  }
   header = mmap(NULL, (size_t)st.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-  while (__atomic_load_n(&header->magic, __ATOMIC_ACQUIRE) != ORMA_SHM_MAGIC) usleep(100);
+  while (__atomic_load_n(&header->magic, __ATOMIC_ACQUIRE) != ORMA_SHM_MAGIC) {
+    usleep(100);
+  }
   if ((size_t)st.st_size != header->header_size + (size_t)header->n_threads * header->thread_size) {
     return 5;
   }
@@ -115,7 +129,9 @@ int main(int argc, char ** argv)
   pass();
   for (uint32_t i = 0; i < header->n_threads; i++) {
     orma_thread_slot * s = slot_at(i);
-    if (s->state != ORMA_THREAD_FREE) dump(i, s, s->state);
+    if (s->state != ORMA_THREAD_FREE) {
+      dump(i, s, s->state);
+    }
   }
   printf(
     "H %llu %llx %llx %llx %llx\n", (unsigned long long)header->threads_overflow,

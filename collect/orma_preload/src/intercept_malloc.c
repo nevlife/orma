@@ -32,8 +32,12 @@ static __thread int resolving __attribute__((tls_model("initial-exec")));
 
 static int resolved(void)
 {
-  if (__atomic_load_n(&next.ready, __ATOMIC_ACQUIRE)) return 1;
-  if (resolving) return 0;
+  if (__atomic_load_n(&next.ready, __ATOMIC_ACQUIRE)) {
+    return 1;
+  }
+  if (resolving) {
+    return 0;
+  }
   resolving = 1;
   next.malloc = dlsym(RTLD_NEXT, "malloc");
   next.calloc = dlsym(RTLD_NEXT, "calloc");
@@ -48,30 +52,40 @@ static int resolved(void)
 
 static void * allocated(void * p)
 {
-  if (p != NULL && orma_backend_malloc_on()) orma_backend_alloc(malloc_usable_size(p));
+  if (p != NULL && orma_backend_malloc_on()) {
+    orma_backend_alloc(malloc_usable_size(p));
+  }
   return p;
 }
 
 static void releasing(void * p)
 {
-  if (p != NULL && orma_backend_malloc_on()) orma_backend_free(malloc_usable_size(p));
+  if (p != NULL && orma_backend_malloc_on()) {
+    orma_backend_free(malloc_usable_size(p));
+  }
 }
 
 ORMA_EXPORT void * malloc(size_t size)
 {
-  if (!resolved()) return __libc_malloc(size);
+  if (!resolved()) {
+    return __libc_malloc(size);
+  }
   return allocated(next.malloc(size));
 }
 
 ORMA_EXPORT void * calloc(size_t n, size_t size)
 {
-  if (!resolved()) return __libc_calloc(n, size);
+  if (!resolved()) {
+    return __libc_calloc(n, size);
+  }
   return allocated(next.calloc(n, size));
 }
 
 ORMA_EXPORT void * realloc(void * p, size_t size)
 {
-  if (!resolved()) return __libc_realloc(p, size);
+  if (!resolved()) {
+    return __libc_realloc(p, size);
+  }
   releasing(p);
   return allocated(next.realloc(p, size));
 }
@@ -93,12 +107,16 @@ ORMA_EXPORT int posix_memalign(void ** out, size_t alignment, size_t size)
     return *out != NULL ? 0 : ENOMEM;
   }
   int ret = next.posix_memalign(out, alignment, size);
-  if (ret == 0) allocated(*out);
+  if (ret == 0) {
+    allocated(*out);
+  }
   return ret;
 }
 
 ORMA_EXPORT void * aligned_alloc(size_t alignment, size_t size)
 {
-  if (!resolved()) return __libc_memalign(alignment, size);
+  if (!resolved()) {
+    return __libc_memalign(alignment, size);
+  }
   return allocated(next.aligned_alloc(alignment, size));
 }

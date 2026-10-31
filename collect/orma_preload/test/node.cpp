@@ -23,7 +23,7 @@ constexpr int T1 = 100;
 constexpr int T2 = 50;
 constexpr int SRV = 20;
 
-int main(int argc, char ** argv)
+auto main(int argc, char ** argv) -> int
 {
   rclcpp::init(argc, argv);
   std::string go;
@@ -48,8 +48,12 @@ int main(int argc, char ** argv)
     h.stamp.nanosec = 7;
     t1++;
     pub->publish(h);
-    while (sub < t1) eb.spin_once(100ms);
-    if (t1 == T1) timer1->cancel();
+    while (sub < t1) {
+      eb.spin_once(100ms);
+    }
+    if (t1 == T1) {
+      timer1->cancel();
+    }
   });
   auto service = a->create_service<Trigger>(
     "/orma_test/trigger", [&srv](Trigger::Request::SharedPtr, Trigger::Response::SharedPtr res) {
@@ -60,13 +64,19 @@ int main(int argc, char ** argv)
 
   rclcpp::TimerBase::SharedPtr timer2;
   timer2 = c->create_wall_timer(3ms, [&]() {
-    if (++t2 == T2) timer2->cancel();
+    if (++t2 == T2) {
+      timer2->cancel();
+    }
   });
   std::thread other([&]() {
-    while (t2 < T2) ec.spin_once(100ms);
+    while (t2 < T2) {
+      ec.spin_once(100ms);
+    }
   });
 
-  while (t1 < T1) ea.spin_once(100ms);
+  while (t1 < T1) {
+    ea.spin_once(100ms);
+  }
   while (!client->wait_for_service(100ms)) {
   }
   for (int i = 0; i < SRV; i++) {

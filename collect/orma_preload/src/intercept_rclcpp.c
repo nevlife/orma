@@ -26,8 +26,12 @@ static void emit_cxx(uint16_t event, enum arg_kind kind, int index, const uintpt
     return;
   }
   orma_ev_rclcpp_object ev = {.object = a[0]};
-  if (kind == ARG_VALUE) ev.arg = a[index];
-  if (kind == ARG_DEREF) ev.arg = *(const uint64_t *)a[index];
+  if (kind == ARG_VALUE) {
+    ev.arg = a[index];
+  }
+  if (kind == ARG_DEREF) {
+    ev.arg = *(const uint64_t *)a[index];
+  }
   switch (event) {
     case ORMA_EV_RCLCPP_PUBLISHER_BASE:
       orma_emit_rclcpp_publisher_base(&ev);

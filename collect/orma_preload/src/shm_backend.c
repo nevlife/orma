@@ -182,14 +182,18 @@ static inline __attribute__((always_inline)) void callback_start(
   uint64_t executor)
 {
   struct orma_thread * t = orma_thread();
-  if (t == NULL) return;
+  if (t == NULL) {
+    return;
+  }
   uint64_t ts = now();
   const struct orma_wake * w = &t->wake[src];
   if (w->t != 0 && w->depth == t->n + t->untracked && w->executor == executor) {
     table_add(t, ORMA_AGG_DISPATCH, src, entry, key, ts - w->t);
   }
   orma_push(t, src, key, entry, ts);
-  if (armed()) ring_put(t, event, ts, ev, size, NULL, 0);
+  if (armed()) {
+    ring_put(t, event, ts, ev, size, NULL, 0);
+  }
 }
 
 // A flux pass that delivered nothing is not counted as a callback.
@@ -198,35 +202,49 @@ static inline __attribute__((always_inline)) void callback_end(
   uint16_t src, uint64_t key, uint32_t entry, bool counted)
 {
   struct orma_thread * t = orma_thread();
-  if (t == NULL) return;
+  if (t == NULL) {
+    return;
+  }
   uint64_t ts = now();
   uint64_t t0;
   if (orma_pop(t, src, key, entry, &t0) && counted) {
     table_add(t, ORMA_AGG_CALLBACK, src, entry, key, ts - t0);
   }
-  if (armed()) ring_put(t, event, ts, ev, size, strs, n_strs);
+  if (armed()) {
+    ring_put(t, event, ts, ev, size, strs, n_strs);
+  }
 }
 
 static void wait_enter(uint16_t event, const void * ev, uint32_t size, uint16_t src)
 {
   struct orma_thread * t = orma_thread();
-  if (t == NULL) return;
+  if (t == NULL) {
+    return;
+  }
   uint64_t ts = now();
   t->wait_start[src] = ts;
   t->wake[src].t = 0;
-  if (armed()) ring_put(t, event, ts, ev, size, NULL, 0);
+  if (armed()) {
+    ring_put(t, event, ts, ev, size, NULL, 0);
+  }
 }
 
 static void wait_exit(
   uint16_t event, const void * ev, uint32_t size, uint16_t src, uint64_t key, uint64_t executor)
 {
   struct orma_thread * t = orma_thread();
-  if (t == NULL) return;
+  if (t == NULL) {
+    return;
+  }
   uint64_t ts = now();
-  if (t->wait_start[src] != 0) table_add(t, ORMA_AGG_WAIT, src, 0, key, ts - t->wait_start[src]);
+  if (t->wait_start[src] != 0) {
+    table_add(t, ORMA_AGG_WAIT, src, 0, key, ts - t->wait_start[src]);
+  }
   t->wait_start[src] = 0;
   t->wake[src] = (struct orma_wake){.t = ts, .executor = executor, .depth = t->n + t->untracked};
-  if (armed()) ring_put(t, event, ts, ev, size, NULL, 0);
+  if (armed()) {
+    ring_put(t, event, ts, ev, size, NULL, 0);
+  }
 }
 
 void orma_emit_callback_start(const orma_ev_callback_start * ev)
@@ -402,9 +420,13 @@ bool orma_backend_dds_on(void)
 // Charged to the innermost running callback, key 0 outside one (design 15.3).
 static void memory(uint16_t kind, size_t bytes)
 {
-  if (orma_self.busy) return;
+  if (orma_self.busy) {
+    return;
+  }
   struct orma_thread * t = orma_thread();
-  if (t == NULL) return;
+  if (t == NULL) {
+    return;
+  }
   const struct orma_frame * top = t->n > 0 ? &t->stack[t->n - 1] : NULL;
   if (top != NULL) {
     table_add(t, kind, top->src, top->entry, top->key, bytes);

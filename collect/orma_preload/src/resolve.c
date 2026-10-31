@@ -21,8 +21,12 @@ static int collect(struct dl_phdr_info * info, size_t size, void * arg)
 {
   (void)size;
   struct objects * o = arg;
-  if (info->dlpi_name[0] == '\0' || o->seen++ < o->skip) return 0;
-  if (o->n == CHUNK) return 1;
+  if (info->dlpi_name[0] == '\0' || o->seen++ < o->skip) {
+    return 0;
+  }
+  if (o->n == CHUNK) {
+    return 1;
+  }
   o->names[o->n++] = info->dlpi_name;
   return 0;
 }
@@ -30,7 +34,9 @@ static int collect(struct dl_phdr_info * info, size_t size, void * arg)
 static void * lookup(const char * lib, const char * name)
 {
   void * handle = dlopen(lib, RTLD_LAZY | RTLD_NOLOAD);
-  if (handle == NULL) return NULL;
+  if (handle == NULL) {
+    return NULL;
+  }
   void * f = dlsym(handle, name);
   dlclose(handle);
   return f;
@@ -52,9 +58,13 @@ static void * search_loaded(const char * name)
     for (int i = 0; i < o.n; i++) {
       void * f = lookup(o.names[i], name);
       Dl_info at;
-      if (f != NULL && dladdr(f, &at) != 0 && lookup(at.dli_fname, "orma_shim") == NULL) return f;
+      if (f != NULL && dladdr(f, &at) != 0 && lookup(at.dli_fname, "orma_shim") == NULL) {
+        return f;
+      }
     }
-    if (o.n < CHUNK) return NULL;
+    if (o.n < CHUNK) {
+      return NULL;
+    }
   }
 }
 
@@ -69,7 +79,9 @@ __attribute__((constructor)) static void bind_loaded(void)
 {
   for (const struct orma_next * e = __start_orma_next; e < __stop_orma_next; e++) {
     void * f = dlsym(RTLD_NEXT, e->name);
-    if (f != NULL) __atomic_store_n(e->cache, f, __ATOMIC_RELEASE);
+    if (f != NULL) {
+      __atomic_store_n(e->cache, f, __ATOMIC_RELEASE);
+    }
   }
 }
 
@@ -82,7 +94,9 @@ void * orma_find(const char * name)
 void * orma_resolve(void ** cache, const char * name, const char * lib, uint16_t event)
 {
   void * f = lib != NULL ? dlsym(RTLD_NEXT, name) : orma_find(name);
-  if (f == NULL && lib != NULL) f = lookup(lib, name);
+  if (f == NULL && lib != NULL) {
+    f = lookup(lib, name);
+  }
   if (f == NULL) {
     orma_backend_missing(event);
     f = ORMA_MISSING;
@@ -90,6 +104,8 @@ void * orma_resolve(void ** cache, const char * name, const char * lib, uint16_t
   __atomic_store_n(cache, f, __ATOMIC_RELEASE);
 
   static int reported;
-  if (!__atomic_exchange_n(&reported, 1, __ATOMIC_RELAXED)) orma_rclcpp_report_unbound();
+  if (!__atomic_exchange_n(&reported, 1, __ATOMIC_RELAXED)) {
+    orma_rclcpp_report_unbound();
+  }
   return f;
 }

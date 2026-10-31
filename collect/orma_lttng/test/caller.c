@@ -66,11 +66,15 @@ static uint32_t * own_options(void)
   char pattern[64];
   snprintf(pattern, sizeof pattern, "/dev/shm/orma.%d.*.lttng", (int)getpid());
   glob_t g;
-  if (glob(pattern, 0, NULL, &g) != 0) exit(1);
+  if (glob(pattern, 0, NULL, &g) != 0) {
+    exit(1);
+  }
   int fd = open(g.gl_pathv[0], O_RDWR | O_CLOEXEC);
   globfree(&g);
   orma_shm_header * h = mmap(NULL, ORMA_SHM_HEADER_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-  if (h == MAP_FAILED) exit(1);
+  if (h == MAP_FAILED) {
+    exit(1);
+  }
   return &h->options;
 }
 
@@ -87,7 +91,9 @@ static void collect(const char * cuda_stub, const char * dds_stub)
   static const char inner[] = "inner";
   void * cuda = dlopen(cuda_stub, RTLD_NOW | RTLD_LOCAL);
   void * dds = dlopen(dds_stub, RTLD_NOW | RTLD_GLOBAL);
-  if (cuda == NULL || dds == NULL) exit(1);
+  if (cuda == NULL || dds == NULL) {
+    exit(1);
+  }
   orma_cu_get_proc_address gpa_v1 = (orma_cu_get_proc_address)dlsym(cuda, "cuGetProcAddress");
   orma_cu_get_proc_address_v2 gpa = NULL;
   gpa_v1("cuGetProcAddress", (void **)&gpa, 12000, 0);

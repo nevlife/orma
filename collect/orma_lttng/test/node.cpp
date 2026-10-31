@@ -10,7 +10,7 @@
 
 using namespace std::chrono_literals;
 
-int main(int argc, char ** argv)
+auto main(int argc, char ** argv) -> int
 {
   rclcpp::init(argc, argv);
   const std::string role = argc > 1 ? argv[1] : "sub";
@@ -23,7 +23,9 @@ int main(int argc, char ** argv)
   if (role == "pub") {
     pub = node->create_publisher<std_msgs::msg::Header>("/orma_lttng", 10);
     timer = node->create_wall_timer(5ms, [&]() {
-      if (left == 0 || node->now() < start) return;
+      if (left == 0 || node->now() < start) {
+        return;
+      }
       std_msgs::msg::Header h;
       h.stamp = node->now();
       pub->publish(h);

@@ -38,7 +38,9 @@ static uint64_t starttime(void)
   close(fd);
   buf[n] = '\0';
   char * p = strrchr(buf, ')');
-  for (int field = 3; field <= 22; field++) p = strchr(p + 1, ' ');
+  for (int field = 3; field <= 22; field++) {
+    p = strchr(p + 1, ' ');
+  }
   return strtoull(p + 1, NULL, 10);
 }
 
@@ -64,14 +66,18 @@ static void thread_exit(void * arg)
 {
   (void)arg;
   orma_thread_slot * s = orma_self.slot;
-  if (s == NULL || s == ORMA_SLOT_DEAD) return;
+  if (s == NULL || s == ORMA_SLOT_DEAD) {
+    return;
+  }
   orma_self.slot = ORMA_SLOT_DEAD;
   __atomic_store_n(&s->state, ORMA_THREAD_EXITED, __ATOMIC_RELEASE);
 }
 
 static void remove_file(void)
 {
-  if (proc.path[0] != '\0' && getpid() == proc.pid) unlink(proc.path);
+  if (proc.path[0] != '\0' && getpid() == proc.pid) {
+    unlink(proc.path);
+  }
 }
 
 // A child of fork without exec would otherwise write its parent's slots and, at exit, remove
@@ -144,7 +150,9 @@ static orma_shm_header * create(void)
 orma_shm_header * orma_file(void)
 {
   orma_shm_header * h = __atomic_load_n(&orma_header, __ATOMIC_ACQUIRE);
-  if (h != NULL || ORMA_LOAD(&failed)) return h;
+  if (h != NULL || ORMA_LOAD(&failed)) {
+    return h;
+  }
   pthread_mutex_lock(&creating);
   h = orma_header;
   if (h == NULL && !failed) {
@@ -170,7 +178,9 @@ static struct orma_thread * take(orma_thread_slot * s, bool reclaim)
   ORMA_STORE(&s->table_overflow, 0);
   ORMA_STORE(&s->depth_overflow, 0);
   ORMA_STORE(&s->ring_drops, 0);
-  if (reclaim) ORMA_STORE(&s->ring_tail, ORMA_LOAD(&s->ring_head));
+  if (reclaim) {
+    ORMA_STORE(&s->ring_tail, ORMA_LOAD(&s->ring_head));
+  }
   // The ring's pages, faulted in now rather than one shmem fault per page as the ring first
   // fills (64 for 256 KiB). Before 5.14 the kernel refuses the advice and they fault as before.
   uintptr_t page = (uintptr_t)sysconf(_SC_PAGESIZE);
@@ -189,7 +199,9 @@ static struct orma_thread * claim(orma_shm_header * h)
 {
   for (int pass = 0; pass < 2; pass++) {
     uint32_t from = pass == 0 ? ORMA_THREAD_FREE : ORMA_THREAD_EXITED;
-    if (pass == 1 && reader_present()) break;
+    if (pass == 1 && reader_present()) {
+      break;
+    }
     for (uint32_t i = 0; i < proc.n_threads; i++) {
       orma_thread_slot * s = slot_at(i);
       uint32_t state = from;
@@ -205,11 +217,15 @@ static struct orma_thread * claim(orma_shm_header * h)
 
 struct orma_thread * orma_thread_claim(void)
 {
-  if (orma_self.busy) return NULL;
+  if (orma_self.busy) {
+    return NULL;
+  }
   orma_self.busy = 1;
   orma_shm_header * h = orma_file();
   struct orma_thread * t = h != NULL ? claim(h) : NULL;
-  if (t == NULL) orma_self.slot = ORMA_SLOT_DEAD;
+  if (t == NULL) {
+    orma_self.slot = ORMA_SLOT_DEAD;
+  }
   orma_self.busy = 0;
   return t;
 }

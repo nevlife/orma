@@ -90,7 +90,9 @@ static const struct wrapper wrappers[] = {
 static void * wrapper_of(const char * name)
 {
   for (size_t i = 0; i < sizeof wrappers / sizeof wrappers[0]; i++) {
-    if (strcmp(wrappers[i].name, name) == 0) return wrappers[i].f;
+    if (strcmp(wrappers[i].name, name) == 0) {
+      return wrappers[i].f;
+    }
   }
   return NULL;
 }
@@ -104,16 +106,22 @@ static void handed_out(void ** pfn)
     pfn != NULL && *pfn != NULL && dladdr(*pfn, &at) != 0 && at.dli_saddr == *pfn &&
     at.dli_sname != NULL) {
     void * w = wrapper_of(at.dli_sname);
-    if (w != NULL) *pfn = w;
+    if (w != NULL) {
+      *pfn = w;
+    }
   }
 }
 
 static CUresult wrap_cuGetProcAddress(const char * symbol, void ** pfn, int version, uint64_t flags)
 {
   orma_cu_get_proc_address next = CUDA_NEXT(cuGetProcAddress);
-  if (next == NULL) return CUDA_ERROR_NOT_FOUND;
+  if (next == NULL) {
+    return CUDA_ERROR_NOT_FOUND;
+  }
   CUresult r = next(symbol, pfn, version, flags);
-  if (r == 0) handed_out(pfn);
+  if (r == 0) {
+    handed_out(pfn);
+  }
   return r;
 }
 
@@ -121,9 +129,13 @@ static CUresult wrap_cuGetProcAddress_v2(
   const char * symbol, void ** pfn, int version, uint64_t flags, int * status)
 {
   orma_cu_get_proc_address_v2 next = CUDA_NEXT(cuGetProcAddress_v2);
-  if (next == NULL) return CUDA_ERROR_NOT_FOUND;
+  if (next == NULL) {
+    return CUDA_ERROR_NOT_FOUND;
+  }
   CUresult r = next(symbol, pfn, version, flags, status);
-  if (r == 0) handed_out(pfn);
+  if (r == 0) {
+    handed_out(pfn);
+  }
   return r;
 }
 
