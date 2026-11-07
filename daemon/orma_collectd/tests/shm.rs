@@ -397,6 +397,29 @@ fn ring_drops_count_as_lost() {
 }
 
 #[test]
+fn what_the_ring_holds_at_stop_reaches_the_recording() {
+    let dir = scratch("stop");
+    let shm = writer(&dir);
+    let server = Server::start(&dir, config(&dir));
+    let mut c = server.client("orma");
+    c.request(ClientOp::Subscribe {
+        streams: vec![Stream::Window, Stream::EventLine],
+    })
+    .unwrap();
+    let slot = shm.claim(99).unwrap();
+    // A drain between the pushes and the stop would hide the loss, so several rounds.
+    for round in 0..20 {
+        let (id, rec) = c.start(pid_only(&dir, RecordMethod::Preload));
+        until(|| armed(&shm));
+        let pushed = (0..50)
+            .filter(|i| shm.push(slot, ORMA_EV_CALLBACK_START, *i, &callback_start(1), &[]))
+            .count() as u64;
+        c.stop(&id);
+        assert_eq!(meta(&rec).counts[&entity()].events, pushed, "round {round}");
+    }
+}
+
+#[test]
 fn exited_slots_are_freed_and_dead_files_removed() {
     let dir = scratch("dead");
     std::fs::create_dir_all(dir.join("shm")).unwrap();

@@ -501,7 +501,10 @@ impl Active {
     /// Whether records of `pid` that came by `from` belong here; `auto` settles on the first
     /// method that delivers.
     pub fn takes(&mut self, pid: u32, from: Method) -> bool {
-        if self.end.is_some() || !self.targets_pid(pid) {
+        // A recording that reached its end still takes what the sources hold: finishing drains
+        // them after `end` is set. One that cannot be written to takes nothing more.
+        let broken = matches!(self.end, Some((EndReason::Error | EndReason::DiskFloor, _)));
+        if broken || !self.targets_pid(pid) {
             return false;
         }
         if let Some(m) = self.method_of(pid) {
