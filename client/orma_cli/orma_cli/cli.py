@@ -624,6 +624,8 @@ def cmd_path(args):
         w, args.source, args.target, args.via, args.max_nodes, args.skip_node, args.skip_topic
     )
     if not paths:
+        if not complete:
+            raise OrmaError("search stopped before a path: narrow with --max-nodes or --skip-node")
         raise OrmaError(f"no path from {args.source} to {args.target}")
     for i, p in enumerate(paths, 1):
         print(f"{i}. {','.join(p['topics'])}")

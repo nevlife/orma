@@ -187,7 +187,19 @@ def find_paths(w, start, end, via=(), max_nodes=16, skip_nodes=(), skip_topics=(
             for subscriber in t["subscribers"]:
                 if publisher != subscriber and names.get(subscriber) not in skip_nodes:
                     edges.setdefault(publisher, []).append((t["id"], subscriber))
-    stack = [(n, (n,), ()) for n, name in names.items() if name == start]
+    # Hops to `end` from each node that reaches it, so the walk leaves dead ends at once.
+    behind = {}
+    for node, out in edges.items():
+        for _, following in out:
+            behind.setdefault(following, []).append(node)
+    hops = {n: 0 for n, name in names.items() if name == end}
+    level = list(hops)
+    while level:
+        reached = [n for node in level for n in behind.get(node, []) if n not in hops]
+        for n in reached:
+            hops.setdefault(n, hops[level[0]] + 1)
+        level = list(dict.fromkeys(reached))
+    stack = [(n, (n,), ()) for n, name in names.items() if name == start and n in hops]
     found = []
     complete = True
     for _ in range(MAX_STEPS):
@@ -211,11 +223,14 @@ def find_paths(w, start, end, via=(), max_nodes=16, skip_nodes=(), skip_topics=(
                 }
             )
             continue
-        if len(nodes) == max_nodes:
-            continue
-        for topic, following in edges.get(node, []):
-            if following in names and following not in nodes:
-                stack.append((following, (*nodes, following), (*topics, topic)))
+        ahead = [
+            (topic, n)
+            for topic, n in edges.get(node, [])
+            if n in hops and n not in nodes and len(nodes) + hops[n] < max_nodes
+        ]
+        # Nearest last: the stack then finds the short ways first.
+        for topic, following in sorted(ahead, key=lambda e: -hops[e[1]]):
+            stack.append((following, (*nodes, following), (*topics, topic)))
     else:
         complete = complete and not stack
     found.sort(key=lambda p: (p["unknown"], len(p["nodes"]), p["topics"]))

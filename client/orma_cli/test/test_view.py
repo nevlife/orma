@@ -199,3 +199,23 @@ def test_a_cycle_ends_and_too_many_paths_say_so(monkeypatch):
     paths, complete = view.find_paths(graph(), "/cam", "/ctl")
     assert len(paths) == 1
     assert not complete
+
+
+def test_a_long_way_is_found_past_a_large_dead_end(monkeypatch):
+    # /cam also feeds a ladder that never reaches /ctl: its paths double each rung.
+    w = graph()
+    rungs = 40
+    for i in range(rungs):
+        w["nodes"] += [{"id": f"a{i}", "fqn": f"/a{i}"}, {"id": f"b{i}", "fqn": f"/b{i}"}]
+    ids = [f"n:{i}" for i in range(5)]
+    w["topics"].append(
+        {"id": "s", "name": "/s", "publishers": [ids[0]], "subscribers": ["a0", "b0"]}
+    )
+    for i in range(rungs - 1):
+        out = [f"a{i + 1}", f"b{i + 1}"]
+        for n in (f"a{i}", f"b{i}"):
+            w["topics"].append({"id": n, "name": f"/{n}", "publishers": [n], "subscribers": out})
+    monkeypatch.setattr(view, "MAX_STEPS", 1000)
+    paths, complete = view.find_paths(w, "/cam", "/ctl", max_nodes=64)
+    assert complete
+    assert len(paths) == 2
