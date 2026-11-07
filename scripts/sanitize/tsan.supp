@@ -1,0 +1,3 @@
+# NVML initialises itself without a lock of its own that TSan can see; only the tests start two
+# servers in one process.
+race:nvmlInitWithFlags
