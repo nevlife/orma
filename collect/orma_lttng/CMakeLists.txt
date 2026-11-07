@@ -39,7 +39,7 @@ set_target_properties(orma_lttng PROPERTIES
 target_include_directories(orma_lttng PRIVATE include)
 target_compile_definitions(orma_lttng PRIVATE
   ORMA_ROS2_PROVIDER=${ros2_provider} ORMA_TRACETOOLS_VERSION="${tracetools_VERSION}")
-target_compile_options(orma_lttng PRIVATE -Wall -Wextra -Wshadow -Wstrict-prototypes)
+target_compile_options(orma_lttng PRIVATE -Wall -Wextra -Werror -Wshadow -Wstrict-prototypes)
 target_link_libraries(orma_lttng PRIVATE
   -Wl,--whole-archive orma_preload::orma_intercept -Wl,--no-whole-archive orma_preload::orma_slots
   PkgConfig::LTTNG_UST ${CMAKE_DL_LIBS} -pthread -Wl,-z,defs -Wl,-z,now)

@@ -31,7 +31,7 @@ add_custom_target(orma_preload_symbols DEPENDS
   ${generated}/orma_preload/orma_tracepoints.h ${generated}/orma_preload/orma_rclcpp_symbols.h)
 
 # The shim runs on threads whose stack size it does not know (DDS, SDK): frames stay small.
-set(warnings -Wall -Wextra -Wshadow -Wstrict-prototypes -Wframe-larger-than=2048
+set(warnings -Wall -Wextra -Werror -Wshadow -Wstrict-prototypes -Wframe-larger-than=2048
   -Wstack-usage=2048)
 # Every caught call passes through these functions; the canary in each costs 3 to 5 ns per
 # callback pair (design 8.1), and none of them copies into a stack buffer.

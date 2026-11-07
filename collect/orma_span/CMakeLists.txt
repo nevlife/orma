@@ -14,7 +14,7 @@ add_library(orma_span SHARED src/span.c)
 set_target_properties(orma_span PROPERTIES C_STANDARD 17 C_VISIBILITY_PRESET hidden)
 target_include_directories(orma_span PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include/orma_span>)
-target_compile_options(orma_span PRIVATE -Wall -Wextra -Wstrict-prototypes)
+target_compile_options(orma_span PRIVATE -Wall -Wextra -Werror -Wstrict-prototypes)
 check_c_compiler_flag(-fno-ipa-icf has_no_ipa_icf)
 if(has_no_ipa_icf)
   target_compile_options(orma_span PRIVATE -fno-ipa-icf)
