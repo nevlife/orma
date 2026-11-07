@@ -42,7 +42,7 @@ impl Sel {
         };
     }
 
-    /// An empty list detaches every process of the set (WP3a's reading of 12.8).
+    /// An empty list detaches every process of the set (`WP3a`'s reading of 12.8).
     pub fn detach(&mut self, pids: &[u32]) {
         if pids.is_empty() {
             *self = Sel::None;

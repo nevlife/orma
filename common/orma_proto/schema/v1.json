@@ -861,7 +861,7 @@
           ]
         },
         "pss": {
-          "description": "Read each process's PSS: a walk of its page tables under its mmap_lock. Proto 1.7.",
+          "description": "Read each process's PSS: a walk of its page tables under its `mmap_lock`. Proto 1.7.",
           "type": [
             "boolean",
             "null"
@@ -1216,7 +1216,7 @@
       "type": "string"
     },
     "ExecutorProbes": {
-      "description": "The uprobes on a process's executor: `rcl_wait` and the rclcpp executor tracepoints, and\nwith `rcl_executor` also the anchors of the rcl_executor core it maps.",
+      "description": "The uprobes on a process's executor: `rcl_wait` and the rclcpp executor tracepoints, and\nwith `rcl_executor` also the anchors of the `rcl_executor` core it maps.",
       "enum": [
         "stock",
         "rcl_executor"
@@ -2599,7 +2599,7 @@
               "type": "null"
             }
           ],
-          "description": "LD_PRELOAD processes only (design 13.2)."
+          "description": "`LD_PRELOAD` processes only (design 13.2)."
         },
         "pid": {
           "format": "uint32",
@@ -2839,7 +2839,7 @@
           "type": "array"
         },
         "realtime_steps": {
-          "description": "When CLOCK_REALTIME stepped during the recording, monotonic ns. Wall-clock ages and\ntimestamp pairings near these are not to be trusted. Proto 1.7.",
+          "description": "When `CLOCK_REALTIME` stepped during the recording, monotonic ns. Wall-clock ages and\ntimestamp pairings near these are not to be trusted. Proto 1.7.",
           "items": {
             "format": "uint64",
             "minimum": 0,

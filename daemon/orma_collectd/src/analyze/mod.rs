@@ -246,9 +246,10 @@ pub fn run(dir: &Path, chains: Vec<ChainSpec>) -> Result<Report, String> {
     let every_pid_uprobe = meta.options.method == Some(RecordMethod::Uprobe);
 
     let o = &meta.options;
-    let chains = match chains.is_empty() {
-        true => o.chains.clone().unwrap_or_default(),
-        false => chains,
+    let chains = if chains.is_empty() {
+        o.chains.clone().unwrap_or_default()
+    } else {
+        chains
     };
     chain::check(&chains)?;
     let latest = chain::latest_nodes(o.latest_nodes.as_deref().unwrap_or_default())?;
@@ -256,9 +257,10 @@ pub fn run(dir: &Path, chains: Vec<ChainSpec>) -> Result<Report, String> {
     for p in &meta.ros {
         model.set_starttime(p.pid, p.starttime);
     }
-    let futex = match o.futex == Some(true) {
-        true => Sel::All,
-        false => Sel::None,
+    let futex = if o.futex == Some(true) {
+        Sel::All
+    } else {
+        Sel::None
     };
     model.set_probes(o.gpu == Some(true), futex);
     let has_chains = !chains.is_empty();

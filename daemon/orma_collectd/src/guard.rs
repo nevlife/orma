@@ -18,7 +18,7 @@ use crate::sys;
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Cleanup {
     pub lttng_home: PathBuf,
-    /// LTTng sessions to destroy.
+    /// `LTTng` sessions to destroy.
     pub sessions: Vec<String>,
     /// Shared memory files whose `armed` to lower.
     pub armed: Vec<PathBuf>,
@@ -77,7 +77,7 @@ impl Guard {
     }
 }
 
-/// `orma-<pid>-<starttime>-<n>`, the name of orma-collectd's `n`th LTTng session.
+/// `orma-<pid>-<starttime>-<n>`, the name of orma-collectd's `n`th `LTTng` session.
 pub fn session_name(n: u64) -> String {
     let pid = sys::pid();
     let starttime = sys::starttime(pid).expect("this process exists");

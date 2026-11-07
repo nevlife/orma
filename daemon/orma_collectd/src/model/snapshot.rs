@@ -153,16 +153,17 @@ impl Model {
         }
     }
 
-    /// What turns a process's counts and callback times into the window's: its LTTng chunks
+    /// What turns a process's counts and callback times into the window's: its `LTTng` chunks
     /// cover their rotations rather than the window, whose length comes from ormad.
     fn scale(&self, pid: u32, window_ns: u64) -> f64 {
         let lttng = self
             .procs
             .get(&pid)
             .is_some_and(|p| p.methods.contains(&Method::Lttng));
-        match lttng && self.lttng_span > 0 {
-            true => window_ns as f64 / self.lttng_span as f64,
-            false => 1.0,
+        if lttng && self.lttng_span > 0 {
+            window_ns as f64 / self.lttng_span as f64
+        } else {
+            1.0
         }
     }
 
@@ -267,7 +268,7 @@ impl Model {
                 tid,
                 name: stat.as_ref().map(|s| s.comm.clone()).unwrap_or_default(),
                 policy: stat.as_ref().map_or("unknown", |s| s.policy()).to_string(),
-                prio: stat.as_ref().map_or(0, |s| s.prio()),
+                prio: stat.as_ref().map_or(0, super::procfs::Stat::prio),
                 cpu_pct: cpu.map(|c| pct(c, window_ns)),
                 in_callback_cpu_pct: in_cb.map(|c| pct(c, window_ns)),
                 cpu_wait,
@@ -367,9 +368,10 @@ impl Model {
                 fqn: n.fqn.clone(),
                 pid: n.pid,
                 cpu_pct: measured.then(|| pct(node_cpu.get(&ix).copied().unwrap_or(0), window_ns)),
-                cpu_source: match self.sched.contains(n.pid) {
-                    true => CpuSource::Sched,
-                    false => CpuSource::WallBound,
+                cpu_source: if self.sched.contains(n.pid) {
+                    CpuSource::Sched
+                } else {
+                    CpuSource::WallBound
                 },
                 busy_pct: measured.then(|| busy * 100.0 / window_ns as f64),
                 cb_hz: measured.then(|| count * 1e9 / window_ns as f64),

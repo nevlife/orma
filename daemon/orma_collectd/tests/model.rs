@@ -1100,7 +1100,7 @@ fn ormad_reads_the_executor_for_an_unnamed_callback_only_for_a_while() {
     assert!(h.m.unowned().is_empty());
 }
 
-/// The live model takes the uprobe and LD_PRELOAD methods' callback times from their aggregate
+/// The live model takes the uprobe and `LD_PRELOAD` methods' callback times from their aggregate
 /// tables and leaves the records to pairing; it reads `/proc` of a real process (this one).
 #[test]
 fn live_model_takes_callback_times_from_aggregates() {
@@ -1494,7 +1494,7 @@ fn one_name_at_two_call_sites_is_two_rows() {
     h.end(700, 700, T0 + 7 * MS, 0x51);
     let w = h.window(T0 + W);
     let mut maxes: Vec<u64> = w.spans.iter().map(|s| s.duration.max_ns).collect();
-    maxes.sort();
+    maxes.sort_unstable();
     assert_eq!(maxes, [MS, 3 * MS]);
 }
 
@@ -1591,7 +1591,10 @@ fn latest_links_only_where_the_stamp_rule_does_not() {
 fn chain(name: &str, topics: &[&str], mode: ChainMode) -> ChainSpec {
     ChainSpec {
         name: name.into(),
-        topics: topics.iter().map(|t| t.to_string()).collect(),
+        topics: topics
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect(),
         mode,
     }
 }

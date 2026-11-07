@@ -85,7 +85,7 @@ pub struct Context<'a> {
     pub host: Host,
     pub ormad: bool,
     pub preload: &'a dyn Fn(u32) -> bool,
-    /// Whether a pid is registered with orma's LTTng session daemon; `None` without LTTng.
+    /// Whether a pid is registered with orma's `LTTng` session daemon; `None` without `LTTng`.
     pub lttng: Option<&'a dyn Fn(u32) -> bool>,
     pub mono_ns: u64,
     pub real_ns: u64,
@@ -117,7 +117,7 @@ pub struct Active {
     meta_at: u64,
     disk_at: u64,
     open_gap: Option<Gap>,
-    /// Bytes of the LTTng chunks copied into `ctf/`.
+    /// Bytes of the `LTTng` chunks copied into `ctf/`.
     ctf_bytes: u64,
     /// Set when the recording should end; the server finalizes it on its next tick.
     pub end: Option<(EndReason, Option<String>)>,
@@ -472,7 +472,7 @@ impl Active {
             }
     }
 
-    /// Whether this recording takes `pid`'s LTTng events, by choice or as settled for it.
+    /// Whether this recording takes `pid`'s `LTTng` events, by choice or as settled for it.
     pub fn wants_lttng(&self, pid: u32) -> bool {
         self.end.is_none()
             && self.targets_pid(pid)
@@ -555,13 +555,13 @@ impl Active {
         }
     }
 
-    /// The `ctf/` directory LTTng chunks go to: an events recording of method lttng.
+    /// The `ctf/` directory `LTTng` chunks go to: an events recording of method lttng.
     pub fn ctf_dir(&self) -> Option<PathBuf> {
         (self.method() == RecordMethod::Lttng && self.kind() == RecordKind::Events)
             .then(|| self.dir.join(CTF))
     }
 
-    /// An LTTng chunk of `bytes` went into `ctf/`.
+    /// An `LTTng` chunk of `bytes` went into `ctf/`.
     pub fn add_ctf(&mut self, bytes: u64) {
         self.ctf_bytes += bytes;
     }

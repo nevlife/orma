@@ -255,7 +255,7 @@ impl Core {
         }
     }
 
-    /// Marks recordings a dead orma-collectd left as truncated, destroys its LTTng sessions,
+    /// Marks recordings a dead orma-collectd left as truncated, destroys its `LTTng` sessions,
     /// and opens the shared memory files, which lowers their `armed`.
     pub(super) fn startup(&mut self) {
         let list = std::fs::read_to_string(self.config.active_list()).unwrap_or_default();
@@ -600,7 +600,7 @@ impl Core {
     }
 
     /// The processes whose hot events reach the model: ormad's `uprobe` ones while it is there,
-    /// and the shared memory files that are armed or that the LTTng source takes.
+    /// and the shared memory files that are armed or that the `LTTng` source takes.
     fn hot(&self, uprobe: &Sel) -> Sel {
         let mut hot = match self.ormad {
             OrmadLink::Connected => uprobe.clone(),
@@ -610,9 +610,12 @@ impl Core {
             self.shm
                 .files
                 .values()
-                .filter(|f| match f.preload() {
-                    true => f.armed,
-                    false => self.lttng_takes(f.pid),
+                .filter(|f| {
+                    if f.preload() {
+                        f.armed
+                    } else {
+                        self.lttng_takes(f.pid)
+                    }
                 })
                 .map(|f| f.pid),
         ));
@@ -646,8 +649,8 @@ impl Core {
         }
     }
 
-    /// A new LTTng session name orma-collectd owns: the guard destroys it if orma-collectd dies,
-    /// and `shutdown` destroys it. For the LTTng source (WP5).
+    /// A new `LTTng` session name orma-collectd owns: the guard destroys it if orma-collectd dies,
+    /// and `shutdown` destroys it. For the `LTTng` source (WP5).
     pub fn own_lttng_session(&mut self) -> String {
         let name = guard::session_name(self.next_session);
         self.next_session += 1;
@@ -922,8 +925,8 @@ impl Core {
         self.lttng_rotate();
         if let Some(a) = &self.ormad_window {
             w.agent.ormad = a.usage.clone();
-            w.agent.bpf = a.bpf.clone();
-            w.agent.maps = a.maps.clone();
+            w.agent.bpf.clone_from(&a.bpf);
+            w.agent.maps.clone_from(&a.maps);
             w.agent
                 .probes_missing
                 .extend(a.probes_missing.iter().cloned());
@@ -1311,9 +1314,10 @@ impl Core {
     /// Asks ormad for its items over the selection; the reply waits for its answer.
     /// Without ormad, collectd's own items at once.
     fn selfcheck(&mut self, client: u64, id: u64, duration_s: f64) -> Option<ServerMessage> {
-        let pids = match self.selection.all {
-            true => Vec::new(),
-            false => self.selection.pids.clone(),
+        let pids = if self.selection.all {
+            Vec::new()
+        } else {
+            self.selection.pids.clone()
         };
         if let Some(ormad_id) = self.ormad_request(OrmadOp::Selfcheck { duration_s, pids }) {
             self.ormad_selfchecks.push(Selfcheck {

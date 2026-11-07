@@ -1,7 +1,7 @@
-//! The LD_PRELOAD source: finds the shim's files, holds the reader lock, arms them,
+//! The `LD_PRELOAD` source: finds the shim's files, holds the reader lock, arms them,
 //! drains the rings, takes table differences per window, and removes files of dead writers.
-//! liborma_lttng.so's files (backend 2) only lend their slots' `cur_cb` to ormad: their
-//! events come through the LTTng source.
+//! `liborma_lttng.so`'s files (backend 2) only lend their slots' `cur_cb` to ormad: their
+//! events come through the `LTTng` source.
 #![allow(unsafe_code)]
 
 use std::collections::BTreeMap;
@@ -30,7 +30,7 @@ fn lock_probe(file: &File, kind: i32, byte: u32, cmd: i32) -> io::Result<libc::f
     let mut fl: libc::flock = unsafe { std::mem::zeroed() };
     fl.l_type = kind as libc::c_short;
     fl.l_whence = libc::SEEK_SET as libc::c_short;
-    fl.l_start = byte as libc::off_t;
+    fl.l_start = libc::off_t::from(byte);
     fl.l_len = 1;
     // SAFETY: fl is a valid flock for the duration of the call.
     if unsafe { libc::fcntl(file.as_raw_fd(), cmd, &mut fl) } != 0 {
@@ -226,7 +226,7 @@ impl ShmFile {
             n_threads: h.n_threads as usize,
             thread_size,
             table_entries: h.table_entries as usize,
-            ring_bytes: h.ring_bytes as u64,
+            ring_bytes: u64::from(h.ring_bytes),
             prev: BTreeMap::new(),
             prev_drops: vec![0; h.n_threads as usize],
             generations: vec![0; h.n_threads as usize],
@@ -264,7 +264,7 @@ impl ShmFile {
         // SAFETY: in bounds; the ring protocol keeps the writer off the bytes between tail and
         // head, which are the only ones copied.
         unsafe {
-            std::ptr::copy_nonoverlapping(self.map.wrapping_add(at), out.as_mut_ptr(), out.len())
+            std::ptr::copy_nonoverlapping(self.map.wrapping_add(at), out.as_mut_ptr(), out.len());
         }
     }
 
@@ -308,7 +308,7 @@ impl ShmFile {
     }
 
     /// Whether the header's pid and starttime name a host process, and of the live slots' thread
-    /// ids, how many name a thread of it through NSpid: the container check of `selfcheck`.
+    /// ids, how many name a thread of it through `NSpid`: the container check of `selfcheck`.
     pub fn host_ids(&self) -> (bool, usize, usize) {
         let found = procfs::started_at(self.pid, self.starttime);
         let live: Vec<u32> = (0..self.n_threads)
@@ -322,7 +322,7 @@ impl ShmFile {
         (found, mapped, live.len())
     }
 
-    /// liborma_preload.so's file, whose rings and tables are a source.
+    /// `liborma_preload.so`'s file, whose rings and tables are a source.
     pub fn preload(&self) -> bool {
         self.backend == ORMA_BACKEND_SHM
     }
@@ -361,7 +361,7 @@ impl ShmFile {
             let mut word = [0u8; 4];
             self.copy(ring + pos as usize, &mut word);
             let event = u16::from_le_bytes([word[0], word[1]]);
-            let len = u16::from_le_bytes([word[2], word[3]]) as u64;
+            let len = u64::from(u16::from_le_bytes([word[2], word[3]]));
             if event == ORMA_EV_PAD {
                 if len != to_end {
                     return Err(format!("thread slot {slot}: PAD of {len} at {pos}"));
@@ -696,7 +696,7 @@ impl Shm {
     }
 
     /// Sets `armed` and `options` per file from `want`, which takes the pid and whether the file
-    /// is liborma_preload.so's (`None` lowers it).
+    /// is `liborma_preload.so`'s (`None` lowers it).
     pub fn arm(&mut self, want: &dyn Fn(u32, bool) -> Option<u32>) {
         for f in self.files.values_mut() {
             let w = want(f.pid, f.preload()).filter(|_| f.corrupt.is_none());
@@ -712,7 +712,7 @@ impl Shm {
             .collect()
     }
 
-    /// Whether `pid` writes liborma_preload.so's file.
+    /// Whether `pid` writes `liborma_preload.so`'s file.
     pub fn has_pid(&self, pid: u32) -> bool {
         self.files.values().any(|f| f.pid == pid && f.preload())
     }

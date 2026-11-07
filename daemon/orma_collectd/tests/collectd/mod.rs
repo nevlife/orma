@@ -1,4 +1,4 @@
-//! Helpers for WP3a's tests: an in-process orma-collectd with a counting model, and a client.
+//! Helpers for `WP3a`'s tests: an in-process orma-collectd with a counting model, and a client.
 #![allow(dead_code)]
 
 use std::collections::BTreeMap;
@@ -63,7 +63,7 @@ pub struct Seen {
     pub latest_nodes: Vec<String>,
 }
 
-/// An `Ingest` that only counts, the stand-in for WP3b's model.
+/// An `Ingest` that only counts, the stand-in for `WP3b`'s model.
 #[derive(Clone, Default)]
 pub struct Counting(pub Arc<Mutex<Seen>>);
 
@@ -203,7 +203,9 @@ impl Server {
     }
 
     pub fn finished(&self) -> bool {
-        self.thread.as_ref().is_none_or(|t| t.is_finished())
+        self.thread
+            .as_ref()
+            .is_none_or(std::thread::JoinHandle::is_finished)
     }
 
     /// Stops as SIGTERM does.

@@ -88,7 +88,7 @@ const fn cxx(name: &'static str, point: &'static str, sym: Sym, cond: Cond) -> P
     }
 }
 
-use Set::*;
+use Set::{Bandwidth, Dds, Discovery, Gpu, Hot};
 
 // CUDA driver functions by entry program (design 20.1): the `_v2` names cuda.h maps the API to,
 // with their per-thread default stream variants. The names without `_v2` take 32-bit sizes and
@@ -726,7 +726,7 @@ mod tests {
 
     #[test]
     fn every_point_is_a_catalog_event() {
-        for p in PROGS.iter() {
+        for p in PROGS {
             assert!(
                 catalog::CATALOG.iter().any(|e| e.name == p.point),
                 "{} is no event",
@@ -738,7 +738,7 @@ mod tests {
     #[test]
     fn program_names_are_unique() {
         let mut names: Vec<_> = PROGS.iter().map(|p| p.name).collect();
-        names.sort();
+        names.sort_unstable();
         let n = names.len();
         names.dedup();
         assert_eq!(names.len(), n);
@@ -757,13 +757,13 @@ mod tests {
             .flat_map(|p| names(p))
             .collect();
         let n = entries.len();
-        entries.sort();
+        entries.sort_unstable();
         entries.dedup();
         assert_eq!(entries.len(), n, "a function in two entry programs");
         let rets: Vec<&&Prog> = gpu.iter().filter(|p| p.ret).collect();
         assert_eq!(rets.len(), 1);
         let mut all = names(rets[0]);
-        all.sort();
+        all.sort_unstable();
         assert_eq!(all, entries);
         assert!(entries.contains(&"cuMemcpyHtoDAsync_v2_ptsz"));
         assert!(

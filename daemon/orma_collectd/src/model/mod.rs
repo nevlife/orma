@@ -505,7 +505,7 @@ pub struct Model {
     /// The processes whose publish, take and callback events reach the model; the others have
     /// no rates (null), not zero ones.
     hot: Sel,
-    /// The time this window's LTTng chunks cover; 0 when none came.
+    /// The time this window's `LTTng` chunks cover; 0 when none came.
     lttng_span: u64,
     /// The end of the last window.
     now: u64,
@@ -623,7 +623,7 @@ impl Model {
     }
 
     /// The model inside orma-collectd: reads `/proc` for thread CPU, memory, names and starttimes;
-    /// in-process intervals of the uprobe and LD_PRELOAD methods come from their aggregate tables.
+    /// in-process intervals of the uprobe and `LD_PRELOAD` methods come from their aggregate tables.
     pub fn live() -> Self {
         Model::new(true)
     }
@@ -687,7 +687,7 @@ impl Model {
             .collect()
     }
 
-    /// The time the LTTng chunks of the coming window cover. A chunk is a rotation of the
+    /// The time the `LTTng` chunks of the coming window cover. A chunk is a rotation of the
     /// session, so its counts are over that time rather than over the window.
     pub fn set_lttng_span(&mut self, ns: u64) {
         self.lttng_span = ns;

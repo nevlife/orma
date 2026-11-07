@@ -154,7 +154,10 @@ fn open(
 }
 
 fn finish(out: BufWriter<Inner>) -> io::Result<u64> {
-    let counting = match out.into_inner().map_err(|e| e.into_error())? {
+    let counting = match out
+        .into_inner()
+        .map_err(std::io::IntoInnerError::into_error)?
+    {
         Inner::Plain(c) => c,
         Inner::Zstd(e) => e.finish()?,
     };

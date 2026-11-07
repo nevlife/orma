@@ -1,4 +1,4 @@
-//! The C headers in orma_preload/include/orma_preload are cbindgen's output for shm.rs and
+//! The C headers in `orma_preload/include/orma_preload` are cbindgen's output for shm.rs and
 //! events.rs (design 13.5). `ORMA_BLESS=1` rewrites them instead of comparing.
 
 use std::path::{Path, PathBuf};

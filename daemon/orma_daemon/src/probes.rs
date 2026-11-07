@@ -224,18 +224,17 @@ type Done = (LinkKey, std::result::Result<Vec<UProbeLink>, String>);
 /// closing windows on time meanwhile (design 8.6).
 fn attacher(ebpf: Arc<Mutex<Ebpf>>, reaper: Reaper, jobs: Receiver<Job>, done: Sender<Done>) {
     for j in jobs {
-        let result = match reaper.take_back(j.key) {
-            Some(links) => Ok(links),
-            None => {
-                let from = sys::mono_ns();
-                let name = PROGS[j.key.0].name;
-                let r = attach(&mut ebpf.lock().expect("ebpf lock"), &j)
-                    .map_err(|e| format!("attach {name}: {e:?}"));
-                if let Ok(links) = &r {
-                    reaper.log(change(true, name, j.key.2, links.len(), from));
-                }
-                r
+        let result = if let Some(links) = reaper.take_back(j.key) {
+            Ok(links)
+        } else {
+            let from = sys::mono_ns();
+            let name = PROGS[j.key.0].name;
+            let r = attach(&mut ebpf.lock().expect("ebpf lock"), &j)
+                .map_err(|e| format!("attach {name}: {e:?}"));
+            if let Ok(links) = &r {
+                reaper.log(change(true, name, j.key.2, links.len(), from));
             }
+            r
         };
         reaper.attaching(-1);
         if done.send((j.key, result)).is_err() {
@@ -251,7 +250,7 @@ fn attach(ebpf: &mut Ebpf, j: &Job) -> Result<Vec<UProbeLink>> {
         Scope::All => (UProbeScope::AllProcesses, 0),
         Scope::Pid(p) => (
             UProbeScope::OneProcess(NonZeroU32::new(p).ok_or("pid 0")?),
-            p as u64,
+            u64::from(p),
         ),
     };
     let u: &mut UProbe = ebpf
@@ -285,7 +284,7 @@ pub struct Proc {
     /// Its librclcpp calls `rclcpp_callback_register` only through the gate (2.4).
     pub gated: Option<bool>,
     pub tracetools_lttng: Option<bool>,
-    /// It maps librclcpp.so: the rcl_executor client that claims is rclcpp's.
+    /// It maps librclcpp.so: the `rcl_executor` client that claims is rclcpp's.
     pub rclcpp: bool,
 }
 
@@ -316,7 +315,7 @@ pub struct ProgStat {
 }
 
 /// The `name: value` counters of a BPF object's fdinfo. Unlike a lookup by id this needs no
-/// CAP_SYS_ADMIN.
+/// `CAP_SYS_ADMIN`.
 fn fdinfo(fd: &OwnedFd) -> HashMap<String, u64> {
     parse_fdinfo(
         &fs::read_to_string(format!("/proc/self/fdinfo/{}", fd.as_raw_fd())).unwrap_or_default(),
@@ -332,7 +331,7 @@ fn parse_fdinfo(text: &str) -> HashMap<String, u64> {
         .collect()
 }
 
-/// A tracepoint field orma_ebpf reads: event, field, offset, size.
+/// A tracepoint field `orma_ebpf` reads: event, field, offset, size.
 type Field = (&'static str, &'static str, usize, usize);
 
 const SCHED_FIELDS: [Field; 5] = [
@@ -393,7 +392,7 @@ pub struct Kernel {
     sample: Array<MapData, u64>,
     /// name, fd, max entries of every map.
     maps: Vec<(String, OwnedFd, u32)>,
-    /// The BPF_ENABLE_STATS fd, or why the kernel refused it.
+    /// The `BPF_ENABLE_STATS` fd, or why the kernel refused it.
     stats: std::result::Result<OwnedFd, String>,
     generation: u64,
     pub files: HashMap<FileKey, LibFile>,
@@ -564,12 +563,11 @@ impl Kernel {
     /// Reads the maps of `pids` (or of every process), learning new processes and files.
     pub fn scan(&mut self, pids: Option<&BTreeSet<u32>>) {
         let all;
-        let list: Vec<u32> = match pids {
-            Some(p) => p.iter().copied().collect(),
-            None => {
-                all = procs::pids();
-                all
-            }
+        let list: Vec<u32> = if let Some(p) = pids {
+            p.iter().copied().collect()
+        } else {
+            all = procs::pids();
+            all
         };
         for pid in list {
             let Some(maps) = procs::mapped(pid) else {
@@ -725,7 +723,7 @@ impl Kernel {
         let agg: Vec<AggKey> = self
             .agg
             .keys()
-            .filter_map(|k| k.ok())
+            .filter_map(std::result::Result::ok)
             .filter(|k| gone(k.tgid))
             .collect();
         for k in &agg {
@@ -734,7 +732,7 @@ impl Kernel {
         let seen: Vec<SeenKey> = self
             .seen
             .keys()
-            .filter_map(|k| k.ok())
+            .filter_map(std::result::Result::ok)
             .filter(|k| gone(k.tgid))
             .collect();
         for k in &seen {
@@ -749,7 +747,7 @@ impl Kernel {
         let keys: Vec<SeenKey> = self
             .seen
             .keys()
-            .filter_map(|k| k.ok())
+            .filter_map(std::result::Result::ok)
             .filter(|k| {
                 matches!(
                     k.what,
@@ -1023,7 +1021,7 @@ impl Kernel {
     ) {
         let _ = self
             .config
-            .set(CONFIG_STREAM_ALL, (*stream == Sel::All) as u64, 0);
+            .set(CONFIG_STREAM_ALL, u64::from(*stream == Sel::All), 0);
         let stream_pids: BTreeSet<u32> = match stream {
             Sel::Pids(p) => p.clone(),
             _ => BTreeSet::new(),
@@ -1040,7 +1038,11 @@ impl Kernel {
         for (tid, pid) in procs::owners(sched_pids.iter().copied()) {
             let _ = self.tid_tgid.insert(tid, pid, 0);
         }
-        let old: Vec<u32> = self.user_words.keys().filter_map(|k| k.ok()).collect();
+        let old: Vec<u32> = self
+            .user_words
+            .keys()
+            .filter_map(std::result::Result::ok)
+            .collect();
         for tid in old {
             if !user_words.contains_key(&tid) {
                 let _ = self.user_words.remove(&tid);
@@ -1121,7 +1123,11 @@ impl Kernel {
         let closed = self.generation;
         self.generation += 1;
         let _ = self.config.set(CONFIG_GEN, self.generation, 0);
-        let rows = self.agg.iter().filter_map(|r| r.ok()).collect();
+        let rows = self
+            .agg
+            .iter()
+            .filter_map(std::result::Result::ok)
+            .collect();
         (rows, closed)
     }
 
@@ -1148,7 +1154,7 @@ impl Kernel {
     /// Seen entries of one kind, by process.
     pub fn seen_count(&self, what: u32) -> BTreeMap<u32, u64> {
         let mut out = BTreeMap::new();
-        for k in self.seen.keys().filter_map(|k| k.ok()) {
+        for k in self.seen.keys().filter_map(std::result::Result::ok) {
             if k.what == what {
                 *out.entry(k.tgid).or_default() += 1;
             }
@@ -1202,7 +1208,7 @@ impl Kernel {
                 (
                     name.clone(),
                     used.get(name.as_str()).copied().unwrap_or(0),
-                    *max as u64,
+                    u64::from(*max),
                     memlock,
                 )
             })
@@ -1211,7 +1217,7 @@ impl Kernel {
 }
 
 fn sync(map: &mut BpfHashMap<MapData, u32, u8>, want: &BTreeSet<u32>) {
-    let have: Vec<u32> = map.keys().filter_map(|k| k.ok()).collect();
+    let have: Vec<u32> = map.keys().filter_map(std::result::Result::ok).collect();
     for k in &have {
         if !want.contains(k) {
             let _ = map.remove(k);

@@ -122,12 +122,11 @@ impl Kept {
             }
         };
         self.buf.resize(KEPT_BUF, 0);
-        match file.read_at(&mut self.buf, 0) {
-            Ok(n) => std::str::from_utf8(&self.buf[..n]).ok(),
-            Err(_) => {
-                self.files.remove(&key);
-                None
-            }
+        if let Ok(n) = file.read_at(&mut self.buf, 0) {
+            std::str::from_utf8(&self.buf[..n]).ok()
+        } else {
+            self.files.remove(&key);
+            None
         }
     }
 
@@ -150,14 +149,14 @@ pub fn schedstat_ns(text: &str) -> Option<u64> {
     text.split_whitespace().next()?.parse().ok()
 }
 
-/// RSS in bytes from `statm`: counters the kernel keeps, read without the target's mmap_lock.
+/// RSS in bytes from `statm`: counters the kernel keeps, read without the target's `mmap_lock`.
 pub fn statm_rss(text: &str) -> Option<u64> {
     let pages: u64 = text.split_whitespace().nth(1)?.parse().ok()?;
     Some(pages * crate::sys::page_size())
 }
 
 /// PSS in bytes from `smaps_rollup`, a walk of every page table of the target under its
-/// mmap_lock: only when a client asks for PSS.
+/// `mmap_lock`: only when a client asks for PSS.
 pub fn rollup_pss(text: &str) -> Option<u64> {
     let kb: u64 = text
         .lines()
@@ -215,7 +214,7 @@ pub fn started_at(pid: u32, starttime: u64) -> bool {
 }
 
 /// The host pid of the process a container knows as `ns_pid` and that started at `starttime`
-///: an LD_PRELOAD file names it with the values the process sees.
+///: an `LD_PRELOAD` file names it with the values the process sees.
 pub fn host_pid(ns_pid: u32, starttime: u64) -> Option<u32> {
     fs::read_dir("/proc").ok()?.find_map(|e| {
         let pid: u32 = e.ok()?.file_name().to_str()?.parse().ok()?;
@@ -316,8 +315,8 @@ fn versioned(base: &'static str) -> impl Fn(&str) -> bool {
     }
 }
 
-/// ormad's choice for the process (its `libs::executor_probes`): the rcl_executor probes when a
-/// mapped librcl_executor.so exports every anchor.
+/// ormad's choice for the process (its `libs::executor_probes`): the `rcl_executor` probes when a
+/// mapped `librcl_executor.so` exports every anchor.
 fn executor_probes(pid: u32, maps: &[Mapping]) -> ExecutorProbes {
     if exports_all(
         pid,

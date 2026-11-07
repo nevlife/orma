@@ -1,7 +1,7 @@
-//! CTF from liborma_lttng.so back into orma records: babeltrace 1.5
+//! CTF from `liborma_lttng.so` back into orma records: babeltrace 1.5
 //! prints the trace as text and this module parses the lines. Provider orma carries a record's
 //! payload as words and its strings, provider flux the flux function's arguments by name; ros2
-//! events are for ros2_tracing's tools and skipped, as orma has each of them as an orma event.
+//! events are for `ros2_tracing`'s tools and skipped, as orma has each of them as an orma event.
 
 use std::io::{self, BufRead, BufReader, Read};
 use std::path::Path;
@@ -15,7 +15,7 @@ use orma_common::events::{
 };
 
 /// The payload of each flux event as its fields in payload order, with their byte widths.
-/// `pad` is not a field of the LTTng event.
+/// `pad` is not a field of the `LTTng` event.
 const FLUX: &[(&str, &[(&str, usize)])] = &[
     (
         "channel_init",

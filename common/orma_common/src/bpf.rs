@@ -1,4 +1,4 @@
-//! The eBPF maps of orma_ebpf and ormad (design 4.3, 13.2, 15.2); not in the C headers.
+//! The eBPF maps of `orma_ebpf` and ormad (design 4.3, 13.2, 15.2); not in the C headers.
 
 use crate::BUCKETS;
 

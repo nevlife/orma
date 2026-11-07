@@ -1,4 +1,4 @@
-//! The calls ormad makes outside std: CLOCK_MONOTONIC in nanoseconds, the clock of
+//! The calls ormad makes outside std: `CLOCK_MONOTONIC` in nanoseconds, the clock of
 //! `bpf_ktime_get_ns` and of every record (design 3.1), and ormad's own CPU time.
 #![allow(unsafe_code)]
 
@@ -8,7 +8,7 @@ fn clock_ns(clock: libc::clockid_t) -> u64 {
         tv_nsec: 0,
     };
     // SAFETY: `ts` is a valid out pointer for the call.
-    unsafe { libc::clock_gettime(clock, &mut ts) };
+    unsafe { libc::clock_gettime(clock, &raw mut ts) };
     ts.tv_sec as u64 * 1_000_000_000 + ts.tv_nsec as u64
 }
 

@@ -203,7 +203,7 @@ fn jetson_gpus(found: &[Jetson]) -> Vec<Gpu> {
         .map(|(j, index)| Gpu {
             index,
             name: j.name.clone(),
-            util_pct: number::<u32>(&j.load).map(|l| l as f64 / 10.0),
+            util_pct: number::<u32>(&j.load).map(|l| f64::from(l) / 10.0),
             mem_used_bytes: None,
             mem_total_bytes: None,
             clock_mhz: number::<u64>(&j.freq).map(|hz| (hz / 1_000_000) as u32),

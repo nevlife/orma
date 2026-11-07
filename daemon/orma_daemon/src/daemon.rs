@@ -122,7 +122,7 @@ impl Client {
         let batch = std::mem::take(&mut self.batch);
         match &mut self.sink {
             Sink::Socket { output, .. } => {
-                output.extend_from_slice(&frame::encode(Kind::Events, &batch))
+                output.extend_from_slice(&frame::encode(Kind::Events, &batch));
             }
             Sink::Local { batches, .. } => batches.push(batch),
         }

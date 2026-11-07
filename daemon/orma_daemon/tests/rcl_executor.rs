@@ -1,6 +1,6 @@
 //! The executor probe choice against real processes, through the path ormad learns a process by
 //! (maps, then the files): an rclpy `RclExecutor` from the overhaul's overlay maps the
-//! rcl_executor core, a `SingleThreadedExecutor` on the stock install does not. Needs both ROS
+//! `rcl_executor` core, a `SingleThreadedExecutor` on the stock install does not. Needs both ROS
 //! installs, so it runs only when asked:
 //!
 //!     ORMA_TEST_OVERLAY=$HOME/ros2_ws/install/setup.bash \

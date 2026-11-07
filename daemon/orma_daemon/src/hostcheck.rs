@@ -1,7 +1,7 @@
 //! `orma check` items about the host and a target process rather than the probes (design 6.7):
-//! kernel settings that stop or change the probes, a loader that dropped LD_PRELOAD, and a time
-//! namespace that moves CLOCK_MONOTONIC. ormad reads files root alone may read
-//! (CAP_DAC_READ_SEARCH) and other users' processes (CAP_SYS_PTRACE).
+//! kernel settings that stop or change the probes, a loader that dropped `LD_PRELOAD`, and a time
+//! namespace that moves `CLOCK_MONOTONIC`. ormad reads files root alone may read
+//! (`CAP_DAC_READ_SEARCH`) and other users' processes (`CAP_SYS_PTRACE`).
 
 use std::fs;
 
@@ -137,7 +137,7 @@ fn auxv(bytes: &[u8], key: u64) -> Option<u64> {
 }
 
 /// A process whose environment asks for an orma shim it does not map: the loader drops
-/// LD_PRELOAD under secure-exec (setuid, file capabilities, an LSM transition).
+/// `LD_PRELOAD` under secure-exec (setuid, file capabilities, an LSM transition).
 pub fn preload(pid: u32, comm: &str, maps: &str) -> Option<Check> {
     let wanted = crate::procs::environ(pid, "LD_PRELOAD")?;
     let shim = wanted
@@ -182,7 +182,7 @@ fn offsets(text: &str) -> (i64, i64) {
     out
 }
 
-/// A process in another time namespace: its CLOCK_MONOTONIC, which the LD_PRELOAD and LTTng
+/// A process in another time namespace: its `CLOCK_MONOTONIC`, which the `LD_PRELOAD` and `LTTng`
 /// methods stamp records with, is off from the host clock `bpf_ktime_get_ns` reads.
 pub fn timens(pid: u32, comm: &str) -> Option<Check> {
     let ns = |p: &str| fs::read_link(format!("/proc/{p}/ns/time")).ok();

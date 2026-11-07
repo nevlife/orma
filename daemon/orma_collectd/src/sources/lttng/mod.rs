@@ -1,7 +1,7 @@
-//! The LTTng source. A worker thread owns the user session daemon, started
+//! The `LTTng` source. A worker thread owns the user session daemon, started
 //! as orma-collectd's child under `LTTNG_HOME`, and at most one session, which orma-collectd names
 //! and the guard knows. The session writes to the runtime directory and is rotated at each window:
-//! each finished chunk is copied into the `ctf/` directory of every LTTng recording, then read
+//! each finished chunk is copied into the `ctf/` directory of every `LTTng` recording, then read
 //! through babeltrace (`ctf`) into records for the model on a reader thread, and deleted. The
 //! reader is apart so that rotations and copies keep their pace when a read is slow (babeltrace
 //! prints about 400k events/s); a chunk the reader cannot take is deleted unread and reported.
@@ -25,7 +25,7 @@ use crate::sys;
 const APPS_EVERY: Duration = Duration::from_secs(2);
 const ALL: &str = "orma:*,flux:*";
 
-/// The LTTng names of the events that name and link entities (`catalog::init`).
+/// The `LTTng` names of the events that name and link entities (`catalog::init`).
 fn init_events() -> String {
     catalog::CATALOG
         .iter()
@@ -41,7 +41,7 @@ const SESSIOND_UP: Duration = Duration::from_secs(5);
 /// Chunks waiting for the reader.
 const READ_QUEUE: usize = 2;
 
-/// What orma-collectd wants of LTTng now.
+/// What orma-collectd wants of `LTTng` now.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Want {
     /// The session to have; `None` for none.
@@ -49,9 +49,9 @@ pub struct Want {
     /// Every event; without it only the ones that name and link entities, which a process emits
     /// once at its start, before orma-collectd could notice it and want the rest.
     pub all: bool,
-    /// Also the ros2 events, for ros2_tracing's tools reading a recording's CTF.
+    /// Also the ros2 events, for `ros2_tracing`'s tools reading a recording's CTF.
     pub ros2: bool,
-    /// The `ctf/` directories of the LTTng recordings.
+    /// The `ctf/` directories of the `LTTng` recordings.
     pub copy_to: Vec<PathBuf>,
 }
 
@@ -279,7 +279,7 @@ impl Worker {
                 ros2: false,
                 copy_to: Vec::new(),
             },
-            listed: now - APPS_EVERY,
+            listed: now.checked_sub(APPS_EVERY).unwrap(),
             reader: reader_tx,
             reads,
         };

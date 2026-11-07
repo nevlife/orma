@@ -17,7 +17,7 @@ pub fn mono_ns() -> u64 {
         tv_nsec: 0,
     };
     // SAFETY: ts is a valid out pointer for the call.
-    unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut ts) };
+    unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &raw mut ts) };
     ts.tv_sec as u64 * 1_000_000_000 + ts.tv_nsec as u64
 }
 
@@ -39,7 +39,7 @@ pub fn disk(path: &Path) -> io::Result<Disk> {
     // SAFETY: statvfs is plain data; zero is a valid value to overwrite.
     let mut st: libc::statvfs = unsafe { std::mem::zeroed() };
     // SAFETY: c is NUL-terminated and st a valid out pointer.
-    if unsafe { libc::statvfs(c.as_ptr(), &mut st) } != 0 {
+    if unsafe { libc::statvfs(c.as_ptr(), &raw mut st) } != 0 {
         return Err(io::Error::last_os_error());
     }
     Ok(Disk {
@@ -88,10 +88,10 @@ pub fn raise_nofile() {
         rlim_max: 0,
     };
     // SAFETY: lim is a valid out pointer for the call.
-    if unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, &mut lim) } == 0 {
+    if unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, &raw mut lim) } == 0 {
         lim.rlim_cur = lim.rlim_max;
         // SAFETY: lim is a valid rlimit.
-        unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &lim) };
+        unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &raw const lim) };
     }
 }
 
@@ -100,7 +100,7 @@ pub fn adjtimex() -> Option<(i32, i32)> {
     // SAFETY: timex is plain data; modes 0 only reads.
     let mut t: libc::timex = unsafe { std::mem::zeroed() };
     // SAFETY: t is a valid timex for the call.
-    let state = unsafe { libc::adjtimex(&mut t) };
+    let state = unsafe { libc::adjtimex(&raw mut t) };
     (state >= 0).then_some((state, t.status))
 }
 
@@ -143,8 +143,8 @@ pub fn cpu_ns() -> u64 {
     stat.cpu_ticks() * 1_000_000_000 / clock_ticks()
 }
 
-/// A timerfd that a step of CLOCK_REALTIME cancels (settimeofday, clock_settime, an NTP step).
-/// A slew moves CLOCK_REALTIME and CLOCK_MONOTONIC together and leaves it armed.
+/// A timerfd that a step of `CLOCK_REALTIME` cancels (settimeofday, `clock_settime`, an NTP step).
+/// A slew moves `CLOCK_REALTIME` and `CLOCK_MONOTONIC` together and leaves it armed.
 pub struct RealtimeSteps(OwnedFd);
 
 impl RealtimeSteps {
@@ -176,7 +176,12 @@ impl RealtimeSteps {
         let flags = libc::TFD_TIMER_ABSTIME | libc::TFD_TIMER_CANCEL_ON_SET;
         // SAFETY: never is a valid itimerspec; the old value is not asked for.
         let r = unsafe {
-            libc::timerfd_settime(self.0.as_raw_fd(), flags, &never, std::ptr::null_mut())
+            libc::timerfd_settime(
+                self.0.as_raw_fd(),
+                flags,
+                &raw const never,
+                std::ptr::null_mut(),
+            )
         };
         if r != 0 {
             return Err(io::Error::last_os_error());
@@ -184,7 +189,7 @@ impl RealtimeSteps {
         Ok(())
     }
 
-    /// Whether CLOCK_REALTIME stepped since the last call.
+    /// Whether `CLOCK_REALTIME` stepped since the last call.
     pub fn stepped(&self) -> bool {
         let mut expirations = 0u64;
         // SAFETY: reads 8 bytes into a u64.

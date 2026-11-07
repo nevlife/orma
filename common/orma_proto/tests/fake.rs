@@ -215,7 +215,7 @@ impl Reader {
     /// Every record from tail to head, skipping PAD, then the tail moved to head.
     fn drain(&self, slot: usize) -> Vec<(u16, u64)> {
         let s = self.slot(slot);
-        let size = self.geometry.ring_bytes as u64;
+        let size = u64::from(self.geometry.ring_bytes);
         let ring = self.slot_at(slot) + orma_ring_offset(self.geometry.table_entries) as u64;
         let mut data = vec![0; size as usize];
         self.file.read_exact_at(&mut data, ring).unwrap();
@@ -223,7 +223,7 @@ impl Reader {
         let mut at = s.ring_tail;
         while at < s.ring_head {
             let pos = (at % size) as usize;
-            let len = u16::from_le_bytes([data[pos + 2], data[pos + 3]]) as u64;
+            let len = u64::from(u16::from_le_bytes([data[pos + 2], data[pos + 3]]));
             if u16::from_le_bytes([data[pos], data[pos + 1]]) != ORMA_EV_PAD {
                 let (h, _) = records::check(&data[pos..], pos).unwrap();
                 out.push((h.event, h.t_mono_ns));
@@ -241,7 +241,7 @@ fn alive_lock_held(file: &std::fs::File) -> bool {
     let mut fl = libc::flock {
         l_type: libc::F_WRLCK as libc::c_short,
         l_whence: libc::SEEK_SET as libc::c_short,
-        l_start: ORMA_LOCK_ALIVE as libc::off_t,
+        l_start: libc::off_t::from(ORMA_LOCK_ALIVE),
         l_len: 1,
         l_pid: 0,
     };
@@ -252,7 +252,7 @@ fn alive_lock_held(file: &std::fs::File) -> bool {
 #[allow(unsafe_code)]
 fn fcntl_getlk(fd: i32, fl: &mut libc::flock) -> i32 {
     // SAFETY: fl is a valid flock for the duration of the call.
-    unsafe { libc::fcntl(fd, libc::F_OFD_GETLK, fl as *mut libc::flock) }
+    unsafe { libc::fcntl(fd, libc::F_OFD_GETLK, std::ptr::from_mut::<libc::flock>(fl)) }
 }
 
 #[test]
@@ -345,7 +345,7 @@ fn the_writer_follows_the_shared_memory_rules() {
     let cur = reader.slot(b);
     assert_eq!(
         (cur.cur_cb, cur.cur_src, cur.cur_entry),
-        (0x7000, ORMA_SRC_FLUX as u32, 3)
+        (0x7000, u32::from(ORMA_SRC_FLUX), 3)
     );
     shm.set_missing(ORMA_EV_RCLCPP_INTRA_PUBLISH);
     shm.set_missing(ORMA_EV_FLUX_WAKE);

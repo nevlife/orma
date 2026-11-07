@@ -49,7 +49,7 @@ enums! {
     pub enum ProbeSet { Discovery, Hot, Sched, Bandwidth, RclcppSymbols, Names, Gpu, Dds, Futex }
     pub enum PublishAbi { Rmw, Rcl }
     /// The uprobes on a process's executor: `rcl_wait` and the rclcpp executor tracepoints, and
-    /// with `rcl_executor` also the anchors of the rcl_executor core it maps.
+    /// with `rcl_executor` also the anchors of the `rcl_executor` core it maps.
     pub enum ExecutorProbes { Stock, RclExecutor }
     pub enum CpuSource { Sched, WallBound }
     pub enum ExecutorKind { Rclcpp, Rclpy, Flux }
@@ -138,7 +138,7 @@ types! {
         pub sched: Option<bool>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub malloc: Option<bool>,
-        /// Read each process's PSS: a walk of its page tables under its mmap_lock. Proto 1.7.
+        /// Read each process's PSS: a walk of its page tables under its `mmap_lock`. Proto 1.7.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub pss: Option<bool>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -467,7 +467,7 @@ types! {
         pub nodes: Vec<String>,
         pub exited: bool,
         pub cold: bool,
-        /// LD_PRELOAD processes only (design 13.2).
+        /// `LD_PRELOAD` processes only (design 13.2).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub overflow: Option<Overflow>,
         /// The `CUresult` that wedged the process's GPU (`flux_trace_gpu_wedged`); its GPU
@@ -921,7 +921,7 @@ types! {
         /// Proto 1.7.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub interference: Option<Interference>,
-        /// When CLOCK_REALTIME stepped during the recording, monotonic ns. Wall-clock ages and
+        /// When `CLOCK_REALTIME` stepped during the recording, monotonic ns. Wall-clock ages and
         /// timestamp pairings near these are not to be trusted. Proto 1.7.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         pub realtime_steps: Vec<u64>,

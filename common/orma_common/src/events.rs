@@ -65,7 +65,7 @@ pub const ORMA_EV_RCLCPP_CALLBACK_OWNER: u16 = 82;
 /// The DDS write call under `rmw_publish`: Cyclone DDS `dds_write`, `dds_writecdr`, Fast DDS
 /// `DataWriter::write` (design 20.2). Written when the call returns.
 pub const ORMA_EV_DDS_WRITE: u16 = 83;
-/// The rcl_executor core claimed a ready item (`rcl_executor_trace_item_claimed`, uprobe only;
+/// The `rcl_executor` core claimed a ready item (`rcl_executor_trace_item_claimed`, uprobe only;
 /// docs/instrumentation.md 2.12).
 pub const ORMA_EV_RCL_EXECUTOR_CLAIM: u16 = 84;
 /// The core's item completed (`rcl_executor_trace_item_completed`, uprobe only).
@@ -88,7 +88,7 @@ pub const ORMA_EV_RCL_LOAN_TAKE: u16 = 91;
 /// `rmw_return_loaned_message_from_publisher` or `_from_subscription` was called: rcl's returns
 /// and rclpy's own go through them.
 pub const ORMA_EV_RMW_LOAN_RETURN: u16 = 92;
-/// zenoh-c's `z_bytes_from_shm_mut`: rmw_zenoh made a payload of shared memory; `handle` is the
+/// zenoh-c's `z_bytes_from_shm_mut`: `rmw_zenoh` made a payload of shared memory; `handle` is the
 /// bytes object.
 pub const ORMA_EV_ZENOH_SHM_PAYLOAD: u16 = 93;
 /// rclpy converted a taken message to Python (`rclpy_trace_take_converted`).
@@ -137,7 +137,7 @@ pub const ORMA_EV_LIMIT: u16 = 256;
 pub const ORMA_STRING_MAX: usize = 255;
 pub const ORMA_RECORD_ALIGN: usize = 8;
 pub const ORMA_RECORD_TRUNCATED: u32 = 1;
-/// The record's point is an rcl_executor anchor in place of the stock function of its event:
+/// The record's point is an `rcl_executor` anchor in place of the stock function of its event:
 /// `rcl_wait_enter` and `rcl_wait_exit` from the core's wait, `wait_set` then the executor.
 pub const ORMA_RECORD_RCL_EXECUTOR: u32 = 2;
 /// "ORMAEV1\0" read as a little-endian u64.

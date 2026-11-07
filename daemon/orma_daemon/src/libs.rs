@@ -12,7 +12,7 @@ use object::{Object as _, ObjectSection as _, ObjectSymbol as _};
 use orma_common::RCL_EXECUTOR_ANCHORS;
 use orma_proto::msg::ExecutorProbes;
 
-/// The event names and arguments the flux programs read. libflux_ffi.so exports a symbol of this
+/// The event names and arguments the flux programs read. `libflux_ffi.so` exports a symbol of this
 /// name for exactly that set (design 11.1).
 pub const FLUX_CONTRACT: &str = "flux_trace_contract_2";
 
@@ -30,9 +30,9 @@ pub enum Lib {
     Ddsc,
     Cuda,
     Span,
-    /// The rcl_executor core of the ROS 2 overhaul.
+    /// The `rcl_executor` core of the ROS 2 overhaul.
     RclExecutor,
-    /// zenoh-c, which rmw_zenoh makes its shared memory payloads with.
+    /// zenoh-c, which `rmw_zenoh` makes its shared memory payloads with.
     Zenohc,
     /// rclpy's extension module, `_rclpy_pybind11.<python abi>.so`.
     Rclpy,
@@ -215,7 +215,7 @@ fn missing_anchors(symbols: &HashMap<String, u64>) -> Vec<&'static str> {
 }
 
 /// The executor probes of a process with these files (docs/instrumentation.md 2.12): the
-/// rcl_executor ones when it maps a librcl_executor.so that exports every anchor, added to the
+/// `rcl_executor` ones when it maps a `librcl_executor.so` that exports every anchor, added to the
 /// stock ones, which stay for the executors that still call `rcl_wait`.
 pub fn executor_probes<'a>(files: impl IntoIterator<Item = &'a LibFile>) -> ExecutorProbes {
     let core = files

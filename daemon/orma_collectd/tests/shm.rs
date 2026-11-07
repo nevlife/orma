@@ -1,4 +1,4 @@
-//! The LD_PRELOAD source against `FakeShm`: arming, rings into the model and into
+//! The `LD_PRELOAD` source against `FakeShm`: arming, rings into the model and into
 //! recordings, table differences, losses, and files of dead writers.
 
 mod collectd;
@@ -273,7 +273,7 @@ fn table_rows_anywhere_and_a_reused_slot_from_zero() {
             .filter(|(m, a)| *m == Method::Preload && a.tid == tid)
             .map(|(_, a)| (a.key, a.count))
             .collect();
-        r.sort();
+        r.sort_unstable();
         r
     };
 
@@ -351,7 +351,7 @@ fn overflow_counts_reach_the_window_and_outlive_a_reused_slot() {
 
     let slots: Vec<usize> = (0..4).map(|tid| shm.claim(tid).unwrap()).collect();
     assert!(shm.claim(9).is_none());
-    let taken = (1..=SMALL.table_entries as u64 + 2)
+    let taken = (1..=u64::from(SMALL.table_entries) + 2)
         .filter(|key| shm.add(slots[0], ORMA_AGG_CALLBACK, ORMA_SRC_ROS, 0, *key, 100))
         .count();
     assert_eq!(taken, SMALL.table_entries as usize);

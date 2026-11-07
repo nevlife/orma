@@ -1,7 +1,7 @@
 //! The ormad source against a fake ormad: hello, the requests that follow the
 //! selection and recordings, event batches into recordings, windows into the model, a lost
 //! ormad leaving a gap, `selfcheck` replies that carry ormad's checks, and the current callbacks
-//! of liborma_lttng.so's file handed to ormad.
+//! of `liborma_lttng.so`'s file handed to ormad.
 
 mod collectd;
 

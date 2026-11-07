@@ -1,4 +1,4 @@
-//! The LTTng source in the server: which session orma-collectd wants, and what
+//! The `LTTng` source in the server: which session orma-collectd wants, and what
 //! its chunks bring: records for the model and the recordings, discarded events, missing
 //! intercept points.
 
@@ -39,7 +39,7 @@ impl Src {
     }
 }
 
-/// Whether `r` takes LTTng records of some process.
+/// Whether `r` takes `LTTng` records of some process.
 fn lttng_recording(r: &Active) -> bool {
     r.method() == RecordMethod::Lttng || r.methods().contains(&Method::Lttng)
 }
@@ -52,8 +52,8 @@ impl Core {
         }
     }
 
-    /// Whether monitoring takes `pid`'s LTTng records: chosen with method lttng, or chosen
-    /// without a method and not writing shared memory, where LD_PRELOAD comes first.
+    /// Whether monitoring takes `pid`'s `LTTng` records: chosen with method lttng, or chosen
+    /// without a method and not writing shared memory, where `LD_PRELOAD` comes first.
     pub(super) fn lttng_monitors(&self, pid: u32) -> bool {
         self.monitoring()
             && self.selected(pid)
@@ -63,7 +63,7 @@ impl Core {
             }
     }
 
-    /// Whether monitoring or a recording takes `pid`'s LTTng records; its backend 2 file then
+    /// Whether monitoring or a recording takes `pid`'s `LTTng` records; its backend 2 file then
     /// lends ormad the current callbacks.
     pub(super) fn lttng_takes(&self, pid: u32) -> bool {
         self.lttng_monitors(pid) || self.active.iter().any(|r| r.wants_lttng(pid))
@@ -154,7 +154,7 @@ impl Core {
             FromWorker::Copied { copied, discarded } => self.lttng_copied(copied, discarded),
             FromWorker::Chunk(trace, span_ns) => {
                 self.lt.span_ns += span_ns;
-                self.lttng_chunk(trace)
+                self.lttng_chunk(trace);
             }
             FromWorker::Destroyed(name) => self.release_lttng_session(&name),
             FromWorker::Error(e) => self.event_line(Level::Warn, "lttng_error", e, Vec::new()),
@@ -243,7 +243,7 @@ impl Core {
         }
     }
 
-    /// The window's LTTng part of `agent`, and the missing points of the recordings.
+    /// The window's `LTTng` part of `agent`, and the missing points of the recordings.
     pub(super) fn lttng_window(&mut self, w: &mut Window) {
         if !self.lt.on() {
             return;

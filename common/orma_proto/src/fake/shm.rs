@@ -60,7 +60,7 @@ fn lock(file: &File, kind: i32, byte: u32) -> io::Result<()> {
     let mut fl: libc::flock = unsafe { std::mem::zeroed() };
     fl.l_type = kind as libc::c_short;
     fl.l_whence = libc::SEEK_SET as libc::c_short;
-    fl.l_start = byte as libc::off_t;
+    fl.l_start = libc::off_t::from(byte);
     fl.l_len = 1;
     // SAFETY: fl is a valid flock for the fd's lifetime of this call.
     if unsafe { libc::fcntl(file.as_raw_fd(), libc::F_OFD_SETLK, &fl) } != 0 {
@@ -146,7 +146,7 @@ impl FakeShm {
         assert!(at + bytes.len() <= self.geometry.file_size());
         // SAFETY: in bounds of the mapping; the ring protocol keeps readers off these bytes.
         unsafe {
-            std::ptr::copy_nonoverlapping(bytes.as_ptr(), self.map.wrapping_add(at), bytes.len())
+            std::ptr::copy_nonoverlapping(bytes.as_ptr(), self.map.wrapping_add(at), bytes.len());
         }
     }
 
@@ -236,7 +236,7 @@ impl FakeShm {
 
     pub fn set_current(&self, slot: usize, cb: u64, src: u16, entry: u32) {
         self.u32_at(self.slot_field(slot, offset_of!(orma_thread_slot, cur_src)))
-            .store(src as u32, Ordering::Relaxed);
+            .store(u32::from(src), Ordering::Relaxed);
         self.u32_at(self.slot_field(slot, offset_of!(orma_thread_slot, cur_entry)))
             .store(entry, Ordering::Relaxed);
         self.u64_at(self.slot_field(slot, offset_of!(orma_thread_slot, cur_cb)))
@@ -249,8 +249,9 @@ impl FakeShm {
         let table = self.slot_at(slot) + size_of::<orma_thread_slot>();
         let row_size = size_of::<orma_table_entry>();
         let n = self.geometry.table_entries as usize;
-        let mix = (key ^ (key >> 17) ^ ((entry as u64) << 7) ^ kind as u64 ^ ((src as u64) << 3))
-            .wrapping_mul(0x9E37_79B9_7F4A_7C15);
+        let mix =
+            (key ^ (key >> 17) ^ (u64::from(entry) << 7) ^ u64::from(kind) ^ (u64::from(src) << 3))
+                .wrapping_mul(0x9E37_79B9_7F4A_7C15);
         let start = (mix >> 32) as usize % n;
         for i in (0..n).map(|p| (start + p) % n) {
             let row = table + i * row_size;
@@ -319,7 +320,7 @@ impl FakeShm {
         let mut record = Vec::new();
         records::encode(&mut record, event, t_mono_ns, payload, strings);
         let ring = self.slot_at(slot) + orma_ring_offset(self.geometry.table_entries);
-        let size = self.geometry.ring_bytes as u64;
+        let size = u64::from(self.geometry.ring_bytes);
         let head_word = self.u64_at(self.slot_field(slot, offset_of!(orma_thread_slot, ring_head)));
         let head = head_word.load(Ordering::Relaxed);
         let tail = self

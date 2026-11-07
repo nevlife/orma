@@ -240,7 +240,7 @@ fn canonical(v: &Value) -> String {
     serde_json::to_string(v).unwrap()
 }
 
-/// test/read_golden.py validates every golden against the schema and prints what it read; Rust
+/// `test/read_golden.py` validates every golden against the schema and prints what it read; Rust
 /// must have read the same.
 #[test]
 fn python_reads_the_same_values() {

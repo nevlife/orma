@@ -1,5 +1,5 @@
 //! orma's contracts: the eBPF map types ormad reads (here and `bpf`), the event records every collection method
-//! writes (`events`, `catalog`) and the LD_PRELOAD shared memory layout (`shm`). C reads the last
+//! writes (`events`, `catalog`) and the `LD_PRELOAD` shared memory layout (`shm`). C reads the last
 //! two through headers cbindgen writes from those files.
 #![no_std]
 
@@ -8,8 +8,8 @@ pub mod catalog;
 pub mod events;
 pub mod shm;
 
-/// The uprobe anchors of the rcl_executor core (`rcl_executor/trace.h`). A process whose mapped
-/// librcl_executor.so exports all of them gets the rcl_executor probes.
+/// The uprobe anchors of the `rcl_executor` core (`rcl_executor/trace.h`). A process whose mapped
+/// `librcl_executor.so` exports all of them gets the `rcl_executor` probes.
 pub const RCL_EXECUTOR_ANCHORS: [&str; 4] = [
     "rcl_executor_trace_wait_enter",
     "rcl_executor_trace_wait_exit",
@@ -82,7 +82,7 @@ pub fn bytes_of<T: Plain>(value: &T) -> &[u8] {
     #[allow(unsafe_code)]
     // SAFETY: Plain types have no padding, so all size_of::<T>() bytes are initialized.
     unsafe {
-        core::slice::from_raw_parts((value as *const T).cast::<u8>(), size_of::<T>())
+        core::slice::from_raw_parts(core::ptr::from_ref::<T>(value).cast::<u8>(), size_of::<T>())
     }
 }
 

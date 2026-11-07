@@ -146,8 +146,8 @@ pub fn system(pids: &[u32]) -> BTreeMap<String, String> {
     }) {
         m.insert("cpu.flag_hypervisor".into(), "1".into());
     }
-    let auditd = fs::read_dir("/proc").ok().is_some_and(|d| {
-        d.filter_map(|e| e.ok()).any(|e| {
+    let auditd = fs::read_dir("/proc").is_ok_and(|d| {
+        d.filter_map(std::result::Result::ok).any(|e| {
             text(&format!("/proc/{}/comm", e.file_name().to_string_lossy())).as_deref()
                 == Some("auditd")
         })

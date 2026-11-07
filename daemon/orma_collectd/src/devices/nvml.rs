@@ -132,14 +132,14 @@ impl Nvml {
         }
         let mut n = 0;
         // SAFETY: n is a valid out pointer.
-        if !ok(unsafe { count(&mut n) }) {
+        if !ok(unsafe { count(&raw mut n) }) {
             return None;
         }
         let devices = (0..n)
             .filter_map(|i| {
                 let mut d = std::ptr::null_mut();
                 // SAFETY: d is a valid out pointer.
-                if !ok(unsafe { handle(i, &mut d) }) {
+                if !ok(unsafe { handle(i, &raw mut d) }) {
                     return None;
                 }
                 let mut buf = [0u8; NAME_SIZE];
@@ -169,31 +169,31 @@ impl Nvml {
                 let uint = |f: Uint| {
                     let mut v = 0;
                     // SAFETY: d is a device handle and v a valid out pointer.
-                    ok(unsafe { f(d, &mut v) }).then_some(v)
+                    ok(unsafe { f(d, &raw mut v) }).then_some(v)
                 };
                 let uint_of = |f: UintOf, which: c_int| {
                     let mut v = 0;
                     // SAFETY: d is a device handle and v a valid out pointer.
-                    ok(unsafe { f(d, which, &mut v) }).then_some(v)
+                    ok(unsafe { f(d, which, &raw mut v) }).then_some(v)
                 };
                 let mut u = Utilization::default();
                 // SAFETY: d is a device handle and u a valid out pointer.
-                let util = ok(unsafe { (api.utilization)(d, &mut u) });
+                let util = ok(unsafe { (api.utilization)(d, &raw mut u) });
                 let mut m = Memory::default();
                 // SAFETY: d is a device handle and m a valid out pointer.
-                let mem = ok(unsafe { (api.memory)(d, &mut m) });
+                let mem = ok(unsafe { (api.memory)(d, &raw mut m) });
                 let mut bits = 0;
                 // SAFETY: d is a device handle and bits a valid out pointer.
-                let held = ok(unsafe { (api.reasons)(d, &mut bits) });
+                let held = ok(unsafe { (api.reasons)(d, &raw mut bits) });
                 Gpu {
                     index,
                     name: name.clone(),
-                    util_pct: util.then_some(u.gpu as f64),
+                    util_pct: util.then_some(f64::from(u.gpu)),
                     mem_used_bytes: mem.then_some(m.used),
                     mem_total_bytes: mem.then_some(m.total),
                     clock_mhz: uint_of(api.clock, CLOCK_SM),
                     temp_c: uint_of(api.temperature, TEMPERATURE_GPU).map(f64::from),
-                    power_w: uint(api.power).map(|mw| mw as f64 / 1000.0),
+                    power_w: uint(api.power).map(|mw| f64::from(mw) / 1000.0),
                     throttle: if held { reasons(bits) } else { Vec::new() },
                 }
             })
@@ -231,7 +231,7 @@ fn processes(f: Processes, d: Device, buf: &mut Vec<ProcessInfo>) -> &[ProcessIn
     loop {
         let mut n = buf.len() as c_uint;
         // SAFETY: buf holds n entries of the layout nvml.h declares.
-        match unsafe { f(d, &mut n, buf.as_mut_ptr()) } {
+        match unsafe { f(d, &raw mut n, buf.as_mut_ptr()) } {
             SUCCESS => return &buf[..n as usize],
             INSUFFICIENT_SIZE => buf.resize(n as usize + 8, ProcessInfo::default()),
             _ => return &[],

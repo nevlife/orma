@@ -596,7 +596,10 @@ fn configure_flows(chains: Vec<ChainSpec>, latest_nodes: Vec<String>) -> ClientO
 fn chain_of(name: &str, topics: &[&str]) -> ChainSpec {
     ChainSpec {
         name: name.into(),
-        topics: topics.iter().map(|t| t.to_string()).collect(),
+        topics: topics
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect(),
         mode: ChainMode::Lineage,
     }
 }

@@ -42,7 +42,7 @@ pub struct Config {
     pub disk: fn(&Path) -> io::Result<Disk>,
     /// The executable to start as the guard; tests without one leave it out.
     pub guard: Option<PathBuf>,
-    /// Whether to run the LTTng source: its session daemon starts with
+    /// Whether to run the `LTTng` source: its session daemon starts with
     /// orma-collectd.
     pub lttng: bool,
 }
@@ -97,7 +97,7 @@ pub enum Exit {
     Signal,
 }
 
-/// The model the server feeds (WP3b's `model::Model` in the binary): the records and table
+/// The model the server feeds (`WP3b`'s `model::Model` in the binary): the records and table
 /// differences in, a window out, and the settings it needs from the server.
 pub trait Model: Ingest + Send {
     /// Whether ormad delivers scheduler events.
@@ -108,7 +108,7 @@ pub trait Model: Ingest + Send {
     fn set_pss(&mut self, on: bool);
     /// `configure.expected_hz`, by entity id.
     fn set_expected_hz(&mut self, by_id: BTreeMap<String, f64>);
-    /// The time the LTTng chunks of the coming window cover.
+    /// The time the `LTTng` chunks of the coming window cover.
     fn set_lttng_span(&mut self, ns: u64);
     /// Processes with callbacks whose node ormad should read from the executor.
     fn unowned(&self) -> BTreeSet<u32>;

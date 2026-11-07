@@ -1,6 +1,6 @@
 //! Ring buffer entries into positioned records (design 13.4). The programs write each string into
 //! its own fixed slot; here they are packed, cut and flagged as the record format says, the rmw
-//! gid length is set from the process's distro, and an rcl_executor claim says whether the process
+//! gid length is set from the process's distro, and an `rcl_executor` claim says whether the process
 //! maps librclcpp.so.
 
 use orma_common::{bpf::STRING_SLOT, catalog, events::*, read};
@@ -211,7 +211,7 @@ mod tests {
             assert_eq!(
                 got,
                 orma_ev_rcl_executor_claim {
-                    rclcpp: rclcpp as u32,
+                    rclcpp: u32::from(rclcpp),
                     ..claim
                 }
             );

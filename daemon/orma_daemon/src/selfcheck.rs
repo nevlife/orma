@@ -56,9 +56,9 @@ pub struct Session {
     rcl_publish: HashMap<(u32, u32), (String, u64)>,
     /// rcl ABI publishes by (topic, header.stamp): the process and the realtime ns.
     rcl_published: HashMap<(String, u64), (u32, i64)>,
-    /// Takes paired with another process's rcl ABI publish: source_timestamp in order, all.
+    /// Takes paired with another process's rcl ABI publish: `source_timestamp` in order, all.
     rcl_takes: (u64, u64),
-    /// source_timestamp - publish of the takes in order, ns.
+    /// `source_timestamp` - publish of the takes in order, ns.
     rcl_lag: Vec<i64>,
     tids: HashMap<u32, HashSet<u32>>,
     stamps: BTreeMap<String, (u64, u64)>,
@@ -68,7 +68,7 @@ pub struct Session {
     /// Per thread: `rcl_wait` entries and returns. A return the uretprobe missed (the kernel's
     /// nesting limit, a full return instance pool) leaves an entry unmatched.
     waits: BTreeMap<(u32, u32), (u64, u64)>,
-    /// Per process, from the rcl_executor probes: waits, claims, claims with an rcl handle,
+    /// Per process, from the `rcl_executor` probes: waits, claims, claims with an rcl handle,
     /// completions.
     core: BTreeMap<u32, [u64; 4]>,
     /// Per thread: the last record's event, and whether it was paired as below.
@@ -244,8 +244,8 @@ impl Session {
                 c[2] += u64::from(e.entity != 0);
             }
             ORMA_EV_RCL_EXECUTOR_COMPLETE => self.core.entry(pid).or_default()[3] += 1,
-            ev @ ORMA_EV_RCLCPP_PUBLISHER_BASE..=ORMA_EV_RCLCPP_COLLECTOR_ADD_GROUP
-            | ev @ ORMA_EV_RCLCPP_EXECUTOR_ADD_GROUP => {
+            ev @ (ORMA_EV_RCLCPP_PUBLISHER_BASE..=ORMA_EV_RCLCPP_COLLECTOR_ADD_GROUP
+            | ORMA_EV_RCLCPP_EXECUTOR_ADD_GROUP) => {
                 *self.cxx.entry(pid).or_default().entry(ev).or_default() += 1;
             }
             _ => {}
@@ -284,7 +284,7 @@ impl Session {
         }
     }
 
-    /// Which executor probes the process got, and what the rcl_executor ones saw.
+    /// Which executor probes the process got, and what the `rcl_executor` ones saw.
     fn executor_probes(&self, k: &Kernel, pid: u32, comm: &str) -> Check {
         let item = format!("executor probes pid {pid} ({comm})");
         if k.executor_probes(pid) != Some(ExecutorProbes::RclExecutor) {

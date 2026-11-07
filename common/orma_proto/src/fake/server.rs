@@ -165,8 +165,8 @@ fn serve(mut stream: UnixStream, shared: &Mutex<Shared>) -> io::Result<()> {
                     options.name.as_deref().unwrap_or(&record_id)
                 );
                 let mut recording = s.state.recordings[0].clone();
-                recording.id = record_id.clone();
-                recording.dir = dir.clone();
+                recording.id.clone_from(&record_id);
+                recording.dir.clone_from(&dir);
                 recording.kind = options.kind.unwrap_or(RecordKind::Events);
                 recording.targets = options.targets.unwrap_or(Targets {
                     all: true,
@@ -183,21 +183,18 @@ fn serve(mut stream: UnixStream, shared: &Mutex<Shared>) -> io::Result<()> {
             }
             ClientOp::RecordStop { record_id } => {
                 let found = s.state.recordings.iter_mut().find(|r| r.id == record_id);
-                match found {
-                    Some(r) => {
-                        r.state = RecordState::Finalized;
-                        r.end_reason = Some(EndReason::UserStop);
-                        s.broadcast_state();
-                        vec![reply(id, ReplyBody::Empty {})]
-                    }
-                    None => {
-                        let text = format!("no recording {record_id}");
-                        vec![ServerMessage::Error(ErrorMessage::new(
-                            Some(id),
-                            code::BAD_REQUEST,
-                            text,
-                        ))]
-                    }
+                if let Some(r) = found {
+                    r.state = RecordState::Finalized;
+                    r.end_reason = Some(EndReason::UserStop);
+                    s.broadcast_state();
+                    vec![reply(id, ReplyBody::Empty {})]
+                } else {
+                    let text = format!("no recording {record_id}");
+                    vec![ServerMessage::Error(ErrorMessage::new(
+                        Some(id),
+                        code::BAD_REQUEST,
+                        text,
+                    ))]
                 }
             }
             ClientOp::RecordList => {

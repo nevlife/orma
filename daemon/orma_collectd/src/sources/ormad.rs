@@ -102,12 +102,13 @@ pub fn requests(old: &Plan, new: &Plan) -> Vec<OrmadOp> {
         ops.push(OrmadOp::Window { window_s });
     }
     if new.discovery != old.discovery {
-        ops.push(match new.discovery {
-            true => attach(&Sel::All, vec![ProbeSet::Discovery], BTreeMap::new()),
-            false => OrmadOp::Detach {
+        ops.push(if new.discovery {
+            attach(&Sel::All, vec![ProbeSet::Discovery], BTreeMap::new())
+        } else {
+            OrmadOp::Detach {
                 pids: Vec::new(),
                 sets: vec![ProbeSet::Discovery],
-            },
+            }
         });
     }
     let sets = [
@@ -130,7 +131,7 @@ pub fn requests(old: &Plan, new: &Plan) -> Vec<OrmadOp> {
             continue;
         }
         let detach = match (o, n) {
-            (Sel::None, _) | (Sel::All, Sel::All) | (Sel::Pids(_), Sel::All) => None,
+            (Sel::None, _) | (Sel::All | Sel::Pids(_), Sel::All) => None,
             (Sel::All, _) => Some(Vec::new()),
             (Sel::Pids(a), Sel::None) => Some(a.iter().copied().collect()),
             (Sel::Pids(a), Sel::Pids(b)) => {

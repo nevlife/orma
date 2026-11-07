@@ -1,4 +1,4 @@
-//! Per event: its name, payload size, string count, and whether the LD_PRELOAD and LTTng backends
+//! Per event: its name, payload size, string count, and whether the `LD_PRELOAD` and `LTTng` backends
 //! receive it through `orma_emit_<name>` (`orma_preload/include/orma_preload/orma_emit.h`).
 //! Readers check records against it (design 13.6).
 
@@ -40,7 +40,7 @@ macro_rules! ev {
     };
 }
 
-/// Events that name and link entities: liborma_preload.so writes them before its file is armed,
+/// Events that name and link entities: `liborma_preload.so` writes them before its file is armed,
 /// and orma-collectd keeps them for recordings that start later. `init_event` in
 /// `orma_preload/src/shm_backend.c` is the same list.
 pub const fn init(event: u16) -> bool {

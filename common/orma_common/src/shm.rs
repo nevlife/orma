@@ -1,4 +1,4 @@
-//! The LD_PRELOAD shared memory file `/dev/shm/orma.<pid>.<starttime>` (design 13). cbindgen
+//! The `LD_PRELOAD` shared memory file `/dev/shm/orma.<pid>.<starttime>` (design 13). cbindgen
 //! writes `orma_preload/include/orma_preload/orma_shm.h` from this file, so the names are the C
 //! names.
 #![allow(non_camel_case_types)]

@@ -111,7 +111,7 @@
 // `DataWriter::write` (design 20.2). Written when the call returns.
 #define ORMA_EV_DDS_WRITE 83
 
-// The rcl_executor core claimed a ready item (`rcl_executor_trace_item_claimed`, uprobe only;
+// The `rcl_executor` core claimed a ready item (`rcl_executor_trace_item_claimed`, uprobe only;
 // docs/instrumentation.md 2.12).
 #define ORMA_EV_RCL_EXECUTOR_CLAIM 84
 
@@ -140,7 +140,7 @@
 // and rclpy's own go through them.
 #define ORMA_EV_RMW_LOAN_RETURN 92
 
-// zenoh-c's `z_bytes_from_shm_mut`: rmw_zenoh made a payload of shared memory; `handle` is the
+// zenoh-c's `z_bytes_from_shm_mut`: `rmw_zenoh` made a payload of shared memory; `handle` is the
 // bytes object.
 #define ORMA_EV_ZENOH_SHM_PAYLOAD 93
 
@@ -209,7 +209,7 @@
 
 #define ORMA_RECORD_TRUNCATED 1
 
-// The record's point is an rcl_executor anchor in place of the stock function of its event:
+// The record's point is an `rcl_executor` anchor in place of the stock function of its event:
 // `rcl_wait_enter` and `rcl_wait_exit` from the core's wait, `wait_set` then the executor.
 #define ORMA_RECORD_RCL_EXECUTOR 2
 

@@ -521,7 +521,7 @@ impl Model {
             return;
         }
         let ix = self.node(pid, node);
-        self.nodes[ix].fqn = fqn.clone();
+        self.nodes[ix].fqn.clone_from(&fqn);
         self.node_fqn.entry((pid, fqn)).or_default().push(ix);
     }
 
@@ -1049,16 +1049,15 @@ impl Model {
         let mut fresh = true;
         if let Some(f) = th.stack.last_mut() {
             let dwell = f.input.map_or(0, |i| t.saturating_sub(i.t));
-            let pos = match f.outputs.iter().position(|o| o.topic == topic) {
-                Some(p) => p,
-                None => {
-                    f.outputs.push(Out {
-                        topic,
-                        main: Vec::new(),
-                        intra: Vec::new(),
-                    });
-                    f.outputs.len() - 1
-                }
+            let pos = if let Some(p) = f.outputs.iter().position(|o| o.topic == topic) {
+                p
+            } else {
+                f.outputs.push(Out {
+                    topic,
+                    main: Vec::new(),
+                    intra: Vec::new(),
+                });
+                f.outputs.len() - 1
             };
             let o = &mut f.outputs[pos];
             match via {
@@ -1211,12 +1210,7 @@ impl Model {
             return origins;
         }
         for (c, k) in self.chain_at(topic) {
-            let t0 = if !self.chains.lineage(c) {
-                match fresh {
-                    true => self.chains.first(c, k, t),
-                    false => None,
-                }
-            } else {
+            let t0 = if self.chains.lineage(c) {
                 let origin = match k {
                     0 => Some(t),
                     _ => links.iter().find_map(|&(input, take)| {
@@ -1233,6 +1227,10 @@ impl Model {
                     self.chains.step(c, k, t, origin);
                 }
                 origin.filter(|_| k > 0 && fresh)
+            } else if fresh {
+                self.chains.first(c, k, t)
+            } else {
+                None
             };
             if let Some(t0) = t0.filter(|_| self.samples.is_some()) {
                 let s = &self.chains.specs[c];
