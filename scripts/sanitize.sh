@@ -12,5 +12,7 @@ export CARGO_PROFILE_DEV_PANIC=unwind
 export RUSTFLAGS="-Zsanitizer=$kind"
 export RUSTDOCFLAGS="$RUSTFLAGS"
 export TSAN_OPTIONS="halt_on_error=1:second_deadlock_stack=1:suppressions=$PWD/scripts/sanitize/tsan.supp"
+# Left out: a test that bounds how late a recording ends, which instrumentation slows past its bound.
 exec cargo "+$toolchain" test -Zbuild-std --target "$host" --target-dir "${SANITIZE_TARGET:-target}/$kind" \
-  --locked --no-fail-fast -p orma-common -p orma-proto -p orma-collectd -p ormad --lib --tests "$@"
+  --locked --no-fail-fast -p orma-common -p orma-proto -p orma-collectd -p ormad --lib --tests "$@" \
+  -- --skip duration_and_size_limits_end_recordings
