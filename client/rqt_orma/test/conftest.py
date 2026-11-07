@@ -22,6 +22,13 @@ sys.path.insert(0, str(PACKAGE))
 from python_qt_binding.QtWidgets import QApplication  # noqa: E402
 
 
+@pytest.fixture(scope="session", autouse=True)
+def fresh_fake_server():
+    """A binary left in target/ answers with the goldens it was built from."""
+    command = ["cargo", "build", "--release", "--locked", "-p", "orma-proto"]
+    subprocess.run(command + ["--bin", "orma-fake-server"], cwd=ORMA, check=True)
+
+
 def golden(kind, name):
     return json.loads((GOLDEN / kind / f"{name}.json").read_text())
 

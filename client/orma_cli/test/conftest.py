@@ -18,6 +18,13 @@ FAKE_SERVER = ORMA / "target/release/orma-fake-server"
 sys.path.insert(0, str(PACKAGE))
 
 
+@pytest.fixture(scope="session", autouse=True)
+def fresh_fake_server():
+    """A binary left in target/ answers with the goldens it was built from."""
+    command = ["cargo", "build", "--release", "--locked", "-p", "orma-proto"]
+    subprocess.run(command + ["--bin", "orma-fake-server"], cwd=ORMA, check=True)
+
+
 def golden(name):
     return json.loads((GOLDEN / "client" / f"{name}.json").read_text())
 

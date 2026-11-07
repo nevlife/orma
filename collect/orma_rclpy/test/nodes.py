@@ -104,6 +104,7 @@ def main():
         spin_until(executor, future.done)
         assert future.result().success == (i % 2 == 0)
 
+    spin_until(executor, lambda: counts["tick"] > 0)
     timer.cancel()
     with open(sys.argv[1], "w") as out:
         json.dump(
