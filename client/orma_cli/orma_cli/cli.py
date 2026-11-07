@@ -615,6 +615,26 @@ def cmd_topic_watch(args):
         return watch(c, lambda w: print_topic_window(w, args.topic_command, args.topics))
 
 
+def cmd_path(args):
+    """Each way from one node to another, written so that it can be given to --chain."""
+    with orma_client.connect() as c:
+        select(c, args)
+        w = view.visible(next_window(c), None, args.infra)
+    paths, complete = view.find_paths(
+        w, args.source, args.target, args.via, args.max_nodes, args.skip_node, args.skip_topic
+    )
+    if not paths:
+        raise OrmaError(f"no path from {args.source} to {args.target}")
+    for i, p in enumerate(paths, 1):
+        print(f"{i}. {','.join(p['topics'])}")
+        print(f"   {' -> '.join(p['nodes'])}")
+        if p["unknown"]:
+            print(f"   {p['unknown']} node(s) with no measured link from input to output")
+    if not complete:
+        print(f"more paths exist: only {len(paths)} shown, narrow with --via or --skip-node")
+    return 0
+
+
 def cmd_topic_list(args):
     with orma_client.connect() as c:
         select(c, args)
@@ -1040,6 +1060,16 @@ def parser():
     x = tsub.add_parser("info", help="transport, publishers and subscribers")
     x.add_argument("topic", metavar="TOPIC").completer = TOPICS
     x.set_defaults(run=cmd_topic_info)
+
+    x = sub.add_parser("path", help="the ways from one node to another, for --chain")
+    x.add_argument("source", metavar="FROM").completer = NODES
+    x.add_argument("target", metavar="TO").completer = NODES
+    x.add_argument("--via", action="append", default=[], metavar="NODE", help="must pass this node")
+    x.add_argument("--max-nodes", type=int, default=16, metavar="N", help="longest path, in nodes")
+    x.add_argument("--skip-node", action="append", default=[], metavar="NODE")
+    x.add_argument("--skip-topic", action="append", default=[], metavar="TOPIC")
+    x.add_argument("--infra", action="store_true", help=INFRA_HELP)
+    x.set_defaults(run=cmd_path)
 
     r = sub.add_parser("record", help="start a recording; list, stop, show")
     r.add_argument("--method", choices=("auto",) + METHODS)

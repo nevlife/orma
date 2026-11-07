@@ -617,6 +617,11 @@ def test_topic_bw_and_delay(fake, env):
     )
 
 
+def test_path_names_what_it_did_not_find(fake, env, capsys):
+    assert main(["path", "/camera/driver", "/nosuch"]) != 0
+    assert "no path from /camera/driver to /nosuch" in capsys.readouterr().err
+
+
 def test_topic_list(fake, env, capsys):
     assert main(["topic", "list"]) == 0
     assert capsys.readouterr().out.splitlines() == ["/image", "/scan"]

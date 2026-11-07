@@ -3,6 +3,8 @@ default, the selection's name targets, and callbacks without a node last."""
 
 import re
 
+MAX_PATHS = 100
+MAX_STEPS = 1_000_000
 INFRA_TOPICS = re.compile(r"/rosout|/parameter_events|/?ros_discovery_info")
 INFRA_SERVICES = re.compile(
     r".*/(get_parameters|get_parameter_types|set_parameters|set_parameters_atomically"
@@ -157,3 +159,64 @@ def callbacks_in_order(w):
             labels[c["id"]],
         ),
     )
+
+
+def _linked(flows, node, input_topic, output_topic):
+    """Whether the window measured `input_topic` leading to `output_topic` inside `node`."""
+    found = [
+        f
+        for f in flows
+        if (f["node"], f["input"], f["output"]) == (node, input_topic, output_topic)
+    ]
+    return len(found) == 1 and not found[0]["ambiguous"] and found[0]["kind"] != "blind"
+
+
+def find_paths(w, start, end, via=(), max_nodes=16, skip_nodes=(), skip_topics=()):
+    """The ways from node `start` to node `end` over the topics of `w`, each node once, as
+    `(paths, complete)`. A path is `{"nodes", "topics", "unknown"}`, names in flow order;
+    `unknown` counts the nodes on it where no flow shows the input leading to the output, so a
+    subscriber and a publisher of one node may be unrelated. Fewest unknown first, then shortest.
+    `complete` is False when MAX_PATHS or MAX_STEPS cut the search."""
+    names = {n["id"]: n["fqn"] for n in w["nodes"]}
+    topic_names = {t["id"]: t["name"] for t in w["topics"]}
+    edges = {}
+    for t in w["topics"]:
+        if t["name"] in skip_topics:
+            continue
+        for publisher in t["publishers"]:
+            for subscriber in t["subscribers"]:
+                if publisher != subscriber and names.get(subscriber) not in skip_nodes:
+                    edges.setdefault(publisher, []).append((t["id"], subscriber))
+    stack = [(n, (n,), ()) for n, name in names.items() if name == start]
+    found = []
+    complete = True
+    for _ in range(MAX_STEPS):
+        if not stack:
+            break
+        node, nodes, topics = stack.pop()
+        if names.get(node) == end:
+            if not set(via) <= {names.get(n) for n in nodes}:
+                continue
+            if len(found) == MAX_PATHS:
+                complete = False
+                break
+            middle = range(1, len(nodes) - 1)
+            found.append(
+                {
+                    "nodes": [names[n] for n in nodes],
+                    "topics": [topic_names[t] for t in topics],
+                    "unknown": sum(
+                        not _linked(w["flows"], nodes[i], topics[i - 1], topics[i]) for i in middle
+                    ),
+                }
+            )
+            continue
+        if len(nodes) == max_nodes:
+            continue
+        for topic, following in edges.get(node, []):
+            if following in names and following not in nodes:
+                stack.append((following, (*nodes, following), (*topics, topic)))
+    else:
+        complete = complete and not stack
+    found.sort(key=lambda p: (p["unknown"], len(p["nodes"]), p["topics"]))
+    return found, complete

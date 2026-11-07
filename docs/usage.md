@@ -334,6 +334,25 @@ orma analyze <directory> --chain reaction=/obstacle,/trajectory,/control_cmd:fir
 
 실시간으로는 rqt의 Chains tab에서 본다. CLI에는 chain 실시간 보기가 없다.
 
+`orma path`는 두 node 사이의 경로를 찾아 `--chain`에 넣을 수 있는 topic 순서로 보여 준다. 지금 창의 publisher와 subscriber를 따라가며, 한 경로에서 같은 node를 두 번 지나지 않는다.
+
+```bash
+orma path /camera_node /control_node
+orma path /camera_node /control_node --via /tracker --max-nodes 8 --skip-node /debug --skip-topic /viz
+```
+
+```text
+1. /camera/image,/detections,/tracks
+   /camera_node -> /detector -> /tracker -> /control_node
+2. /camera/image,/points,/grid
+   /camera_node -> /depth -> /mapper -> /control_node
+   2 node(s) with no measured link from input to output
+```
+
+- 입력에서 출력으로 이어진다는 flow가 측정되지 않은 node 수를 함께 적고, 그 수가 적은 경로를 먼저 보여 준다. 같은 node가 받고 내보내도 서로 무관할 수 있으므로, 어떤 경로를 잴지는 사용자가 고른다.
+- 트래픽이 있어야 flow가 측정된다. 아직 안 돈 경로는 후보로만 나온다.
+- 경로는 100개까지 보여 준다. 더 있으면 그렇게 알리므로 `--via`나 `--skip-node`로 좁힌다.
+
 | 방식 | 잇는 법 | 용도 |
 | --- | --- | --- |
 | `lineage`(기본) | message마다 원천 시각을 붙여 옮긴다. node 안에서는 callback 입력, stamp, 최신 입력 연결로 잇는다 | stamp를 이어 주는 pipeline |

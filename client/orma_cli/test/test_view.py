@@ -125,3 +125,77 @@ def test_exclude_alone_over_every_process_keeps_their_unlinked_callbacks():
     shown = view.visible(window(), {"all": True, "pids": [], "exclude": "/talker"})
     assert ids(shown["nodes"]) == ["n:20:1:c0"]
     assert "c:30:1:ros:cccc00a7e448" in ids(shown["callbacks"])
+
+
+def graph(flows=()):
+    ids = {name: f"n:{i}" for i, name in enumerate(["/cam", "/det", "/depth", "/map", "/ctl"])}
+
+    def topic(name, publisher, *subscribers):
+        return {
+            "id": f"t{name}",
+            "name": name,
+            "publishers": [ids[publisher]],
+            "subscribers": [ids[s] for s in subscribers],
+        }
+
+    return {
+        "nodes": [{"id": i, "fqn": name} for name, i in ids.items()],
+        "topics": [
+            topic("/image", "/cam", "/det", "/depth"),
+            topic("/objects", "/det", "/ctl"),
+            topic("/points", "/depth", "/map"),
+            topic("/grid", "/map", "/ctl"),
+            topic("/back", "/ctl", "/cam"),
+        ],
+        "flows": [
+            {"node": ids[n], "input": f"t{i}", "output": f"t{o}", "kind": k, "ambiguous": a}
+            for n, i, o, k, a in flows
+        ],
+    }
+
+
+def test_paths_are_every_way_shortest_first():
+    paths, complete = view.find_paths(graph(), "/cam", "/ctl")
+    assert complete
+    assert [p["topics"] for p in paths] == [
+        ["/image", "/objects"],
+        ["/image", "/points", "/grid"],
+    ]
+    assert paths[0]["nodes"] == ["/cam", "/det", "/ctl"]
+    assert [p["unknown"] for p in paths] == [1, 2]
+
+
+def test_a_measured_path_comes_before_a_shorter_unknown_one():
+    flows = [
+        ("/depth", "/image", "/points", "sync", 0),
+        ("/map", "/points", "/grid", "stamp", 0),
+    ]
+    paths, _ = view.find_paths(graph(flows), "/cam", "/ctl")
+    assert [p["unknown"] for p in paths] == [0, 1]
+    assert paths[0]["nodes"][1] == "/depth"
+
+
+def test_an_ambiguous_or_blind_flow_is_no_link():
+    for flow in [
+        ("/det", "/image", "/objects", "sync", 3),
+        ("/det", "/image", "/objects", "blind", 0),
+    ]:
+        paths, _ = view.find_paths(graph([flow]), "/cam", "/ctl", max_nodes=3)
+        assert paths[0]["unknown"] == 1
+
+
+def test_paths_narrow():
+    w = graph()
+    assert len(view.find_paths(w, "/cam", "/ctl", max_nodes=3)[0]) == 1
+    assert view.find_paths(w, "/cam", "/ctl", via=("/map",))[0][0]["topics"][-1] == "/grid"
+    assert len(view.find_paths(w, "/cam", "/ctl", skip_nodes=("/det",))[0]) == 1
+    assert len(view.find_paths(w, "/cam", "/ctl", skip_topics=("/grid",))[0]) == 1
+    assert view.find_paths(w, "/cam", "/nosuch")[0] == []
+
+
+def test_a_cycle_ends_and_too_many_paths_say_so(monkeypatch):
+    assert view.find_paths(graph(), "/ctl", "/map")[0][0]["nodes"][-1] == "/map"
+    monkeypatch.setattr(view, "MAX_PATHS", 1)
+    paths, complete = view.find_paths(graph(), "/cam", "/ctl")
+    assert len(paths) == 1
+    assert not complete
