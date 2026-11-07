@@ -19,12 +19,11 @@ use crate::record::replay::Replay;
 /// Frames queued for one client; a client this far behind is dropped.
 const QUEUE: usize = 256;
 
-pub(super) fn start(core: &Arc<Mutex<Core>>, stream: UnixStream) {
-    stream
-        .set_nonblocking(false)
-        .expect("fcntl on an accepted socket");
-    let writer = stream.try_clone().expect("dup of an accepted socket");
-    let control = stream.try_clone().expect("dup of an accepted socket");
+/// Fails when the process is out of descriptors; the connection is then dropped and the server runs on.
+pub(super) fn start(core: &Arc<Mutex<Core>>, stream: UnixStream) -> std::io::Result<()> {
+    stream.set_nonblocking(false)?;
+    let writer = stream.try_clone()?;
+    let control = stream.try_clone()?;
     let (tx, rx) = mpsc::sync_channel(QUEUE);
     let id = core.lock().unwrap().client_add(tx, control);
     thread::spawn(move || write(writer, rx));
@@ -33,6 +32,7 @@ pub(super) fn start(core: &Arc<Mutex<Core>>, stream: UnixStream) {
         serve(&core, id, stream);
         core.lock().unwrap().client_remove(id);
     });
+    Ok(())
 }
 
 fn write(mut stream: UnixStream, rx: Receiver<Arc<Vec<u8>>>) {

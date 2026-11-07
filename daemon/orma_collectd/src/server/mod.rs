@@ -171,7 +171,9 @@ pub fn run(config: Config, model: Box<dyn Model>, stop: &AtomicBool) -> io::Resu
 
     let exit = loop {
         while let Ok((stream, _)) = listener.accept() {
-            client::start(&core, stream);
+            if let Err(e) = client::start(&core, stream) {
+                eprintln!("orma-collectd: client dropped: {e}");
+            }
         }
         if let Some(exit) = core.lock().unwrap().tick(stop.load(Ordering::Relaxed)) {
             break exit;
