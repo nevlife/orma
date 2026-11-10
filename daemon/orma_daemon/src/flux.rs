@@ -10,14 +10,14 @@ use std::{
     path::Path,
 };
 
-// flux layout v6 (flux_core/src/layout.rs): a `SignpostPage` opens with a `Signpost`, whose
+// flux layout v7 (flux_core/src/layout.rs): a `SignpostPage` opens with a `Signpost`, whose
 // `init_state`, `magic` and `version` are u32 at bytes 0, 4 and 8, and holds its `KeyRecord` at
 // byte 64: `state: u32`, `len: u32` and up to 192 key bytes. The page's own version decides, so a
 // signpost of another layout is named by its signpost rather than misread.
 const NAME_PREFIX: &str = "/flux.v";
 const INIT_READY: u32 = 2;
 const SIGNPOST_MAGIC: u32 = 0x464C_5350;
-const LAYOUT_VERSION: u32 = 6;
+const LAYOUT_VERSION: u32 = 7;
 const KEY_RECORD: usize = 64;
 const KEY_BYTES: usize = 192;
 const KEY_READY: u32 = 2;
