@@ -10,14 +10,15 @@ use std::{
     path::Path,
 };
 
-// flux layout v7 (flux_core/src/layout.rs): a `SignpostPage` opens with a `Signpost`, whose
+// flux layouts v7 to v9 (flux_core/src/layout.rs): a `SignpostPage` opens with a `Signpost`, whose
 // `init_state`, `magic` and `version` are u32 at bytes 0, 4 and 8, and holds its `KeyRecord` at
 // byte 64: `state: u32`, `len: u32` and up to 192 key bytes. The page's own version decides, so a
 // signpost of another layout is named by its signpost rather than misread.
 const NAME_PREFIX: &str = "/flux.v";
 const INIT_READY: u32 = 2;
 const SIGNPOST_MAGIC: u32 = 0x464C_5350;
-const LAYOUT_VERSION: u32 = 7;
+/// The flux layouts whose signpost page is this one: v8 and v9 changed only the segment.
+const LAYOUTS: std::ops::RangeInclusive<u32> = 7..=9;
 const KEY_RECORD: usize = 64;
 const KEY_BYTES: usize = 192;
 const KEY_READY: u32 = 2;
@@ -78,7 +79,7 @@ pub fn parse_key(page: &[u8]) -> Option<String> {
     let word = |at: usize| Some(u32::from_ne_bytes(page.get(at..at + 4)?.try_into().ok()?));
     if word(0)? != INIT_READY
         || word(4)? != SIGNPOST_MAGIC
-        || word(8)? != LAYOUT_VERSION
+        || !LAYOUTS.contains(&word(8)?)
         || word(KEY_RECORD)? != KEY_READY
     {
         return None;
@@ -103,8 +104,12 @@ mod tests {
     }
 
     fn page(state: u32, key: &[u8]) -> Vec<u8> {
+        page_of(9, state, key)
+    }
+
+    fn page_of(version: u32, state: u32, key: &[u8]) -> Vec<u8> {
         let mut p = vec![0u8; KEY_RECORD + 8 + KEY_BYTES];
-        for (at, word) in [(0, INIT_READY), (4, SIGNPOST_MAGIC), (8, LAYOUT_VERSION)] {
+        for (at, word) in [(0, INIT_READY), (4, SIGNPOST_MAGIC), (8, version)] {
             p[at..at + 4].copy_from_slice(&word.to_ne_bytes());
         }
         p[KEY_RECORD..KEY_RECORD + 4].copy_from_slice(&state.to_ne_bytes());
@@ -154,11 +159,20 @@ mod tests {
         assert_eq!(named, "/orma_unit/cam");
     }
 
+    /// flux layouts 7 to 9 changed the segment, not the signpost page.
     #[test]
-    fn a_page_of_another_layout_is_not_read() {
-        let mut p = page(KEY_READY, b"/cam/left");
-        p[8..12].copy_from_slice(&(LAYOUT_VERSION + 1).to_ne_bytes());
-        assert_eq!(parse_key(&p), None);
+    fn each_layout_with_this_signpost_page_is_read_and_no_other() {
+        for v in [7, 8, 9] {
+            let key = parse_key(&page_of(v, KEY_READY, b"/cam/left"));
+            assert_eq!(key.as_deref(), Some("/cam/left"), "layout {v}");
+        }
+        for v in [6, 10] {
+            assert_eq!(
+                parse_key(&page_of(v, KEY_READY, b"/cam/left")),
+                None,
+                "layout {v}"
+            );
+        }
     }
 
     #[test]
