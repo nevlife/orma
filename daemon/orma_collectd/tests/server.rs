@@ -42,10 +42,15 @@ fn a_thread_snapshot_tells_a_busy_thread_from_a_blocked_one() {
         })
         .unwrap();
     running.recv().unwrap();
+    let (parking, parked) = std::sync::mpsc::channel();
     let idle = std::thread::Builder::new()
         .name("orma-idle".into())
-        .spawn(std::thread::park)
+        .spawn(move || {
+            parking.send(()).unwrap();
+            std::thread::park();
+        })
         .unwrap();
+    parked.recv().unwrap();
     let text = threads();
     stop.store(true, Ordering::Relaxed);
     busy.join().unwrap();

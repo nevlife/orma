@@ -232,7 +232,8 @@ impl Drop for Server {
 /// ticks used in between, the system call it is in and the kernel function it waits in. Read when
 /// a server did not answer, to tell a busy one from a blocked one.
 pub fn threads() -> String {
-    fn sample() -> BTreeMap<String, (String, u64, String, String)> {
+    // By tid: a new thread has its parent's name until it sets its own.
+    fn sample() -> BTreeMap<String, (String, String, u64, String, String)> {
         let mut all = BTreeMap::new();
         for t in std::fs::read_dir("/proc/self/task")
             .into_iter()
@@ -254,8 +255,12 @@ pub fn threads() -> String {
                 .unwrap_or("?")
                 .trim()
                 .to_owned();
-            let name = format!("{} {}", t.file_name().to_string_lossy(), at("comm").trim());
-            all.insert(name, (state, ticks(11) + ticks(12), syscall, at("wchan")));
+            let tid = t.file_name().to_string_lossy().into_owned();
+            let name = at("comm").trim().to_owned();
+            all.insert(
+                tid,
+                (name, state, ticks(11) + ticks(12), syscall, at("wchan")),
+            );
         }
         all
     }
@@ -265,13 +270,13 @@ pub fn threads() -> String {
         "loadavg {}",
         std::fs::read_to_string("/proc/loadavg").unwrap_or_default()
     );
-    for (name, (state, ticks, syscall, wchan)) in sample() {
-        let used = first.get(&name).map_or_else(
+    for (tid, (name, state, ticks, syscall, wchan)) in sample() {
+        let used = first.get(&tid).map_or_else(
             || "new".to_owned(),
-            |f| (ticks - f.1.min(ticks)).to_string(),
+            |f| (ticks - f.2.min(ticks)).to_string(),
         );
         out += &format!(
-            "  {name}: {state}, {used} ticks in 200 ms, syscall {syscall}, waits in {wchan}\n"
+            "  {tid} {name}: {state}, {used} ticks in 200 ms, syscall {syscall}, waits in {wchan}\n"
         );
     }
     out
