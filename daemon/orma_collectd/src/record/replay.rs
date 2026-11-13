@@ -111,6 +111,7 @@ impl Replay {
             Condvar::new(),
         ));
         let shared = Arc::clone(&play);
+        let shown = path.display().to_string();
         let thread = thread::spawn(move || {
             let (lock, wake) = &*shared;
             let mut p = lock.lock().unwrap();
@@ -134,6 +135,10 @@ impl Replay {
                 }
                 let sent = read.map(|m| send(&m));
                 if !matches!(sent, Ok(true)) {
+                    // The client is not told; this line is the only trace of a replay that stopped.
+                    if let Err(e) = sent {
+                        eprintln!("orma-collectd: {shown}: replay stopped at frame {at}: {e}");
+                    }
                     p.closed = true;
                     return;
                 }
