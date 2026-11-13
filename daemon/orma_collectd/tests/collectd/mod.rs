@@ -228,6 +228,52 @@ impl Drop for Server {
     }
 }
 
+/// Each thread of this process (the servers run in it) twice, 200 ms apart: name, state, CPU
+/// ticks used in between, the system call it is in and the kernel function it waits in. Read when
+/// a server did not answer, to tell a busy one from a blocked one.
+pub fn threads() -> String {
+    fn sample() -> BTreeMap<String, (String, u64, String, String)> {
+        let mut all = BTreeMap::new();
+        for t in std::fs::read_dir("/proc/self/task")
+            .into_iter()
+            .flatten()
+            .flatten()
+        {
+            let at = |f: &str| std::fs::read_to_string(t.path().join(f)).unwrap_or_default();
+            let stat = at("stat");
+            let rest: Vec<&str> = stat
+                .rsplit_once(") ")
+                .map_or("", |(_, r)| r)
+                .split(' ')
+                .collect();
+            let ticks = |i: usize| rest.get(i).and_then(|v| v.parse::<u64>().ok()).unwrap_or(0);
+            let state = rest.first().copied().unwrap_or("?").to_owned();
+            let syscall = at("syscall")
+                .split(' ')
+                .next()
+                .unwrap_or("?")
+                .trim()
+                .to_owned();
+            let name = format!("{} {}", t.file_name().to_string_lossy(), at("comm").trim());
+            all.insert(name, (state, ticks(11) + ticks(12), syscall, at("wchan")));
+        }
+        all
+    }
+    let first = sample();
+    thread::sleep(Duration::from_millis(200));
+    let mut out = format!(
+        "loadavg {}",
+        std::fs::read_to_string("/proc/loadavg").unwrap_or_default()
+    );
+    for (name, (state, ticks, syscall, wchan)) in sample() {
+        let used = ticks - first.get(&name).map_or(ticks, |f| f.1.min(ticks));
+        out += &format!(
+            "  {name}: {state}, {used} ticks in 200 ms, syscall {syscall}, waits in {wchan}\n"
+        );
+    }
+    out
+}
+
 pub fn until(mut done: impl FnMut() -> bool) {
     let start = Instant::now();
     while !done() {
@@ -278,7 +324,10 @@ impl Client {
     }
 
     pub fn recv(&mut self) -> ServerMessage {
-        let f = frame::read(&mut self.stream).unwrap().expect("a message");
+        let f = match frame::read(&mut self.stream) {
+            Ok(f) => f.expect("a message"),
+            Err(e) => panic!("no message from the server ({e}); {}", threads()),
+        };
         let m: ServerMessage = serde_json::from_slice(&f.payload).unwrap();
         match &m {
             ServerMessage::State(s) => self.state = Some(s.clone()),

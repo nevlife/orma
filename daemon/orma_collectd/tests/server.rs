@@ -25,6 +25,33 @@ fn golden_requests() -> Vec<(String, ClientRequest)> {
     all
 }
 
+/// What a failed wait for the server prints: a spinning thread with the ticks it used, a parked one
+/// asleep.
+#[test]
+fn a_thread_snapshot_tells_a_busy_thread_from_a_blocked_one() {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let stop = Arc::new(AtomicBool::new(false));
+    let spin = Arc::clone(&stop);
+    let busy = std::thread::Builder::new()
+        .name("orma-busy".into())
+        .spawn(move || while !spin.load(Ordering::Relaxed) {})
+        .unwrap();
+    let idle = std::thread::Builder::new()
+        .name("orma-idle".into())
+        .spawn(std::thread::park)
+        .unwrap();
+    let text = threads();
+    stop.store(true, Ordering::Relaxed);
+    busy.join().unwrap();
+    idle.thread().unpark();
+    idle.join().unwrap();
+    let line = |name: &str| text.lines().find(|l| l.contains(name)).unwrap().to_owned();
+    assert!(line("orma-busy: R").contains(" ticks in 200 ms"), "{text}");
+    assert!(!line("orma-busy").contains(": R, 0 ticks"), "{text}");
+    assert!(line("orma-idle").contains(": S, 0 ticks"), "{text}");
+}
+
 #[test]
 fn hello_first_then_every_op_is_answered() {
     let dir = scratch("protocol");
