@@ -266,7 +266,10 @@ pub fn threads() -> String {
         std::fs::read_to_string("/proc/loadavg").unwrap_or_default()
     );
     for (name, (state, ticks, syscall, wchan)) in sample() {
-        let used = ticks - first.get(&name).map_or(ticks, |f| f.1.min(ticks));
+        let used = first.get(&name).map_or_else(
+            || "new".to_owned(),
+            |f| (ticks - f.1.min(ticks)).to_string(),
+        );
         out += &format!(
             "  {name}: {state}, {used} ticks in 200 ms, syscall {syscall}, waits in {wchan}\n"
         );

@@ -33,10 +33,15 @@ fn a_thread_snapshot_tells_a_busy_thread_from_a_blocked_one() {
     use std::sync::atomic::{AtomicBool, Ordering};
     let stop = Arc::new(AtomicBool::new(false));
     let spin = Arc::clone(&stop);
+    let (started, running) = std::sync::mpsc::channel();
     let busy = std::thread::Builder::new()
         .name("orma-busy".into())
-        .spawn(move || while !spin.load(Ordering::Relaxed) {})
+        .spawn(move || {
+            started.send(()).unwrap();
+            while !spin.load(Ordering::Relaxed) {}
+        })
         .unwrap();
+    running.recv().unwrap();
     let idle = std::thread::Builder::new()
         .name("orma-idle".into())
         .spawn(std::thread::park)
@@ -48,7 +53,10 @@ fn a_thread_snapshot_tells_a_busy_thread_from_a_blocked_one() {
     idle.join().unwrap();
     let line = |name: &str| text.lines().find(|l| l.contains(name)).unwrap().to_owned();
     assert!(line("orma-busy: R").contains(" ticks in 200 ms"), "{text}");
-    assert!(!line("orma-busy").contains(": R, 0 ticks"), "{text}");
+    assert!(
+        !line("orma-busy").contains(": R, 0 ticks") && !line("orma-busy").contains("new"),
+        "{text}"
+    );
     assert!(line("orma-idle").contains(": S, 0 ticks"), "{text}");
 }
 
