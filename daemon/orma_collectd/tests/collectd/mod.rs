@@ -296,6 +296,9 @@ pub struct Client {
     pub state: Option<State>,
     pub lines: Vec<EventLine>,
     pub windows: Vec<Window>,
+    /// Said when no message comes: the last op sent, and what the test waits for.
+    last_op: String,
+    pub waiting_for: String,
 }
 
 impl Client {
@@ -308,6 +311,8 @@ impl Client {
             state: None,
             lines: Vec::new(),
             windows: Vec::new(),
+            last_op: String::new(),
+            waiting_for: String::new(),
         }
     }
 
@@ -327,6 +332,7 @@ impl Client {
     pub fn send(&mut self, op: ClientOp) -> u64 {
         let id = self.next;
         self.next += 1;
+        self.last_op = format!("{op:?}").chars().take(80).collect();
         frame::write_json(&mut self.stream, &ClientRequest { id, op }).unwrap();
         id
     }
@@ -334,7 +340,15 @@ impl Client {
     pub fn recv(&mut self) -> ServerMessage {
         let f = match frame::read(&mut self.stream) {
             Ok(f) => f.expect("a message"),
-            Err(e) => panic!("no message from the server ({e}); {}", threads()),
+            Err(e) => panic!(
+                "no message from the server ({e}) after {} (request {}), {} windows so far, \
+                 waiting for {}; {}",
+                self.last_op,
+                self.next - 1,
+                self.windows.len(),
+                self.waiting_for,
+                threads()
+            ),
         };
         let m: ServerMessage = serde_json::from_slice(&f.payload).unwrap();
         match &m {

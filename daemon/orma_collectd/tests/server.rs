@@ -446,6 +446,7 @@ fn replay_and_export_read_windows() {
         panic!("{opened:?}")
     };
     c.windows.clear();
+    c.waiting_for = format!("{frames} replayed windows (lines of windows.jsonl)");
     let before = Instant::now();
     while c.windows.len() < frames {
         c.recv();
