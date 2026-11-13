@@ -466,12 +466,16 @@ fn replay_and_export_read_windows() {
     })
     .unwrap();
     c.windows.clear();
+    c.waiting_for = "the window the seek to frame 2 shows".into();
     c.request(ClientOp::ReplaySeek {
         replay_id: replay_id.clone(),
         frame: 2,
     })
     .unwrap();
-    c.until(|m| matches!(m, ServerMessage::Window(_)));
+    // The replay thread may send it before the server answers the seek.
+    if c.windows.is_empty() {
+        c.until(|m| matches!(m, ServerMessage::Window(_)));
+    }
     assert_eq!(c.windows[0].seq, seqs[2]);
     assert!(
         c.request(ClientOp::ReplaySeek {
