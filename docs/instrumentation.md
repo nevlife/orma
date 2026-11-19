@@ -518,7 +518,7 @@ broker가 있는 rcl과 그 rcl에 맞춘 rclpy에는 uprobe용 빈 함수(ancho
 
 ## 3. flux 실행 흐름
 
-flux는 `libflux_ffi.so`가 export하는 `flux_trace_*` 함수를 호출한다. 몸체가 비어 있고 enabled 검사가 없어, 세 수집 방식이 모두 함수 자체에 부착한다. 함수 이름과 인자가 계약이고, 버전은 아무것도 하지 않는 심볼 `flux_trace_contract_2`다. orma는 이 심볼을 export하는 라이브러리에만 부착한다. 버전이 다른 라이브러리는 인자가 다르므로 잘못 읽지 않도록 거절한다.
+flux는 `libflux_ffi.so`가 export하는 `flux_trace_*` 함수를 호출한다. 몸체가 비어 있고 enabled 검사가 없어, 세 수집 방식이 모두 함수 자체에 부착한다. 함수 이름과 인자가 계약이고, 버전은 아무것도 하지 않는 심볼 `flux_trace_contract_3`다. orma는 이 심볼을 export하는 라이브러리에만 부착한다. 버전이 다른 라이브러리는 인자가 다르므로 잘못 읽지 않도록 거절한다.
 
 - 채널 id는 flux 채널 공유 상태의 주소이고, 재연결 전까지 바뀌지 않는다. executor id는 executor control block의 주소다.
 - 문자열 인자는 255 B까지 읽는다.

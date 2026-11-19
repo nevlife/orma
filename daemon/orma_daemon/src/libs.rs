@@ -14,7 +14,7 @@ use orma_proto::msg::ExecutorProbes;
 
 /// The event names and arguments the flux programs read. `libflux_ffi.so` exports a symbol of this
 /// name for exactly that set (design 11.1).
-pub const FLUX_CONTRACT: &str = "flux_trace_contract_2";
+pub const FLUX_CONTRACT: &str = "flux_trace_contract_3";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Lib {

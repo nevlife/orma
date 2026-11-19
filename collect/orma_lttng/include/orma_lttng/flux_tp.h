@@ -10,7 +10,7 @@
 #include <lttng/tracepoint.h>
 #include <stdint.h>
 
-// One event per flux_trace_* function of trace contract 2 (flux/trace.h), its arguments as
+// One event per flux_trace_* function of trace contract 3 (flux/trace.h), its arguments as
 // fields of the same names.
 
 LTTNG_UST_TRACEPOINT_EVENT(

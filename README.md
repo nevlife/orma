@@ -52,7 +52,7 @@ colcon build --symlink-install --packages-up-to orma_cli rqt_orma orma_daemon or
 | rcl_executor | `librcl_executor.so`의 `rcl_executor_trace_*`와 `rcl_executor_next_excluding` | 이 core를 매핑한 프로세스, `uprobe` 방식만([`docs/instrumentation.md`](docs/instrumentation.md) 2.12) |
 | rcl broker 전달 경로 | `librcl.so`의 broker anchor(`rcl_ipc_trace_*`)와 loan 함수, `libzenohc.so`의 `z_bytes_from_shm_mut`, rclpy의 `rclpy_trace_*` | export된 프로세스, 세 방식 모두([`docs/instrumentation.md`](docs/instrumentation.md) 2.13) |
 | rclpy | rclpy가 호출하지 않는 콜백 이벤트를 `orma_rclpy`가 대신 호출한다 | |
-| flux | `libflux_ffi.so`의 `flux_trace_*`(trace contract 2) | |
+| flux | `libflux_ffi.so`의 `flux_trace_*`(trace contract 3) | |
 | span | `liborma_span.so`의 `orma_span_begin`, `orma_span_end`(C, C++ `orma::Span`, Python `@span`) | |
 | CUDA | `libcuda.so`의 driver 함수: kernel과 graph launch, 동기와 비동기 copy, stream, context, event의 synchronize, 할당과 해제. Jetson의 `nvidia/`, `tegra/` 아래 라이브러리 포함 | 선택 수집 |
 | DDS write | Cyclone DDS의 `dds_write`, `dds_write_ts`, `dds_writecdr`, `dds_forwardcdr`. Fast DDS의 `DataWriter::write`(`libfastrtps.so` 2.x, `libfastdds.so` 3.x) | 선택 수집 |
@@ -194,7 +194,7 @@ provider는 셋이다.
   - CUDA driver 호출(`cuda_call`)과 DDS write(`dds_write`)는 클라이언트가 활성화한 경우에만 낸다.
   - 페이로드는 64-bit word(`p`)와 문자열(`s0`, `s1`)이다.
   - `orma:missing`은 원래 함수를 찾지 못한 수집 지점을 알린다.
-- `flux`: trace contract 2의 `flux_trace_*` 함수마다 이벤트 하나. 함수 인자가 필드가 된다.
+- `flux`: trace contract 3의 `flux_trace_*` 함수마다 이벤트 하나. 함수 인자가 필드가 된다.
 - `ros2`: `libtracetools.so`에 LTTng가 없는 Humble에서만 사용한다. tracetools 4.1 형식이라 ros2_tracing 도구로 읽기 가능하다.
 
 `orma run --method lttng`과 `orma env --method lttng`이 하는 일:

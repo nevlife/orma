@@ -104,7 +104,7 @@ pub const ORMA_EV_CUDA_CALL: u16 = 96;
 pub const ORMA_EV_SPAN_BEGIN: u16 = 104;
 pub const ORMA_EV_SPAN_END: u16 = 105;
 
-// flux_trace_* of flux_trace_contract_2 (design 11.2).
+// flux_trace_* of flux_trace_contract_3 (design 11.2).
 pub const ORMA_EV_FLUX_CHANNEL_INIT: u16 = 128;
 pub const ORMA_EV_FLUX_CLAIM: u16 = 129;
 pub const ORMA_EV_FLUX_LOAN: u16 = 130;

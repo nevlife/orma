@@ -11,7 +11,7 @@
     {
       "item": "flux contract",
       "status": "fail",
-      "detail": "libflux_ffi.so.2 lacks flux_trace_contract_2"
+      "detail": "libflux_ffi.so.2 lacks flux_trace_contract_3"
     },
     {
       "item": "rmw timestamp",

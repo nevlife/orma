@@ -1,12 +1,12 @@
-// flux_trace_* of trace contract 2 (design 11.2). The events are emitted only when a loaded
-// library exports flux_trace_contract_2; the call goes on to the next definition either way.
+// flux_trace_* of trace contract 3 (design 11.2). The events are emitted only when a loaded
+// library exports flux_trace_contract_3; the call goes on to the next definition either way.
 #include "orma_preload/intercept.h"
 #include "orma_preload/orma_emit.h"
 
 #include <stdbool.h>
 #include <stdio.h>
 
-#define CONTRACT "flux_trace_contract_2"
+#define CONTRACT "flux_trace_contract_3"
 
 // 0 not checked yet, 1 a loaded flux library has the contract, -1 none has. Not asked of the
 // caller: a tail call hides it. Nor of the next definition, which can be another orma backend.
@@ -80,17 +80,26 @@ FLUX_POINT(
   orma_emit_flux_loan_end(&ev);
 }
 
+// flux gives header.stamp in nanoseconds; events carry the message's stamp word, as for ROS.
+static uint64_t stamp_word(int64_t ns)
+{
+  if (ns <= 0) {
+    return 0;
+  }
+  return (uint64_t)(ns / 1000000000) | ((uint64_t)(ns % 1000000000) << 32);
+}
+
 FLUX_POINT(
   commit, ORMA_EV_FLUX_COMMIT,
   (const void * channel, uint64_t ticket, uint32_t slot, uint64_t nbytes, int32_t woke,
-   uint64_t stamp),
+   int64_t stamp),
   (channel, ticket, slot, nbytes, woke, stamp))
 {
   orma_ev_flux_commit ev = {
     .channel = ORMA_U64(channel),
     .ticket = ticket,
     .nbytes = nbytes,
-    .stamp = stamp,
+    .stamp = stamp_word(stamp),
     .slot = slot,
     .woke = woke,
   };
@@ -99,11 +108,15 @@ FLUX_POINT(
 
 FLUX_POINT(
   take, ORMA_EV_FLUX_TAKE,
-  (const void * channel, uint64_t ticket, uint32_t slot, uint64_t lost, uint64_t stamp),
+  (const void * channel, uint64_t ticket, uint32_t slot, uint64_t lost, int64_t stamp),
   (channel, ticket, slot, lost, stamp))
 {
   orma_ev_flux_take ev = {
-    .channel = ORMA_U64(channel), .ticket = ticket, .lost = lost, .stamp = stamp, .slot = slot};
+    .channel = ORMA_U64(channel),
+    .ticket = ticket,
+    .lost = lost,
+    .stamp = stamp_word(stamp),
+    .slot = slot};
   orma_emit_flux_take(&ev);
 }
 

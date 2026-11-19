@@ -3,7 +3,7 @@
 attached, and fails unless the shared memory holds every event of its 300 early callbacks, each
 with a late callback nested inside: 600 claim, commit, take, release and flux callback pairs in
 the ring, and two executors with 300 callbacks each in the tables. Needs a libflux_ffi with
-flux_trace_contract_2 (WP1).
+flux_trace_contract_3 (WP1).
 
     flux_real.py READER PRELOAD EVENTS_H
 """
@@ -35,8 +35,8 @@ def main():
     prefix = flux_prefix()
     lib = prefix / "lib/libflux_ffi.so"
     nm = subprocess.run(["nm", "-D", "--defined-only", lib], capture_output=True, text=True).stdout
-    if "flux_trace_contract_2" not in nm:
-        sys.exit(f"{lib} lacks flux_trace_contract_2")
+    if "flux_trace_contract_3" not in nm:
+        sys.exit(f"{lib} lacks flux_trace_contract_3")
     with tempfile.TemporaryDirectory() as tmp:
         exe = Path(tmp) / "flux_caller"
         subprocess.run(

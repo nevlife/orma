@@ -1,4 +1,4 @@
-//! `flux_trace_*` of flux_trace_contract_2 in libflux_ffi.so (design 11.2). ormad attaches
+//! `flux_trace_*` of flux_trace_contract_3 in libflux_ffi.so (design 11.2). ormad attaches
 //! only to a library that exports the contract symbol.
 
 use aya_ebpf::{macros::uprobe, programs::ProbeContext};
@@ -99,6 +99,14 @@ pub fn flux_loan_end(ctx: ProbeContext) -> u32 {
     0
 }
 
+/// flux gives `header.stamp` in nanoseconds; events carry the message's stamp word, as for ROS.
+fn stamp_word(ns: u64) -> u64 {
+    if ns as i64 <= 0 {
+        return 0;
+    }
+    (ns / 1_000_000_000) | ((ns % 1_000_000_000) << 32)
+}
+
 // commit(channel, ticket, slot, nbytes, woke, stamp)
 #[uprobe]
 pub fn flux_commit(ctx: ProbeContext) -> u32 {
@@ -106,7 +114,7 @@ pub fn flux_commit(ctx: ProbeContext) -> u32 {
         channel: a(&ctx, 0),
         ticket: a(&ctx, 1),
         nbytes: a(&ctx, 3),
-        stamp: a(&ctx, 5),
+        stamp: stamp_word(a(&ctx, 5)),
         slot: w(&ctx, 2),
         woke: w(&ctx, 4) as i32,
     };
@@ -121,7 +129,7 @@ pub fn flux_take(ctx: ProbeContext) -> u32 {
         channel: a(&ctx, 0),
         ticket: a(&ctx, 1),
         lost: a(&ctx, 3),
-        stamp: a(&ctx, 4),
+        stamp: stamp_word(a(&ctx, 4)),
         slot: w(&ctx, 2),
         pad: 0,
     };

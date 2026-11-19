@@ -7,7 +7,7 @@
 //     caller asan                  the same but malloc attribution, with libasan.so preloaded first
 //     caller flux-global STUB     flux events of a stub loaded RTLD_GLOBAL
 //     caller flux-local STUB      the same loaded RTLD_LOCAL, as Python loads libflux_ffi
-//     caller flux-none STUB       a stub without flux_trace_contract_2: no events
+//     caller flux-none STUB       a stub without flux_trace_contract_3: no events
 //     caller collect CUDA DDS DELIVERY  spans, stub CUDA and DDS calls with their options off and
 //                                  on, and the delivery points: stub anchors, librcl's loan calls
 #define _GNU_SOURCE
@@ -509,7 +509,7 @@ static void check_flux(const char * mode, const char * stub)
   }
   CHECK(t.events == 11 + 10 * FLUX_ROUNDS && t.commits == FLUX_ROUNDS && t.strings_ok);
   CHECK(t.wedged == 700);
-  CHECK(t.last_stamp == 0x5000000000u + FLUX_ROUNDS);
+  CHECK(t.last_stamp == (5u | ((uint64_t)FLUX_ROUNDS << 32)));
   CHECK(flux_count(ORMA_AGG_CALLBACK, 1, 0xE0) == FLUX_ROUNDS);
   CHECK(flux_count(ORMA_AGG_CALLBACK, 3, 0xE2) == FLUX_ROUNDS);
   CHECK(flux_count(ORMA_AGG_DISPATCH, 1, 0xE0) == FLUX_ROUNDS);

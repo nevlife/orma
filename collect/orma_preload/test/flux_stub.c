@@ -1,6 +1,6 @@
-// Stands in for libflux_ffi while it changes: the flux_trace_* of contract 2 with the signatures
+// Stands in for libflux_ffi while it changes: the flux_trace_* of contract 3 with the signatures
 // of design 11.2, counting the calls that reach them, and stub_run, which calls them through this
-// library's PLT as libflux_ffi does. Built with and without flux_trace_contract_2.
+// library's PLT as libflux_ffi does. Built with and without flux_trace_contract_3.
 #include <stddef.h>
 #include <stdint.h>
 
@@ -21,7 +21,7 @@ TRACE uint64_t stub_calls(void)
 }
 
 #ifdef STUB_CONTRACT
-TRACE void flux_trace_contract_2(void)
+TRACE void flux_trace_contract_3(void)
 {
   __asm__ volatile("");
 }
@@ -56,14 +56,14 @@ TRACE void flux_trace_loan_end(const void * channel, uint32_t slot, int32_t resu
 
 TRACE void flux_trace_commit(
   const void * channel, uint64_t ticket, uint32_t slot, uint64_t nbytes, int32_t woke,
-  uint64_t stamp)
+  int64_t stamp)
 {
   (void)channel, (void)ticket, (void)slot, (void)nbytes, (void)woke, (void)stamp;
   BODY(4);
 }
 
 TRACE void flux_trace_take(
-  const void * channel, uint64_t ticket, uint32_t slot, uint64_t lost, uint64_t stamp)
+  const void * channel, uint64_t ticket, uint32_t slot, uint64_t lost, int64_t stamp)
 {
   (void)channel, (void)ticket, (void)slot, (void)lost, (void)stamp;
   BODY(5);
@@ -164,7 +164,7 @@ TRACE void stub_run(int rounds)
     flux_trace_wake(EX, 1, 1);
     flux_trace_callback_start(EX, 1, EP);
     flux_trace_claim(CH, 0, 0, 0);
-    flux_trace_commit(CH, (uint64_t)r, 0, 64, 1, 0x5000000000u + (uint64_t)r);
+    flux_trace_commit(CH, (uint64_t)r, 0, 64, 1, 5000000000 + (int64_t)r);
     flux_trace_callback_start(EX2, 3, NULL);
     flux_trace_take(CH, (uint64_t)r, 0, 0, 0x5000000000u + (uint64_t)r);
     flux_trace_release(CH, (uint64_t)r, 0);

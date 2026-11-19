@@ -737,12 +737,16 @@ fn per_node_cpu_with_a_thread_per_node() {
     assert_eq!(p.shared_cpu_pct, Some(0.0));
 }
 
+/// Layout 11 puts the ROS domain after the version; the key is read past it.
 #[test]
 fn flux_channels_of_one_type_on_two_keys_are_two_topics() {
     let mut h = H::offline();
     h.node(1200, 0x1, "cams", "/");
-    for (channel, key, commits) in [(0xa1u64, "cam0", 10u64), (0xa2, "cam1", 5)] {
-        let segment = format!("/flux.v6..{key}.image.0123456789abcdef.e0");
+    for (channel, prefix, key, commits) in [
+        (0xa1u64, "/flux.v6.", "cam0", 10u64),
+        (0xa2, "/flux.v11.d70.", "cam1", 5),
+    ] {
+        let segment = format!("{prefix}.{key}.image.0123456789abcdef.e0");
         let init = orma_ev_flux_channel_init {
             channel,
             dev: 7,

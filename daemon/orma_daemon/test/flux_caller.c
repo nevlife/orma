@@ -52,26 +52,29 @@ static int32_t attach(void *ctx) { return ((source_ctx *)ctx)->sub != NULL; }
 
 static int32_t deliver_one(void *ctx) {
   source_ctx *s = ctx;
-  flux_view v = {0};
-  if (!flux_channel_take(s->sub, &v)) return 0;
+  flux_frame v = {0};
+  if (flux_channel_take(s->sub, &v) != FLUX_OK) return 0;
   s->callback();
-  flux_view_release(&v);
+  flux_frame_release(&v);
   return 1;
 }
 
 static const flux_channel *channel(void *ctx) { return ((source_ctx *)ctx)->sub; }
 
 static void open_pair(const char *name, flux_channel **pub, flux_channel **sub) {
-  flux_memory_policy mem = {false, false};
-  CHECK(flux_channel_create(name, 64, 4, 1, 0, FP, mem, NULL, FLUX_NO_STAMP, pub) == FLUX_OK);
-  CHECK(flux_channel_open(name, FP, mem, NULL, FLUX_NO_STAMP, sub) == FLUX_OK);
+  flux_publisher_config c = flux_publisher_config_default();
+  c.slot_size = 64;
+  c.slot_count = 4;
+  c.max_subscribers = 1;
+  CHECK(flux_channel_create(name, &c, FP, FLUX_MEMORY_DEFAULT, NULL, pub) == FLUX_OK);
+  CHECK(flux_channel_open(name, FP, FLUX_MEMORY_DEFAULT, NULL, sub) == FLUX_OK);
 }
 
 static flux_executor *executor(source_ctx *s) {
   flux_executor *ex = NULL;
   CHECK(flux_executor_new(&ex) == FLUX_OK);
-  flux_source src = {s, attach, deliver_one, channel, NULL, NULL, s};
-  CHECK(flux_executor_add(ex, src, 0) == FLUX_OK);
+  flux_source src = {sizeof(flux_source), s, attach, deliver_one, channel, NULL, NULL, s};
+  CHECK(flux_executor_add(ex, &src, 0) == FLUX_OK);
   return ex;
 }
 

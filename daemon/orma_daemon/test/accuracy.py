@@ -443,7 +443,7 @@ def flux_calls(sock, tmp, f):
 
 
 def flux_real(sock, tmp, f):
-    """The C caller on the real libflux_ffi (contract 2): 300 early callbacks, each with a late
+    """The C caller on the real libflux_ffi (contract 3): 300 early callbacks, each with a late
     one inside on another executor."""
     prefix = flux_lib()
     real = (prefix / "lib/libflux_ffi.so").resolve()

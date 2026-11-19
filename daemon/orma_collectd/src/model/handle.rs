@@ -20,15 +20,19 @@ enum Via {
 
 const NO_SYMBOL: &str = "DISABLED__demangle_symbol";
 
-/// `/flux.v<layout>.<flattened key>.<fingerprint>[.e<epoch>]` as key and fingerprint. The key
-/// flattens only '/' to '.', so this restores it.
+/// `/flux.v<layout>.[d<domain>.]<flattened key>.<fingerprint>[.e<epoch>]` as key and
+/// fingerprint; the domain is in the name from layout 11. The key flattens only '/' to '.', so
+/// this restores it.
 fn parse_signpost(name: &str) -> Option<(String, String, u64)> {
     let signpost = match name.rsplit_once(".e") {
         Some((s, epoch)) if !epoch.is_empty() && epoch.bytes().all(|b| b.is_ascii_digit()) => s,
         _ => name,
     };
     let rest = signpost.strip_prefix("/flux.v")?;
-    let (_, rest) = rest.split_once('.')?;
+    let (layout, mut rest) = rest.split_once('.')?;
+    if layout.parse::<u32>().ok()? >= 11 {
+        rest = rest.split_once('.')?.1;
+    }
     let (flat, fp) = rest.rsplit_once('.')?;
     let fp = u64::from_str_radix(fp, 16).ok()?;
     Some((signpost.to_string(), flat.replace('.', "/"), fp))
