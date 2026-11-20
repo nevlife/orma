@@ -191,7 +191,7 @@ fn ormad_follows_selection_and_recordings_and_its_loss_leaves_a_gap() {
     assert_eq!(c.state.as_ref().unwrap().sources.ormad, OrmadLink::Absent);
 
     let fake = FakeOrmad::start(&dir.join("ormad.sock"));
-    c.until(|m| matches!(m, ServerMessage::State(s) if s.sources.ormad == OrmadLink::Connected));
+    c.until_state(|s| s.sources.ormad == OrmadLink::Connected);
     until(|| fake.has(|o| matches!(o, OrmadOp::Window { window_s } if *window_s == 1.0)));
     until(|| fake.has(|o| attached(o, ProbeSet::Discovery, true, &[])));
     until(|| fake.has(|o| attached(o, ProbeSet::Sched, true, &[])));
@@ -267,7 +267,7 @@ fn ormad_follows_selection_and_recordings_and_its_loss_leaves_a_gap() {
     fake.drop_connection();
     c.until(|m| matches!(m, ServerMessage::EventLine(l) if l.kind == "ormad_lost"));
     c.until(|m| matches!(m, ServerMessage::State(s) if s.sources.ormad == OrmadLink::Lost));
-    c.until(|m| matches!(m, ServerMessage::State(s) if s.sources.ormad == OrmadLink::Connected));
+    c.until_state(|s| s.sources.ormad == OrmadLink::Connected);
     // The usage of the lost ormad does not outlive it.
     c.until(|m| matches!(m, ServerMessage::Window(w) if w.agent.ormad.is_none()));
     assert_eq!(*fake.connections.lock().unwrap(), 2);
@@ -351,7 +351,7 @@ fn selfcheck_waits_for_ormad_and_carries_its_checks() {
 
     let fake = FakeOrmad::start(&dir.join("ormad.sock"));
     fake.answers_selfcheck.store(true, Ordering::Relaxed);
-    c.until(|m| matches!(m, ServerMessage::State(s) if s.sources.ormad == OrmadLink::Connected));
+    c.until_state(|s| s.sources.ormad == OrmadLink::Connected);
     c.request(ClientOp::Select(Select {
         selection: Selection {
             all: false,
@@ -392,7 +392,7 @@ fn scheduler_records_reach_only_recordings_with_sched() {
     let server = Server::start(&dir, config(&dir));
     let fake = FakeOrmad::start(&dir.join("ormad.sock"));
     let mut c = server.client("orma");
-    c.until(|m| matches!(m, ServerMessage::State(s) if s.sources.ormad == OrmadLink::Connected));
+    c.until_state(|s| s.sources.ormad == OrmadLink::Connected);
     let targets = || {
         Some(Targets {
             all: false,
@@ -451,7 +451,7 @@ fn ormad_windows_end_the_windows() {
     fake.period_ms.store(600, Ordering::Relaxed);
     let _ormad = fake.listen(&dir.join("ormad.sock"));
     let mut c = server.client("orma");
-    c.until(|m| matches!(m, ServerMessage::State(s) if s.sources.ormad == OrmadLink::Connected));
+    c.until_state(|s| s.sources.ormad == OrmadLink::Connected);
     c.request(ClientOp::Configure(Configure {
         window_s: Some(0.2),
         bandwidth: None,
@@ -676,7 +676,7 @@ fn a_node_name_selects_the_processes_of_its_nodes_as_they_appear() {
     })
     .unwrap();
     let fake = FakeOrmad::start(&dir.join("ormad.sock"));
-    c.until(|m| matches!(m, ServerMessage::State(s) if s.sources.ormad == OrmadLink::Connected));
+    c.until_state(|s| s.sources.ormad == OrmadLink::Connected);
     assert!(
         c.request(ClientOp::Select(Select {
             selection: Selection {
@@ -733,7 +733,7 @@ fn ormad_reads_the_executor_only_of_hot_processes_with_unnamed_callbacks() {
     let mut c = server.client("orma");
     server.seen.0.lock().unwrap().unowned = [TRACED, OTHER].into();
     let fake = FakeOrmad::start(&dir.join("ormad.sock"));
-    c.until(|m| matches!(m, ServerMessage::State(s) if s.sources.ormad == OrmadLink::Connected));
+    c.until_state(|s| s.sources.ormad == OrmadLink::Connected);
     c.start(RecordOptions {
         method: Some(RecordMethod::Uprobe),
         targets: Some(Targets {
@@ -762,7 +762,7 @@ fn gpu_dds_and_futex_probes_follow_the_recordings_that_ask() {
     let server = Server::start(&dir, config(&dir));
     let fake = FakeOrmad::start(&dir.join("ormad.sock"));
     let mut c = server.client("orma");
-    c.until(|m| matches!(m, ServerMessage::State(s) if s.sources.ormad == OrmadLink::Connected));
+    c.until_state(|s| s.sources.ormad == OrmadLink::Connected);
     let mut recs = Vec::new();
     for on in [false, true] {
         let (id, d) = c.start(RecordOptions {

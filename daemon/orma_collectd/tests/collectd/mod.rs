@@ -372,6 +372,15 @@ impl Client {
         }
     }
 
+    /// Reads until the server's state holds `done`, starting from the state already kept: what
+    /// waits for a change can find it already in the state that came with hello.
+    pub fn until_state(&mut self, mut done: impl FnMut(&State) -> bool) {
+        if self.state.as_ref().is_some_and(&mut done) {
+            return;
+        }
+        self.until(|m| matches!(m, ServerMessage::State(s) if done(s)));
+    }
+
     /// The reply or error to request `id`.
     pub fn answer(&mut self, id: u64) -> Result<ReplyBody, ErrorMessage> {
         match self.until(|m| match m {
