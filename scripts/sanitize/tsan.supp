@@ -1,3 +1,4 @@
 # NVML initialises itself without a lock of its own that TSan can see; only the tests start two
-# servers in one process.
-race:nvmlInitWithFlags
+# servers in one process. By library, not by function: matching a function symbolizes the
+# report first, and symbolizing NVML stops every thread for seconds.
+called_from_lib:libnvidia-ml.so.1
