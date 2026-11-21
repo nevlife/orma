@@ -10,7 +10,7 @@ use std::{
     path::Path,
 };
 
-// flux layouts v7 to v11 (flux_core/src/layout.rs): a `SignpostPage` opens with a `Signpost`, whose
+// flux layouts v7 to v12 (flux_core/src/layout.rs): a `SignpostPage` opens with a `Signpost`, whose
 // `init_state`, `magic` and `version` are u32 at bytes 0, 4 and 8, and holds its `KeyRecord` at
 // byte 64: `state: u32`, `len: u32` and up to 192 key bytes. The page's own version decides, so a
 // signpost of another layout is named by its signpost rather than misread.
@@ -18,8 +18,8 @@ const NAME_PREFIX: &str = "/flux.v";
 const INIT_READY: u32 = 2;
 const SIGNPOST_MAGIC: u32 = 0x464C_5350;
 /// The flux layouts whose signpost page is this one: v8 to v10 changed only the segment, v11 the
-/// names.
-const LAYOUTS: std::ops::RangeInclusive<u32> = 7..=11;
+/// names, v12 only the number.
+const LAYOUTS: std::ops::RangeInclusive<u32> = 7..=12;
 const KEY_RECORD: usize = 64;
 const KEY_BYTES: usize = 192;
 const KEY_READY: u32 = 2;
@@ -160,14 +160,14 @@ mod tests {
         assert_eq!(named, "/orma_unit/cam");
     }
 
-    /// flux layouts 7 to 11 changed the segment and the names, not the signpost page.
+    /// flux layouts 7 to 12 changed the segment and the names, not the signpost page.
     #[test]
     fn each_layout_with_this_signpost_page_is_read_and_no_other() {
-        for v in [7, 8, 9, 10, 11] {
+        for v in [7, 8, 9, 10, 11, 12] {
             let key = parse_key(&page_of(v, KEY_READY, b"/cam/left"));
             assert_eq!(key.as_deref(), Some("/cam/left"), "layout {v}");
         }
-        for v in [6, 12] {
+        for v in [6, 13] {
             assert_eq!(
                 parse_key(&page_of(v, KEY_READY, b"/cam/left")),
                 None,
