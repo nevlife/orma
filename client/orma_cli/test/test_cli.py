@@ -468,6 +468,12 @@ def test_host_view():
     )
 
 
+def test_small_rates_are_whole_bytes():
+    assert cli.rate(871.2907083680835) == "871B/s"
+    assert cli.size(512) == "512B"
+    assert cli.rate(2048.0) == "2.0KiB/s"
+
+
 def test_span_view():
     w = window_1_8()
     assert printed(cli.print_spans, w)[2:] == [

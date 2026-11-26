@@ -40,7 +40,8 @@ def size(value):
     for unit, scale in (("GiB", 1 << 30), ("MiB", 1 << 20), ("KiB", 1 << 10)):
         if value >= scale:
             return f"{value / scale:.1f}{unit}"
-    return f"{value}B"
+    # Rates are floats; byte counts are ints and print the same either way.
+    return f"{value:.0f}B"
 
 
 def num(value, fmt="{:.1f}"):
