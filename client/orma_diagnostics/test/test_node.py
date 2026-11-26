@@ -59,7 +59,7 @@ def test_node_publishes_diagnostics(runtime):
     env = dict(os.environ, PYTHONPATH=f"{PACKAGE}:{os.environ.get('PYTHONPATH', '')}")
     main = "import sys; from orma_diagnostics.node import main; sys.exit(main())"
     node_process = subprocess.Popen(
-        [sys.executable, "-c", main, "--ros-args", "-p", f"rules:={rules}"], env=env
+        [sys.executable, "-c", main, "--ros-args", "-p", f"rules:=[{rules}]"], env=env
     )
     rclpy.init()
     try:

@@ -502,9 +502,11 @@ def plan(self, msg):
 `orma_diagnostics` 노드는 orma-collectd의 클라이언트로 연결되어 window마다 `/diagnostics`(`diagnostic_msgs/DiagnosticArray`)를 발행한다. rqt_robot_monitor나 diagnostic_aggregator로 본다.
 
 ```bash
-ros2 launch orma_diagnostics orma_diagnostics.launch.py rules:=/path/rules.yaml
-ros2 run orma_diagnostics orma_diagnostics --ros-args -p rules:=/path/rules.yaml
+ros2 launch orma_diagnostics orma_diagnostics.launch.py rules:="[/path/a.yaml, /path/b.yaml]"
+ros2 run orma_diagnostics orma_diagnostics --ros-args -p rules:="[/path/a.yaml, /path/b.yaml]"
 ```
+
+`rules`는 규칙 파일의 목록이다. 파일이 하나여도 `[/path/rules.yaml]`처럼 목록으로 쓴다. 각 파일의 항목을 순서대로 모두 검사하고, 같은 규칙이 여러 파일에 있으면 항목이 모두 들어간다. 한 파일이라도 형식이 틀리면 그 파일 경로를 붙인 오류로 노드가 끝난다.
 
 규칙 파일은 맨 위 `orma` 아래에 규칙 이름마다 항목 목록을 둔다. 예시는 패키지의 `config/rules.yaml`이다.
 

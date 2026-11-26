@@ -63,6 +63,17 @@ def test_capas_chains_beside_the_rules_are_skipped():
     assert rules.load(text) == rules.load(RULES)
 
 
+def test_files_add_up_and_an_error_names_its_file(tmp_path):
+    a, b, bad = tmp_path / "a.yaml", tmp_path / "b.yaml", tmp_path / "bad.yaml"
+    a.write_text("orma: {topic_hz_min: [{match: /scan, warn: 11, error: 5}]}\n")
+    b.write_text("orma: {topic_hz_min: [{match: /image, warn: 40, error: 35}]}\n")
+    bad.write_text("orma: {topic_hz: []}\n")
+    entries = rules.load_files([a, b])
+    assert [item["match"] for _, _, item in entries] == ["/scan", "/image"]
+    with pytest.raises(ValueError, match=f"^{bad}: unknown rule 'topic_hz'"):
+        rules.load_files([a, bad])
+
+
 def test_example_rules_load():
     entries = rules.load((PACKAGE / "config" / "rules.yaml").read_text())
     assert sorted({rule for rule, _, _ in entries}) == sorted(rules.RULES)

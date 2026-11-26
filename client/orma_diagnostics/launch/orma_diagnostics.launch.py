@@ -11,7 +11,8 @@ def generate_launch_description():
     rules = os.path.join(get_package_share_directory("orma_diagnostics"), "config", "rules.yaml")
     return LaunchDescription(
         [
-            DeclareLaunchArgument("rules", default_value=rules),
+            # A YAML list of files: rules:="[a.yaml, b.yaml]".
+            DeclareLaunchArgument("rules", default_value=f"[{rules}]"),
             # The node ends when orma-collectd goes away; it comes back with the next one.
             Node(
                 package="orma_diagnostics",

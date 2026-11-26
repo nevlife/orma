@@ -35,9 +35,7 @@ def main():
     rclpy.init()
     node = rclpy.create_node(CLIENT)
     default = os.path.join(get_package_share_directory(CLIENT), "config", "rules.yaml")
-    path = node.declare_parameter("rules", default).value
-    with open(path) as f:
-        entries = rules.load(f.read())
+    entries = rules.load_files(node.declare_parameter("rules", [default]).value)
     publisher = node.create_publisher(DiagnosticArray, "/diagnostics", 10)
     try:
         with orma_client.connect(CLIENT) as c:

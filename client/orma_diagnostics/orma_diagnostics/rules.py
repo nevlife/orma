@@ -114,6 +114,19 @@ def load(text):
     return entries
 
 
+def load_files(paths):
+    """The entries of every file in order; an error names its file."""
+    entries = []
+    for path in paths:
+        with open(path) as f:
+            text = f.read()
+        try:
+            entries += load(text)
+        except ValueError as e:
+            raise ValueError(f"{path}: {e}") from None
+    return entries
+
+
 def level(value, warn, error, lower_is_worse):
     if lower_is_worse:
         return ERROR if value < error else WARN if value < warn else OK
