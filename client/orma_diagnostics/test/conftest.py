@@ -10,7 +10,7 @@ sys.path.insert(0, str(PACKAGE))
 
 
 def window():
-    """The golden window with a chain, a GPU and a thermal zone."""
+    """The golden window with a chain, a GPU, a thermal zone and the age of /scan."""
     w = json.loads((GOLDEN / "server" / "window.json").read_text())
     e2e = {
         "n": 9,
@@ -21,6 +21,7 @@ def window():
         "p999_ns": 1,
         "max_ns": 1,
     }
+    w["topics"][0]["age_take"] = dict(e2e, p99_ns=120_000_000)
     w["chains"] = [
         {
             "name": "perception",

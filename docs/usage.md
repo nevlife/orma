@@ -510,7 +510,7 @@ ros2 run orma_diagnostics orma_diagnostics --ros-args -p rules:=/path/rules.yaml
 
 ```yaml
 orma:
-  callback_p99_us:
+  callback_us:
     - match: "sub\\(/scan\\)"
       warn: 5000
       error: 20000
@@ -525,17 +525,21 @@ orma:
 
 | 규칙 | `match`가 매칭하는 이름 | 값 |
 | --- | --- | --- |
-| `callback_p99_us` | 콜백 이름(`sub(/scan)` 등, 4절) | 콜백 실행 시간 p99(us) |
+| `callback_us` | 콜백 이름(`sub(/scan)` 등, 4절) | 콜백 실행 시간(us) |
 | `topic_hz_min` | 토픽 이름 | 발행 Hz(작을수록 나쁨) |
-| `topic_hop_p99_us` | 토픽 이름 | transport latency p99(us) |
+| `topic_hop_us` | 토픽 이름 | transport latency(us) |
+| `topic_age_us` | 토픽 이름 | 받을 때의 데이터 나이(`now - header.stamp`, us). 그 토픽의 모든 구독자를 합친 값 |
 | `sub_loss_pct` | 구독의 토픽 이름 | loss% |
-| `chain_e2e_p99_us` | chain 이름(7절) | e2e p99(us) |
+| `chain_e2e_us` | chain 이름(7절) | e2e(us) |
 | `gpu_temp_c` | GPU 번호(`"0"`) | 온도(C) |
 | `thermal_c` | thermal zone 이름 | 온도(C) |
 
+- 이름이 `_us`로 끝나는 지연 규칙은 항목마다 `stat`으로 window의 어느 통계를 볼지 고른다. `mean`, `p50`, `p90`, `p99`, `p999`, `max` 중 하나이고 생략하면 `p99`다. 다른 규칙에 `stat`을 쓰면 거절한다. 주기가 낮은 토픽은 window마다 표본이 적어서(10 Hz, 1 s window면 약 10개) p99가 사실상 `max`다.
+- 예전 이름(`callback_p99_us`, `topic_hop_p99_us`, `topic_age_p99_us`, `chain_e2e_p99_us`)은 새 이름과 `stat: p99`로 바꾸라는 오류로 거절한다.
 - `match`는 이름 전체에 맞는 정규식이다. 맞는 대상마다 상태를 하나 낸다.
 - `topic_hz_min`은 값이 `warn`보다 작으면 WARN, `error`보다 작으면 ERROR다. 나머지 규칙은 값이 `warn`보다 크면 WARN, `error`보다 크면 ERROR다.
 - 맞는 대상이 window에 없으면 그 항목은 STALE 상태 하나를 낸다. 대상은 있는데 값이 `-`(미측정)여도 STALE이다.
+- `topic_age_us`는 메시지 앞 8 B가 시계 검사를 통과한 stamp일 때만 값이 있다. `header`로 시작하지 않는 메시지(`geometry_msgs/Twist` 등), 나이가 600 s를 넘거나 stamp가 1 s 넘게 미래인 메시지는 재지 않으므로 STALE이다. 센서 시계가 이 기기와 어긋나면 ERROR 대신 STALE이 된다.
 - 상태 이름은 `orma <rule>: <target>`이고, 값(`value`, `warn`, `error`)은 key-value로 싣는다.
 - 노드는 선택을 바꾸지 않는다. 볼 대상은 `orma node` 명령이나 rqt로 고르고, 대상 프로세스가 선택에 없으면 STALE이다.
 - orma-collectd가 종료되면 노드도 종료된다. launch 파일은 2 s 뒤에 노드를 다시 실행한다.

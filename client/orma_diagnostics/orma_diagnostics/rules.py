@@ -11,15 +11,15 @@ from orma_client import view
 OK, WARN, ERROR, STALE = 0, 1, 2, 3
 
 
-def p99_us(lat):
-    return None if lat is None else lat["p99_ns"] / 1e3
+# The statistics of a latency an entry may pick with `stat`; p99 when it names none.
+STATS = ("mean", "p50", "p90", "p99", "p999", "max")
 
 
 def callbacks(w):
     labels = view.callback_labels(w)
     for c in w["callbacks"]:
         node = view.owner_label(w, c["node"] or c["id"])
-        yield labels[c["id"]], f"{node} {labels[c['id']]}", p99_us(c["duration"])
+        yield labels[c["id"]], f"{node} {labels[c['id']]}", c["duration"]
 
 
 def topic_hz(w):
@@ -27,7 +27,11 @@ def topic_hz(w):
 
 
 def topic_hop(w):
-    return ((t["name"], t["name"], p99_us(t["hop"])) for t in w["topics"])
+    return ((t["name"], t["name"], t["hop"]) for t in w["topics"])
+
+
+def topic_age(w):
+    return ((t["name"], t["name"], t["age_take"]) for t in w["topics"])
 
 
 def subscriptions(w):
@@ -38,7 +42,7 @@ def subscriptions(w):
 
 
 def chains(w):
-    return ((c["name"], c["name"], p99_us(c["e2e"])) for c in w.get("chains", []))
+    return ((c["name"], c["name"], c["e2e"]) for c in w.get("chains", []))
 
 
 def host(w):
@@ -54,23 +58,36 @@ def thermal(w):
     return ((t["name"], t["name"], t["temp_c"]) for t in host(w)["thermal"])
 
 
-# Rule: its targets, the unit of its value, and whether a lower value is worse.
+# Rule: its targets, the unit of its value, whether a lower value is worse, and whether the
+# targets give a latency (`Lat`) that an entry's `stat` reduces to one value in us.
 RULES = {
-    "callback_p99_us": (callbacks, "us", False),
-    "topic_hz_min": (topic_hz, "Hz", True),
-    "topic_hop_p99_us": (topic_hop, "us", False),
-    "sub_loss_pct": (subscriptions, "%", False),
-    "chain_e2e_p99_us": (chains, "us", False),
-    "gpu_temp_c": (gpus, "C", False),
-    "thermal_c": (thermal, "C", False),
+    "callback_us": (callbacks, "us", False, True),
+    "topic_hz_min": (topic_hz, "Hz", True, False),
+    "topic_hop_us": (topic_hop, "us", False, True),
+    "topic_age_us": (topic_age, "us", False, True),
+    "sub_loss_pct": (subscriptions, "%", False, False),
+    "chain_e2e_us": (chains, "us", False, True),
+    "gpu_temp_c": (gpus, "C", False, False),
+    "thermal_c": (thermal, "C", False, False),
+}
+# Names before `stat`, each a latency rule at p99.
+RENAMED = {
+    "callback_p99_us": "callback_us",
+    "topic_hop_p99_us": "topic_hop_us",
+    "topic_age_p99_us": "topic_age_us",
+    "chain_e2e_p99_us": "chain_e2e_us",
 }
 
 
+def microseconds(lat, stat):
+    return None if lat is None else lat[f"{stat}_ns"] / 1e3
+
+
 def load(text):
-    """`{orma: {rule: [{match, warn, error}, ...]}}` as (rule, regex, entry) triples. The file may
-    also hold capa's chains under `capa`, which is not read here."""
+    """`{orma: {rule: [{match, warn, error, stat?}, ...]}}` as (rule, regex, entry) triples. The
+    file may also hold capa's chains under `capa`, which is not read here."""
     root = yaml.safe_load(text) or {}
-    moved = sorted(set(root) & set(RULES))
+    moved = sorted(set(root) & (set(RULES) | set(RENAMED)))
     if moved:
         raise ValueError(f"{moved[0]} moved under orma: (orma: {{{moved[0]}: [...]}})")
     for key in root:
@@ -80,12 +97,19 @@ def load(text):
         raise ValueError("the file has no orma mapping")
     entries = []
     for rule, items in root["orma"].items():
+        if rule in RENAMED:
+            raise ValueError(f"{rule} is now {RENAMED[rule]} with stat: p99")
         if rule not in RULES:
             raise ValueError(f"unknown rule {rule!r}; rules are {', '.join(RULES)}")
+        latency = RULES[rule][3]
         for item in items:
             missing = {"match", "warn", "error"} - set(item)
             if missing:
                 raise ValueError(f"{rule}: {item} lacks {', '.join(sorted(missing))}")
+            if "stat" in item and not latency:
+                raise ValueError(f"{rule}: {item} has a stat, which only latency rules take")
+            if latency and item.setdefault("stat", "p99") not in STATS:
+                raise ValueError(f"{rule}: stat {item['stat']!r} is not one of {', '.join(STATS)}")
             entries.append((rule, re.compile(str(item["match"])), item))
     return entries
 
@@ -99,6 +123,8 @@ def level(value, warn, error, lower_is_worse):
 def status(level, rule, shown, message, item, value=None):
     values = {"value": "-" if value is None else f"{value:g}"}
     values.update(warn=str(item["warn"]), error=str(item["error"]))
+    if "stat" in item:
+        values["stat"] = item["stat"]
     return {
         "level": level,
         "name": f"orma {rule}: {shown}",
@@ -110,8 +136,10 @@ def status(level, rule, shown, message, item, value=None):
 def evaluate(entries, w):
     out = []
     for rule, regex, item in entries:
-        targets, unit, lower_is_worse = RULES[rule]
+        targets, unit, lower_is_worse, latency = RULES[rule]
         found = [(shown, v) for name, shown, v in targets(w) if regex.fullmatch(name)]
+        if latency:
+            found = [(shown, microseconds(v, item["stat"])) for shown, v in found]
         if not found:
             out.append(status(STALE, rule, item["match"], "not in the window", item))
         for shown, value in found:

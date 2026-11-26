@@ -55,9 +55,7 @@ def test_node_publishes_diagnostics(runtime):
     requests = []
     threading.Thread(target=serve, args=(listener, requests), daemon=True).start()
     rules = runtime / "rules.yaml"
-    rules.write_text(
-        "orma: {chain_e2e_p99_us: [{match: perception, warn: 50000, error: 100000}]}\n"
-    )
+    rules.write_text("orma: {chain_e2e_us: [{match: perception, warn: 50000, error: 100000}]}\n")
     env = dict(os.environ, PYTHONPATH=f"{PACKAGE}:{os.environ.get('PYTHONPATH', '')}")
     main = "import sys; from orma_diagnostics.node import main; sys.exit(main())"
     node_process = subprocess.Popen(
@@ -74,7 +72,7 @@ def test_node_publishes_diagnostics(runtime):
             rclpy.spin_once(node, timeout_sec=0.1)
         (status,) = got[0].status
         assert status.level == DiagnosticStatus.WARN
-        assert status.name == "orma chain_e2e_p99_us: perception"
+        assert status.name == "orma chain_e2e_us: perception"
         assert status.message == "60000.0 us"
         assert {kv.key: kv.value for kv in status.values}["warn"] == "50000"
         assert [r["op"] for r in requests] == ["hello", "subscribe"]

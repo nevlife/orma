@@ -1,8 +1,9 @@
 # The rules sit under `orma`; a capa chain file may share the file under `capa`.
 # Each entry: `match`, a regular expression over the whole target name, and the `warn` and
-# `error` levels. topic_hz_min warns below its levels, every other rule above them.
+# `error` levels. topic_hz_min warns below its levels, every other rule above them. The
+# latency rules (`_us`) take `stat`: mean, p50, p90, p99 (when left out), p999 or max.
 orma:
-  callback_p99_us:
+  callback_us:
     - match: "sub\\(/scan\\)"
       warn: 5000
       error: 20000
@@ -10,15 +11,20 @@ orma:
     - match: /scan
       warn: 9.0
       error: 5.0
-  topic_hop_p99_us:
+  topic_hop_us:
     - match: /camera/.*
       warn: 2000
       error: 10000
+  topic_age_us:
+    - match: /scan
+      stat: max
+      warn: 100000
+      error: 300000
   sub_loss_pct:
     - match: /scan
       warn: 1.0
       error: 5.0
-  chain_e2e_p99_us:
+  chain_e2e_us:
     - match: perception
       warn: 50000
       error: 100000
