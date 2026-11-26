@@ -571,6 +571,34 @@ fn sim_time_stamps_link_once_clock_is_published() {
 }
 
 #[test]
+fn a_bag_ages_against_its_clock_and_wall_time_returns_when_the_clock_stops() {
+    let mut h = H::offline();
+    fuse(&mut h);
+    h.node(600, 0xa0, "player", "/");
+    h.publisher(600, 0x60, 0xa0, 0x61, "/clock");
+    // Recorded 16 days before the synthetic host's wall time.
+    let recorded = |t: u64| stamp_of(t + REAL - 16 * 86_400 * W);
+    h.publish(600, 600, T0, 0x60, 0x61, 0, recorded(T0 + 5 * MS));
+    h.take(500, 501, T0 + MS, 0x11, 0, recorded(T0));
+    h.publish(500, 502, T0 + 2 * MS, 0x30, 0x31, 0, recorded(T0));
+    let w = h.window(T0 + W);
+    let f = flows(&w, FlowKind::Stamp);
+    assert_eq!((f.len(), f[0].count), (1, 1));
+    let age = |w: &Window| {
+        topic(w, "topic:ros:/in1")
+            .age_take
+            .as_ref()
+            .map(|a| a.max_ns)
+    };
+    assert_eq!(age(&w), Some(5 * MS));
+    // Three seconds after the last /clock, a wall-clock stamp ages against wall time again.
+    let t = T0 + 3 * W;
+    h.take(500, 501, t, 0x11, 0, wall(t - 7 * MS));
+    let w = h.window(t + W);
+    assert_eq!(age(&w), Some(7 * MS));
+}
+
+#[test]
 fn sync_flow_counts_a_dual_publish_once() {
     let mut h = H::offline();
     h.node(700, 0xf0, "filter", "/");

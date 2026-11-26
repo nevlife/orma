@@ -241,6 +241,7 @@ sequenceDiagram
 `header.stamp` clock 검사:
 
 - `sec`이 10^9 이상 4 x 10^9 미만이면 wall clock stamp로 보고 `CLOCK_REALTIME`과 비교한다.
+- 단, 최근 2 s 안에 `/clock`이 발행됐으면 wall clock stamp도 마지막 `/clock` 값과 비교한다. `ros2 bag play --clock`은 녹화한 날의 wall clock stamp를 그대로 내기 때문이다. `/clock`이 2 s 넘게 끊기면 다시 `CLOCK_REALTIME`과 비교한다.
 - 그 밖에는 sim time으로 보고 마지막 `/clock` 값과 비교한다. `/clock` 발행자가 없으면 사용하지 않는다.
 - stamp가 기준 시각보다 1 s 넘게 앞서거나 age가 600 s를 넘으면 사용하지 않는다.
 

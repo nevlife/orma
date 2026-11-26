@@ -1035,8 +1035,9 @@ impl Model {
         if via == Via::Main
             && self.topics[topic].transport == Transport::Ros
             && self.topics[topic].name == "/clock"
+            && let Some(ns) = decode_stamp(stamp)
         {
-            self.clock.sim_ns = decode_stamp(stamp).or(self.clock.sim_ns);
+            self.clock.tick(ns, t);
         }
         let gate = self.clock.gate(stamp, t);
         let tw = self.win.topics.entry(topic).or_default();
