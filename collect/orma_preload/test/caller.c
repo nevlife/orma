@@ -459,6 +459,7 @@ struct flux_tally
   uint64_t events;
   uint64_t commits;
   uint64_t last_stamp;
+  uint64_t last_take_stamp;
   int strings_ok;
   int32_t wedged;
 };
@@ -476,6 +477,9 @@ static void flux_one(const orma_record * r, void * arg)
   if (r->event == ORMA_EV_FLUX_COMMIT) {
     t->commits++;
     t->last_stamp = ((const orma_ev_flux_commit *)(r + 1))->stamp;
+  }
+  if (r->event == ORMA_EV_FLUX_TAKE) {
+    t->last_take_stamp = ((const orma_ev_flux_take *)(r + 1))->stamp;
   }
   if (r->event == ORMA_EV_FLUX_ENDPOINT_INIT) {
     const char * s = (const char *)(r + 1) + sizeof(orma_ev_flux_endpoint_init);
@@ -510,6 +514,8 @@ static void check_flux(const char * mode, const char * stub)
   CHECK(t.events == 11 + 10 * FLUX_ROUNDS && t.commits == FLUX_ROUNDS && t.strings_ok);
   CHECK(t.wedged == 700);
   CHECK(t.last_stamp == (5u | ((uint64_t)FLUX_ROUNDS << 32)));
+  const uint64_t take_ns = 0x5000000000u + FLUX_ROUNDS;
+  CHECK(t.last_take_stamp == (take_ns / 1000000000u | (take_ns % 1000000000u) << 32));
   CHECK(flux_count(ORMA_AGG_CALLBACK, 1, 0xE0) == FLUX_ROUNDS);
   CHECK(flux_count(ORMA_AGG_CALLBACK, 3, 0xE2) == FLUX_ROUNDS);
   CHECK(flux_count(ORMA_AGG_DISPATCH, 1, 0xE0) == FLUX_ROUNDS);

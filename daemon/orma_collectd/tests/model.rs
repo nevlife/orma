@@ -966,6 +966,9 @@ fn flux_pairs_by_segment_and_ticket_and_counts_its_own_losses() {
         (Some(3), Some(3), None)
     );
     assert_eq!(t.publishers, vec!["n:1200:0:1".to_string()]);
+    // The stamps are the commit times, so the age is 0 at the commit and the take delay after.
+    assert_eq!(t.age_pub.as_ref().unwrap().max_ns, 0);
+    assert_eq!(t.age_take.as_ref().unwrap().max_ns, 30 * US);
     let a = sub(&w, id, 1300);
     assert_eq!((a.lost, a.hop.as_ref().unwrap().max_ns), (Some(0), 20 * US));
     assert_eq!(a.wake.as_ref().unwrap().max_ns, 15 * US);
