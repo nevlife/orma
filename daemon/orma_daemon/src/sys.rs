@@ -38,11 +38,60 @@ pub fn real_ns() -> u64 {
 /// A Jetson's EMC activity counter and clock (debugfs, read through `CAP_DAC_READ_SEARCH`).
 /// `mc_all` is in kHz of the EMC clock, so its share of the clock is the utilization.
 pub fn memory_bus() -> Option<orma_proto::msg::MemoryBus> {
-    let read = |p: &str| -> Option<u64> { std::fs::read_to_string(p).ok()?.trim().parse().ok() };
-    let active_khz = read("/sys/kernel/debug/cactmon/mc_all")?;
-    let clock_hz = read("/sys/kernel/debug/bpmp/debug/clk/emc/rate")?;
+    memory_bus_in(std::path::Path::new("/sys/kernel/debug"))
+}
+
+fn memory_bus_in(debugfs: &std::path::Path) -> Option<orma_proto::msg::MemoryBus> {
+    let read = |p: &str| -> Option<u64> {
+        std::fs::read_to_string(debugfs.join(p))
+            .ok()?
+            .trim()
+            .parse()
+            .ok()
+    };
+    let active_khz = read("cactmon/mc_all")?;
+    let clock_hz = read("bpmp/debug/clk/emc/rate")?;
+    // A clock below 1 kHz has no share to give; dividing by it would send inf, which JSON
+    // writes as null and the reader refuses.
+    let clock_khz = std::num::NonZeroU64::new(clock_hz / 1000)?;
     Some(orma_proto::msg::MemoryBus {
-        util_pct: active_khz as f64 * 100.0 / (clock_hz / 1000).max(1) as f64,
+        util_pct: active_khz as f64 * 100.0 / clock_khz.get() as f64,
         clock_mhz: (clock_hz / 1_000_000) as u32,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn debugfs(name: &str, mc_all: &str, rate: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("orma_{name}_{}", std::process::id()));
+        for (file, text) in [
+            ("cactmon/mc_all", mc_all),
+            ("bpmp/debug/clk/emc/rate", rate),
+        ] {
+            let path = dir.join(file);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+        }
+        dir
+    }
+
+    #[test]
+    fn memory_bus_is_the_counter_over_the_clock() {
+        let dir = debugfs("emc", "831000\n", "3199000000\n");
+        let b = memory_bus_in(&dir).unwrap();
+        assert!((b.util_pct - 831_000.0 * 100.0 / 3_199_000.0).abs() < 1e-9);
+        assert_eq!(b.clock_mhz, 3199);
+        std::fs::remove_file(dir.join("cactmon/mc_all")).unwrap();
+        assert_eq!(memory_bus_in(&dir), None);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_clock_below_1_khz_has_no_memory_bus() {
+        let dir = debugfs("emc_zero", "831000\n", "0\n");
+        assert_eq!(memory_bus_in(&dir), None);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 }

@@ -156,5 +156,9 @@
       "pid": 4021,
       "points": 1
     }
-  ]
+  ],
+  "memory_bus": {
+    "util_pct": 26.0,
+    "clock_mhz": 3199
+  }
 }

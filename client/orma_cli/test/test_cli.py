@@ -63,7 +63,7 @@ def check_session(requests, names, pid, client="orma"):
 
 
 def test_frame_matches_golden():
-    hello = {"id": 1, "op": "hello", "proto": [1, 7], "client": "rqt_orma", "pid": 5555}
+    hello = {"id": 1, "op": "hello", "proto": orma_client.PROTO, "client": "rqt_orma", "pid": 5555}
     assert orma_client.encode(hello) == (GOLDEN / "frames" / "hello.bin").read_bytes()
 
 
@@ -466,6 +466,13 @@ def test_host_view():
     assert (
         printed(cli.print_host, json.loads((GOLDEN / "server" / "window.json").read_text())) == []
     )
+
+
+def test_a_host_without_a_memory_bus_shows_a_dash():
+    w = window_1_8()
+    del w["host"]["memory_bus"]
+    assert cli.memory_bus_line(w) == "memory bus: -"
+    assert cli.memory_bus_line({"host": None}) == "memory bus: -"
 
 
 def test_small_rates_are_whole_bytes():

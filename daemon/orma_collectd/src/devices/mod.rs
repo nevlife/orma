@@ -555,6 +555,18 @@ UdpLite: 0 0 0 0 0 0 0 0 0
         assert_eq!(rail(&t.0, JETSON_RAIL), None);
     }
 
+    /// On a Jetson, and on any machine whose NVML lists a GPU, the devfreq GPU must win.
+    #[test]
+    fn a_devfreq_gpu_goes_before_nvml() {
+        let t = Tree::new("jetson_first");
+        t.put(
+            "sys/class/devfreq/17000000.gpu/device/of_node/name",
+            "gpu\0",
+        );
+        let mut d = Devices::new(&t.0);
+        assert!(matches!(d.gpus(), Gpus::Jetson(j) if j.found.len() == 1));
+    }
+
     #[test]
     fn this_host() {
         let mut d = Devices::new("/");

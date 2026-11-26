@@ -1,0 +1,288 @@
+{
+  "type": "window",
+  "seq": 382,
+  "replay": false,
+  "t_mono_ns": 912345000000,
+  "t_real_ns": 1791473415000000000,
+  "window_ns": 1000000000,
+  "behind": false,
+  "processes": [],
+  "threads": [],
+  "nodes": [],
+  "executors": [],
+  "callbacks": [
+    {
+      "id": "c:4021:771234:ros:55a0c2e0",
+      "node": "n:4021:771234:5581e0a0",
+      "kind": "service",
+      "topic": null,
+      "symbol": "Driver::on_reset",
+      "group": "g:4021:771234:5581e900",
+      "executor": "e:4021:771234:rclcpp:5581e800",
+      "hz": 0.5,
+      "expected_hz": null,
+      "duration": {
+        "n": 10,
+        "mean_ns": 1500000,
+        "p50_ns": 1048576,
+        "p90_ns": 1572864,
+        "p99_ns": 2097152,
+        "p999_ns": 2097152,
+        "max_ns": 2001000
+      },
+      "oncpu_mean_ns": 1400000,
+      "dispatch": {
+        "n": 10,
+        "mean_ns": 3000,
+        "p50_ns": 2048,
+        "p90_ns": 3072,
+        "p99_ns": 4096,
+        "p999_ns": 4096,
+        "max_ns": 3900
+      },
+      "age": {
+        "n": 10,
+        "mean_ns": 5200000,
+        "p50_ns": 4194304,
+        "p90_ns": 6291456,
+        "p99_ns": 8388608,
+        "p999_ns": 8388608,
+        "max_ns": 6100000
+      },
+      "intra_pct": 0.0,
+      "nested": false,
+      "service": "/camera/reset"
+    }
+  ],
+  "topics": [
+    {
+      "id": "topic:ros:/scan",
+      "transport": "ros",
+      "name": "/scan",
+      "publishers": [
+        "n:3900:770001:55aa0000"
+      ],
+      "subscribers": [
+        "n:4021:771234:5581e0a0"
+      ],
+      "pub_hz": 10.0,
+      "expected_hz": 10.0,
+      "bw_bps": 288000.0,
+      "hop": {
+        "n": 10,
+        "mean_ns": 210000,
+        "p50_ns": 131072,
+        "p90_ns": 327680,
+        "p99_ns": 524288,
+        "p999_ns": 524288,
+        "max_ns": 400000
+      },
+      "age_pub": {
+        "n": 10,
+        "mean_ns": 900000,
+        "p50_ns": 524288,
+        "p90_ns": 786432,
+        "p99_ns": 1048576,
+        "p999_ns": 1048576,
+        "max_ns": 1000000
+      },
+      "age_take": null,
+      "drops": {
+        "publish": 0,
+        "record": null,
+        "ambiguous": 0
+      },
+      "paths": [
+        {
+          "path": "shm",
+          "takes": 10,
+          "hop": {
+            "n": 10,
+            "mean_ns": 210000,
+            "p50_ns": 131072,
+            "p90_ns": 327680,
+            "p99_ns": 524288,
+            "p999_ns": 524288,
+            "max_ns": 400000
+          }
+        }
+      ],
+      "loan_hold": {
+        "n": 10,
+        "mean_ns": 32768,
+        "p50_ns": 32768,
+        "p90_ns": 65536,
+        "p99_ns": 65536,
+        "p999_ns": 65536,
+        "max_ns": 65536
+      },
+      "py_convert": {
+        "n": 10,
+        "mean_ns": 65536,
+        "p50_ns": 65536,
+        "p90_ns": 131072,
+        "p99_ns": 131072,
+        "p999_ns": 131072,
+        "max_ns": 131072
+      }
+    }
+  ],
+  "subscriptions": [
+    {
+      "id": "s:topic:ros:/scan#n:4021:771234:5581e0a0",
+      "topic": "topic:ros:/scan",
+      "node": "n:4021:771234:5581e0a0",
+      "recv_hz": 10.0,
+      "loss_pct": 0.0,
+      "lost": 0,
+      "intra_pct": 0.0,
+      "hop": {
+        "n": 10,
+        "mean_ns": 210000,
+        "p50_ns": 131072,
+        "p90_ns": 327680,
+        "p99_ns": 524288,
+        "p999_ns": 524288,
+        "max_ns": 400000
+      },
+      "wake": {
+        "n": 10,
+        "mean_ns": 260000,
+        "p50_ns": 262144,
+        "p90_ns": 393216,
+        "p99_ns": 524288,
+        "p999_ns": 524288,
+        "max_ns": 450000
+      },
+      "paths": [
+        {
+          "path": "shm",
+          "takes": 10,
+          "hop": {
+            "n": 10,
+            "mean_ns": 210000,
+            "p50_ns": 131072,
+            "p90_ns": 327680,
+            "p99_ns": 524288,
+            "p999_ns": 524288,
+            "max_ns": 400000
+          }
+        }
+      ],
+      "deliver": {
+        "n": 10,
+        "mean_ns": 4000,
+        "p50_ns": 4096,
+        "p90_ns": 6144,
+        "p99_ns": 8192,
+        "p999_ns": 8192,
+        "max_ns": 8000
+      },
+      "loaned": 0,
+      "hold": {
+        "n": 10,
+        "mean_ns": 16384,
+        "p50_ns": 16384,
+        "p90_ns": 32768,
+        "p99_ns": 32768,
+        "p999_ns": 32768,
+        "max_ns": 32768
+      },
+      "py_convert": {
+        "n": 10,
+        "mean_ns": 8192,
+        "p50_ns": 8192,
+        "p90_ns": 16384,
+        "p99_ns": 16384,
+        "p999_ns": 16384,
+        "max_ns": 16384
+      }
+    }
+  ],
+  "flows": [],
+  "host": {
+    "cpu_mhz": [
+      2201,
+      2201,
+      1420,
+      2201
+    ],
+    "thermal": [
+      {
+        "name": "cpu-thermal",
+        "temp_c": 48.2
+      },
+      {
+        "name": "gpu-thermal",
+        "temp_c": 46.9
+      }
+    ],
+    "throttle": {},
+    "net": [],
+    "udp": null,
+    "gpus": [
+      {
+        "index": 0,
+        "name": "gpu",
+        "util_pct": 43.7,
+        "mem_used_bytes": null,
+        "mem_total_bytes": null,
+        "clock_mhz": 918,
+        "temp_c": 46.9,
+        "power_w": 5.18,
+        "throttle": []
+      }
+    ],
+    "memory_bus": {
+      "util_pct": 26.0,
+      "clock_mhz": 3199
+    }
+  },
+  "agent": {
+    "ormad": {
+      "cpu_pct": 0.4,
+      "rss_bytes": 20971520
+    },
+    "collectd": {
+      "cpu_pct": 1.2,
+      "rss_bytes": 41943040
+    },
+    "bpf": [
+      {
+        "prog": "callback_start",
+        "pid": 4022,
+        "run_time_ns": 51000,
+        "run_cnt": 40
+      },
+      {
+        "prog": "sched_switch",
+        "pid": null,
+        "run_time_ns": 900000,
+        "run_cnt": 12000
+      }
+    ],
+    "maps": [
+      {
+        "name": "STATS",
+        "used": 12,
+        "max": 4096,
+        "memlock_bytes": 1638400
+      }
+    ],
+    "shm": {
+      "files": 3,
+      "bytes": 141557760,
+      "ring_drops": 0
+    },
+    "lttng_discarded": null,
+    "collect_ns": 4100000,
+    "probes_missing": [
+      {
+        "pid": 4021,
+        "method": "preload",
+        "point": "rclcpp_intra_publish",
+        "reason": "not exported"
+      }
+    ]
+  }
+}

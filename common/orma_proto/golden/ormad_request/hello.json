@@ -3,7 +3,7 @@
   "id": 1,
   "proto": [
     1,
-    7
+    11
   ],
   "client": "orma-collectd",
   "pid": 3100
