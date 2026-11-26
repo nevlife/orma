@@ -3,23 +3,24 @@ from orma_diagnostics import rules
 from conftest import PACKAGE, window
 
 RULES = """
-callback_p99_us:
-  - {match: "sub\\\\(/scan\\\\)", warn: 1000, error: 5000}
-  - {match: "timer.*", warn: 1, error: 2}
-topic_hz_min:
-  - {match: /scan, warn: 11, error: 5}
-  - {match: /image, warn: 40, error: 35}
-topic_hop_p99_us:
-  - {match: /scan, warn: 1000, error: 2000}
-sub_loss_pct:
-  - {match: /scan, warn: 1, error: 5}
-chain_e2e_p99_us:
-  - {match: perception, warn: 50000, error: 100000}
-  - {match: planning, warn: 1, error: 2}
-gpu_temp_c:
-  - {match: "0", warn: 80, error: 90}
-thermal_c:
-  - {match: .*-thermal, warn: 85, error: 95}
+orma:
+  callback_p99_us:
+    - {match: "sub\\\\(/scan\\\\)", warn: 1000, error: 5000}
+    - {match: "timer.*", warn: 1, error: 2}
+  topic_hz_min:
+    - {match: /scan, warn: 11, error: 5}
+    - {match: /image, warn: 40, error: 35}
+  topic_hop_p99_us:
+    - {match: /scan, warn: 1000, error: 2000}
+  sub_loss_pct:
+    - {match: /scan, warn: 1, error: 5}
+  chain_e2e_p99_us:
+    - {match: perception, warn: 50000, error: 100000}
+    - {match: planning, warn: 1, error: 2}
+  gpu_temp_c:
+    - {match: "0", warn: 80, error: 90}
+  thermal_c:
+    - {match: .*-thermal, warn: 85, error: 95}
 """
 
 
@@ -45,6 +46,11 @@ def test_evaluate():
     assert statuses[0]["values"] == {"value": "2097.15", "warn": "1000", "error": "5000"}
 
 
+def test_capas_chains_beside_the_rules_are_skipped():
+    text = "capa:\n  chains: {c: {target: soft, stages: [{node: /a}]}}\n" + RULES
+    assert rules.load(text) == rules.load(RULES)
+
+
 def test_example_rules_load():
     entries = rules.load((PACKAGE / "config" / "rules.yaml").read_text())
     assert sorted({rule for rule, _, _ in entries}) == sorted(rules.RULES)
@@ -53,8 +59,11 @@ def test_example_rules_load():
 @pytest.mark.parametrize(
     "text,error",
     [
-        ("topic_hz: [{match: /a, warn: 1, error: 2}]", "unknown rule 'topic_hz'"),
-        ("topic_hz_min: [{match: /a, warn: 1}]", "lacks error"),
+        ("orma: {topic_hz: [{match: /a, warn: 1, error: 2}]}", "unknown rule 'topic_hz'"),
+        ("orma: {topic_hz_min: [{match: /a, warn: 1}]}", "lacks error"),
+        ("topic_hz_min: [{match: /a, warn: 1, error: 2}]", "topic_hz_min moved under orma:"),
+        ("orma: {}\nomra: {}", "unknown key 'omra' in the file root"),
+        ("capa: {chains: {}}", "no orma mapping"),
     ],
 )
 def test_load_refuses(text, error):

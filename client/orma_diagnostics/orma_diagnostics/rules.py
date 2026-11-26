@@ -67,9 +67,19 @@ RULES = {
 
 
 def load(text):
-    """`{rule: [{match, warn, error}, ...]}` as (rule, regex, entry) triples."""
+    """`{orma: {rule: [{match, warn, error}, ...]}}` as (rule, regex, entry) triples. The file may
+    also hold capa's chains under `capa`, which is not read here."""
+    root = yaml.safe_load(text) or {}
+    moved = sorted(set(root) & set(RULES))
+    if moved:
+        raise ValueError(f"{moved[0]} moved under orma: (orma: {{{moved[0]}: [...]}})")
+    for key in root:
+        if key not in ("capa", "orma"):
+            raise ValueError(f"unknown key {key!r} in the file root; keys are capa, orma")
+    if not isinstance(root.get("orma"), dict):
+        raise ValueError("the file has no orma mapping")
     entries = []
-    for rule, items in (yaml.safe_load(text) or {}).items():
+    for rule, items in root["orma"].items():
         if rule not in RULES:
             raise ValueError(f"unknown rule {rule!r}; rules are {', '.join(RULES)}")
         for item in items:

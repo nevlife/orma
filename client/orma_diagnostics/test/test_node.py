@@ -55,7 +55,9 @@ def test_node_publishes_diagnostics(runtime):
     requests = []
     threading.Thread(target=serve, args=(listener, requests), daemon=True).start()
     rules = runtime / "rules.yaml"
-    rules.write_text("chain_e2e_p99_us: [{match: perception, warn: 50000, error: 100000}]\n")
+    rules.write_text(
+        "orma: {chain_e2e_p99_us: [{match: perception, warn: 50000, error: 100000}]}\n"
+    )
     env = dict(os.environ, PYTHONPATH=f"{PACKAGE}:{os.environ.get('PYTHONPATH', '')}")
     main = "import sys; from orma_diagnostics.node import main; sys.exit(main())"
     node_process = subprocess.Popen(

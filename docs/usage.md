@@ -506,18 +506,22 @@ ros2 launch orma_diagnostics orma_diagnostics.launch.py rules:=/path/rules.yaml
 ros2 run orma_diagnostics orma_diagnostics --ros-args -p rules:=/path/rules.yaml
 ```
 
-규칙 파일은 규칙 이름마다 항목 목록이다. 예시는 패키지의 `config/rules.yaml`이다.
+규칙 파일은 맨 위 `orma` 아래에 규칙 이름마다 항목 목록을 둔다. 예시는 패키지의 `config/rules.yaml`이다.
 
 ```yaml
-callback_p99_us:
-  - match: "sub\\(/scan\\)"
-    warn: 5000
-    error: 20000
-topic_hz_min:
-  - match: /scan
-    warn: 9.0
-    error: 5.0
+orma:
+  callback_p99_us:
+    - match: "sub\\(/scan\\)"
+      warn: 5000
+      error: 20000
+  topic_hz_min:
+    - match: /scan
+      warn: 9.0
+      error: 5.0
 ```
+
+- capa 체인 파일과 한 파일에 둘 수 있다. 맨 위에는 `orma`와 `capa`만 오고, `orma_diagnostics`는 `capa` 아래를 읽지 않는다.
+- 맨 위에 규칙 이름을 둔 옛 형식은 `orma` 아래로 옮기라는 오류로 거절한다.
 
 | 규칙 | `match`가 매칭하는 이름 | 값 |
 | --- | --- | --- |
