@@ -427,6 +427,7 @@ def test_new_tabs(app):
         "throttle": {},
         "net": [],
         "udp": None,
+        "memory_bus": {"util_pct": 53.04, "clock_mhz": 3199},
         "gpus": [
             {
                 "index": 0, "name": "Orin", "util_pct": None, "mem_used_bytes": None,
@@ -445,6 +446,7 @@ def test_new_tabs(app):
     assert table_texts(monitor.cuda)[0][:2] == ["4021", "camera_node"]
     assert table_texts(monitor.cuda)[0][7] == "512.0MiB"
     assert monitor.host.cpu.text() == "cpu MHz: min 1200 mean 1700 max 2200 (2 cpus)"
+    assert monitor.host.memory_bus.text() == "memory bus: 53.0% of 3199MHz"
     assert monitor.host.udp.text() == "udp: -"
     assert table_texts(monitor.host.thermal) == [["cpu-thermal", "61.5"]]
     assert table_texts(monitor.spans)[0][:4] == ["preprocess", "-", "sub(/scan)", "/camera/driver"]

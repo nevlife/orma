@@ -52,7 +52,7 @@ sudo systemctl enable --now ormad
 | `CAP_BPF`, `CAP_PERFMON` | eBPF 프로그램 로드, uprobe와 tracepoint 부착 |
 | `CAP_SYS_ADMIN` | eBPF 실행 시간 통계(`BPF_ENABLE_STATS`). Ubuntu 7.0 커널은 이것 없이는 uprobe의 `perf_event_open`도 거부한다(`EACCES`) |
 | `CAP_SYS_PTRACE` | 다른 사용자 프로세스의 `/proc/<pid>/maps`, `/proc/<pid>/root`. 없으면 probe 부착 불가능 |
-| `CAP_DAC_READ_SEARCH` | tracefs(`/sys/kernel/tracing`)의 이벤트 `format`, `id`. 없으면 sched probe 비활성화 |
+| `CAP_DAC_READ_SEARCH` | tracefs(`/sys/kernel/tracing`)의 이벤트 `format`, `id`. 없으면 sched probe 비활성화. Jetson에서는 debugfs의 EMC counter(`orma top`의 memory bus)도 이것으로 읽는다 |
 
 unit의 sandbox:
 

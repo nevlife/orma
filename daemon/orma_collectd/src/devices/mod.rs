@@ -16,6 +16,10 @@ use nvml::Nvml;
 const UDP: [&str; 4] = ["InErrors", "RcvbufErrors", "SndbufErrors", "NoPorts"];
 /// `device/of_node/name` of a Jetson's integrated GPU under devfreq, as jetson-stats finds it.
 const JETSON: [&str; 4] = ["gv11b", "gp10b", "ga10b", "gpu"];
+const JETSON_ZONE: &str = "gpu-thermal";
+/// The INA3221 channel that feeds the GPU and, on an AGX Orin, the rest of the chip too (the
+/// figure tegrastats shows).
+const JETSON_RAIL: &str = "VDD_GPU_SOC";
 
 fn number<T: FromStr>(path: &Path) -> Option<T> {
     fs::read_to_string(path).ok()?.trim().parse().ok()
@@ -196,27 +200,57 @@ fn jetson(root: &Path) -> Vec<Jetson> {
     found
 }
 
-fn jetson_gpus(found: &[Jetson]) -> Vec<Gpu> {
-    found
+/// `in<n>_input` (mV) and `curr<n>_input` (mA) of the hwmon channel labelled `label`.
+fn rail(root: &Path, label: &str) -> Option<(PathBuf, PathBuf)> {
+    numbered(&root.join("sys/class/hwmon"), "hwmon")
+        .into_iter()
+        .find_map(|(_, dir)| {
+            (1..=8).find_map(|n| {
+                let name = fs::read_to_string(dir.join(format!("in{n}_label"))).ok()?;
+                (name.trim() == label).then(|| {
+                    (
+                        dir.join(format!("in{n}_input")),
+                        dir.join(format!("curr{n}_input")),
+                    )
+                })
+            })
+        })
+}
+
+fn jetson_gpus(j: &JetsonGpus, thermal: &[Thermal]) -> Vec<Gpu> {
+    let temp_c = thermal
+        .iter()
+        .find(|t| t.name == JETSON_ZONE)
+        .map(|t| t.temp_c);
+    let power_w = j
+        .rail
+        .as_ref()
+        .and_then(|(mv, ma)| Some(number::<u64>(mv)? as f64 * number::<u64>(ma)? as f64 / 1e6));
+    j.found
         .iter()
         .zip(0..)
-        .map(|(j, index)| Gpu {
+        .map(|(g, index)| Gpu {
             index,
-            name: j.name.clone(),
-            util_pct: number::<u32>(&j.load).map(|l| f64::from(l) / 10.0),
+            name: g.name.clone(),
+            util_pct: number::<u32>(&g.load).map(|l| f64::from(l) / 10.0),
             mem_used_bytes: None,
             mem_total_bytes: None,
-            clock_mhz: number::<u64>(&j.freq).map(|hz| (hz / 1_000_000) as u32),
-            temp_c: None,
-            power_w: None,
+            clock_mhz: number::<u64>(&g.freq).map(|hz| (hz / 1_000_000) as u32),
+            temp_c,
+            power_w,
             throttle: Vec::new(),
         })
         .collect()
 }
 
+struct JetsonGpus {
+    found: Vec<Jetson>,
+    rail: Option<(PathBuf, PathBuf)>,
+}
+
 enum Gpus {
     Nvml(Nvml),
-    Jetson(Vec<Jetson>),
+    Jetson(JetsonGpus),
 }
 
 pub struct Devices {
@@ -235,12 +269,21 @@ impl Devices {
         }
     }
 
-    /// NVML's init can take long, so it happens when windows begin, once.
+    /// NVML's init can take long, so it happens when windows begin, once. A Jetson's NVML lists
+    /// its GPU but reports every reading as not supported, so the devfreq GPU goes first.
     fn gpus(&mut self) -> &mut Gpus {
         let root = &self.root;
-        self.gpus.get_or_insert_with(|| match Nvml::open() {
-            Some(n) if !n.is_empty() => Gpus::Nvml(n),
-            _ => Gpus::Jetson(jetson(root)),
+        self.gpus.get_or_insert_with(|| {
+            let found = jetson(root);
+            if found.is_empty()
+                && let Some(n) = Nvml::open().filter(|n| !n.is_empty())
+            {
+                return Gpus::Nvml(n);
+            }
+            Gpus::Jetson(JetsonGpus {
+                found,
+                rail: rail(root, JETSON_RAIL),
+            })
         })
     }
 
@@ -279,7 +322,7 @@ impl Devices {
                 Some(n.process_memory())
             }
             Gpus::Jetson(j) => {
-                host.gpus = jetson_gpus(j);
+                host.gpus = jetson_gpus(j, &host.thermal);
                 None
             }
         };
@@ -295,6 +338,7 @@ fn empty(cpu_mhz: Vec<Option<u32>>, thermal: Vec<Thermal>) -> HostWindow {
         net: Vec::new(),
         udp: None,
         gpus: Vec::new(),
+        memory_bus: None,
     }
 }
 
@@ -478,12 +522,37 @@ UdpLite: 0 0 0 0 0 0 0 0 0
             "sys/class/devfreq/15340000.vic/device/of_node/name",
             "vic\0",
         );
-        let g = jetson_gpus(&jetson(&t.0));
+        t.put("sys/class/thermal/thermal_zone1/type", "gpu-thermal\n");
+        t.put("sys/class/thermal/thermal_zone1/temp", "40156\n");
+        t.put("sys/class/hwmon/hwmon7/in1_label", "VDD_GPU_SOC\n");
+        t.put("sys/class/hwmon/hwmon7/in1_input", "19936\n");
+        t.put("sys/class/hwmon/hwmon7/curr1_input", "260\n");
+        t.put("sys/class/hwmon/hwmon7/in2_label", "VDD_CPU_CV\n");
+        t.put("sys/class/hwmon/hwmon7/in2_input", "19928\n");
+        t.put("sys/class/hwmon/hwmon7/curr2_input", "400\n");
+        let j = JetsonGpus {
+            found: jetson(&t.0),
+            rail: rail(&t.0, JETSON_RAIL),
+        };
+        let g = jetson_gpus(&j, &thermal(&t.0));
         assert_eq!(g.len(), 1);
         assert_eq!(
-            (g[0].name.as_str(), g[0].util_pct, g[0].clock_mhz),
-            ("gpu", Some(43.7), Some(918))
+            (
+                g[0].name.as_str(),
+                g[0].util_pct,
+                g[0].clock_mhz,
+                g[0].temp_c
+            ),
+            ("gpu", Some(43.7), Some(918), Some(40.156))
         );
+        assert!((g[0].power_w.unwrap() - 19.936 * 0.26).abs() < 1e-9);
+    }
+
+    #[test]
+    fn jetson_gpu_without_a_rail() {
+        let t = Tree::new("jetson_no_rail");
+        t.put("sys/class/hwmon/hwmon0/in1_label", "VDD_IN\n");
+        assert_eq!(rail(&t.0, JETSON_RAIL), None);
     }
 
     #[test]

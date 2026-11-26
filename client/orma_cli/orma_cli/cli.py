@@ -287,10 +287,18 @@ def udp_line(w):
     )
 
 
+def memory_bus_line(w):
+    bus = host_of(w).get("memory_bus")
+    if bus is None:
+        return "memory bus: -"
+    return f"memory bus: {bus['util_pct']:.1f}% of {bus['clock_mhz']}MHz"
+
+
 def print_host(w):
     if w.get("host") is None:
         return
     print(cpu_line(w))
+    print(memory_bus_line(w))
     table("thermal", THERMAL_HEADS, thermal_rows(w))
     table("throttle", THROTTLE_HEADS, throttle_rows(w))
     table("net", NET_HEADS, net_rows(w))
@@ -1001,7 +1009,9 @@ def parser():
         run=cmd_status
     )
 
-    m = sub.add_parser("top", help="the machine: CPU clocks, temperatures, network, GPUs")
+    m = sub.add_parser(
+        "top", help="the machine: CPU clocks, memory bus, temperatures, network, GPUs"
+    )
     m.add_argument("--window", type=float, metavar="S")
     m.add_argument("--json", action="store_true", help="each window message, one per line")
     m.set_defaults(run=cmd_top)

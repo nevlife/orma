@@ -68,7 +68,7 @@ delivery probes: 4021 (camera_node) loan+zenoh_shm, 4107 (python3) broker+loan+z
 | DDS write 호출 | `--dds` | O | O | O | `orma topic delay`의 DDS 열 |
 | futex 대기 | `--futex` | ormad | ormad | ormad | `orma node cb`의 futex 열, rqt의 Threads tab |
 | span(`liborma_span`) | 항상 | O | O | O | `orma span`(8절) |
-| 장비 상태(clock, 온도, 네트워크, GPU) | 항상 | 방식과 무관 | 방식과 무관 | 방식과 무관 | `orma top` |
+| 장비 상태(clock, 온도, 네트워크, GPU, Jetson의 메모리 버스) | 항상 | 방식과 무관 | 방식과 무관 | 방식과 무관 | `orma top` |
 
 - futex 대기는 방식과 관계없이 ormad가 커널 tracepoint로 잰다. ormad가 없으면 열이 `-`로 나온다.
 - CUDA 열은 `libcuda.so.1` 호출에 걸린 시간이고, GPU 안의 kernel 실행 시간은 재지 않는다. 비동기 launch는 즉시 반환하므로, 기다린 시간은 sync 열과 동기 copy에 나타난다.
@@ -117,7 +117,7 @@ def generate_launch_description():
 `ros2 node`, `ros2 topic`처럼 대상을 이름으로 지정한다. 실시간 명령은 window(기본 1 s)마다 표를 출력하고 Ctrl-C로 종료된다.
 
 ```bash
-orma top                              # the machine: CPU clocks, temperatures, network, GPUs
+orma top                              # the machine: CPU clocks, memory bus, temperatures, network, GPUs
 orma node list
 orma node info NODE                   # pid, RSS, topics and callbacks (once)
 orma node cpu [NODE...]               # CPU%, busy%, callback Hz, RSS
@@ -129,7 +129,7 @@ orma topic list|info|hz|bw|delay|path ...  # see orma topic below
 
 명령별 열:
 
-- `orma top`: CPU clock(최소, 평균, 최대 MHz와 CPU 수), thermal zone 온도, throttle counter 증가분(x86), interface별 rx와 tx의 초당 bytes, 초당 패킷 수, drop, error, UDP error counter 증가분, `gpus` 표(번호, 이름, 사용률, 메모리(사용/전체), SM clock, 온도, 전력, clock 제한 이유)
+- `orma top`: CPU clock(최소, 평균, 최대 MHz와 CPU 수), 메모리 버스(EMC) 사용률과 clock(Jetson), thermal zone 온도, throttle counter 증가분(x86), interface별 rx와 tx의 초당 bytes, 초당 패킷 수, drop, error, UDP error counter 증가분, `gpus` 표(번호, 이름, 사용률, 메모리(사용/전체), SM clock, 온도, 전력, clock 제한 이유)
 - `orma node cpu`: 노드 이름, pid, CPU%, CPU source, busy%(wall time), 콜백 Hz, RSS.
   - RSS는 프로세스 단위 값이라, 한 프로세스에 노드가 여럿이면 `(shared)`로 표시한다.
   - 표 아래에 프로세스 경고(표 넘침, flux GPU wedged)가 나온다.
@@ -230,6 +230,8 @@ flux GPU가 wedged인 프로세스에는 `CUresult`와 함께 경고 한 줄이 
 `orma top`:
 
 - orma-collectd가 window마다 커널 counter와 NVML(Jetson은 sysfs)에서 읽는다.
+- Jetson은 devfreq에 GPU가 있는지로 판별한다. Jetson의 NVML은 GPU를 보여 주지만 모든 값을 미지원으로 답하므로 sysfs를 먼저 쓴다. 사용률과 clock은 devfreq, 온도는 `gpu-thermal` zone, 전력은 INA3221의 `VDD_GPU_SOC` 채널이다. AGX Orin에서는 이 채널이 GPU 밖의 칩도 함께 먹이므로 전력은 tegrastats의 `VDD_GPU_SOC`와 같은 값이다.
+- 메모리 버스는 ormad가 window마다 읽는다. `/sys/kernel/debug/cactmon/mc_all`(EMC clock의 kHz 단위 활동량)을 EMC clock(`/sys/kernel/debug/bpmp/debug/clk/emc/rate`)으로 나눈 값이고, tegrastats의 `EMC_FREQ`와 같다. debugfs는 root만 읽으므로 orma-collectd는 읽지 못한다. 이 파일이 없는 기기나 ormad가 없을 때는 `memory bus: -`로 나온다.
 - NVML이나 GPU가 없으면 `gpus` 표만 비고 나머지는 그대로 나온다.
 - `--json`을 주면 window 메시지 전체를 한 줄에 하나씩 출력한다. 필드는 `common/orma_proto/schema/v1.json`의 `window`에 있다.
 

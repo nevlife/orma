@@ -924,6 +924,9 @@ impl Core {
         self.lttng_window(&mut w);
         self.lttng_rotate();
         if let Some(a) = &self.ormad_window {
+            if let Some(host) = &mut w.host {
+                host.memory_bus.clone_from(&a.memory_bus);
+            }
             w.agent.ormad = a.usage.clone();
             w.agent.bpf.clone_from(&a.bpf);
             w.agent.maps.clone_from(&a.maps);

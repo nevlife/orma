@@ -1473,6 +1473,17 @@
           },
           "type": "array"
         },
+        "memory_bus": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MemoryBus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Proto 1.11; recordings from before read null."
+        },
         "net": {
           "items": {
             "$ref": "#/$defs/NetIf"
@@ -1757,6 +1768,25 @@
         "used",
         "max",
         "memlock_bytes"
+      ],
+      "type": "object"
+    },
+    "MemoryBus": {
+      "description": "The DRAM controller (EMC) of a Jetson at the window's end: its activity counter as a\nshare of its clock, as tegrastats shows it. Only ormad can read the counter (debugfs).",
+      "properties": {
+        "clock_mhz": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "util_pct": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "util_pct",
+        "clock_mhz"
       ],
       "type": "object"
     },
@@ -2228,6 +2258,17 @@
             "$ref": "#/$defs/MapUse"
           },
           "type": "array"
+        },
+        "memory_bus": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MemoryBus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Proto 1.11; null where the machine has no EMC counter."
         },
         "probe_changes": {
           "description": "The attaches and detaches that ended since the last window. Proto 1.7.",

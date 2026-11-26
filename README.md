@@ -121,7 +121,7 @@ orma topic hz /scan                 # publish rate, measured in the publishers
 orma topic delay /scan --dds        # publish to take, and to the DDS write
 orma topic path /scan               # takes and latency per delivery path
 orma span                           # spans marked in code
-orma top                            # the machine: CPU clocks, temperatures, network, GPUs
+orma top                            # the machine: CPU clocks, memory bus, temperatures, network, GPUs
 ```
 
 - 대상은 `ros2 node`, `ros2 topic`처럼 이름으로 지정한다.

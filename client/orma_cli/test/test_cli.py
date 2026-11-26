@@ -426,6 +426,7 @@ def window_1_8():
             }
         ],
         "udp": {"in_errors": 1, "rcvbuf_errors": 1, "sndbuf_errors": 0, "no_ports": 4},
+        "memory_bus": {"util_pct": 26.0, "clock_mhz": 3199},
         "gpus": [
             {
                 "index": 0,
@@ -453,6 +454,7 @@ def printed(printer, w):
 def test_host_view():
     rows = printed(cli.print_host, window_1_8())
     assert rows[0] == ["cpu", "MHz:", "min", "1200", "mean", "1700", "max", "2200", "(4", "cpus)"]
+    assert rows[1] == ["memory", "bus:", "26.0%", "of", "3199MHz"]
     assert ["cpu-thermal", "61.5"] in rows and ["package", "3"] in rows
     assert ["eth0", "2.0KiB/s", "1.0MiB/s", "10.0", "800.0", "0", "2", "0", "0"] in rows
     assert "udp: in errors 1, rcvbuf errors 1, sndbuf errors 0, no ports 4".split() in rows

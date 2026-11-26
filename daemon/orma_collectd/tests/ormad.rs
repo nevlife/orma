@@ -48,6 +48,7 @@ fn empty_ormad_window(seq: u64) -> OrmadMessage {
         probes_missing: Vec::new(),
         usage: None,
         probe_changes: Vec::new(),
+        memory_bus: None,
     })
 }
 
@@ -218,6 +219,10 @@ fn ormad_follows_selection_and_recordings_and_its_loss_leaves_a_gap() {
     events.extend(batch(OTHER, 2));
     events.extend(batch(TRACED, 1));
     fake.send(Kind::Events, &events);
+    let bus = MemoryBus {
+        util_pct: 26.0,
+        clock_mhz: 3199,
+    };
     let window = OrmadMessage::Window(OrmadWindow {
         seq: 1,
         t_mono_ns: 5,
@@ -247,6 +252,7 @@ fn ormad_follows_selection_and_recordings_and_its_loss_leaves_a_gap() {
             pid: Some(TRACED),
             points: 1,
         }],
+        memory_bus: Some(bus.clone()),
     });
     fake.send(Kind::Json, &serde_json::to_vec(&window).unwrap());
     until(|| {
@@ -262,7 +268,11 @@ fn ormad_follows_selection_and_recordings_and_its_loss_leaves_a_gap() {
                 .any(|(m, a)| *m == Method::Uprobe && a.count == 4)
     });
 
-    c.until(|m| matches!(m, ServerMessage::Window(w) if w.agent.ormad.as_ref() == Some(&usage)));
+    // ormad's window ends collectd's, which carries ormad's usage and memory bus.
+    c.until(|m| {
+        matches!(m, ServerMessage::Window(w) if w.agent.ormad.as_ref() == Some(&usage)
+            && w.host.as_ref().is_some_and(|h| h.memory_bus.as_ref() == Some(&bus)))
+    });
 
     fake.drop_connection();
     c.until(|m| matches!(m, ServerMessage::EventLine(l) if l.kind == "ormad_lost"));

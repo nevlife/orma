@@ -66,7 +66,7 @@
 
 - `orma top`의 `gpus` 표가 비었다
   - 원인: NVML(`libnvidia-ml.so.1`)이나 GPU가 없다. orma-collectd는 NVML을 링크하지 않고 시작 시 찾는다.
-  - 조치: 외장 GPU에는 NVIDIA driver의 NVML이 필요하다. Jetson에서는 sysfs에서 사용률과 clock만 읽는다.
+  - 조치: 외장 GPU에는 NVIDIA driver의 NVML이 필요하다. Jetson에서는 sysfs에서 사용률, clock, 온도, 전력을 읽고, 메모리는 시스템 메모리와 같아서 `-`로 둔다.
 - `orma node cb`의 CUDA 열, rqt의 CUDA 표가 없다
   - 원인: `--gpu`(rqt의 `gpu`)를 활성화하지 않았다.
   - 조치: `--gpu`를 활성화한다. cudart를 정적으로 링크한 프로그램(nvcc 기본)도 수집된다. cudart가 `cuGetProcAddress`로 driver 함수를 얻으면 `preload`와 `lttng`이 그 함수도 가로채 주소를 바꾼다. uprobe는 함수 주소에 부착하므로 이 경로와 관계없다.

@@ -92,6 +92,7 @@ class HostView(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.cpu = QLabel()
+        self.memory_bus = QLabel()
         self.udp = QLabel()
         self.thermal = make_table(cli.THERMAL_HEADS)
         self.throttle = make_table(cli.THROTTLE_HEADS)
@@ -101,11 +102,13 @@ class HostView(QWidget):
             split.addWidget(table)
         layout = QVBoxLayout(self)
         layout.addWidget(self.cpu)
+        layout.addWidget(self.memory_bus)
         layout.addWidget(self.udp)
         layout.addWidget(split)
 
     def show_window(self, w):
         self.cpu.setText(cli.cpu_line(w))
+        self.memory_bus.setText(cli.memory_bus_line(w))
         self.udp.setText(cli.udp_line(w))
         set_rows(self.thermal, keyed(cli.thermal_rows(w)))
         set_rows(self.throttle, keyed(cli.throttle_rows(w)))

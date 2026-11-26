@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 /// `[major, minor]`.
 pub type Version = [u16; 2];
-pub const PROTO: Version = [1, 10];
+pub const PROTO: Version = [1, 11];
 pub const META_SCHEMA: u32 = 1;
 pub const HIST_LOG2: &str = "log2";
 
@@ -710,6 +710,16 @@ types! {
         pub net: Vec<NetIf>,
         pub udp: Option<Udp>,
         pub gpus: Vec<Gpu>,
+        /// Proto 1.11; recordings from before read null.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub memory_bus: Option<MemoryBus>,
+    }
+
+    /// The DRAM controller (EMC) of a Jetson at the window's end: its activity counter as a
+    /// share of its clock, as tegrastats shows it. Only ormad can read the counter (debugfs).
+    pub struct MemoryBus {
+        pub util_pct: f64,
+        pub clock_mhz: u32,
     }
 
     pub struct Thermal {
@@ -855,6 +865,9 @@ types! {
         /// The attaches and detaches that ended since the last window. Proto 1.7.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         pub probe_changes: Vec<ProbeChange>,
+        /// Proto 1.11; null where the machine has no EMC counter.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub memory_bus: Option<MemoryBus>,
     }
 
     /// One program attached to or detached from the points of one file (design 6.8): the

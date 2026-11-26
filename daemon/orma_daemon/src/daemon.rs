@@ -653,6 +653,7 @@ impl Daemon {
         };
         let t_mono_ns = sys::mono_ns();
         let (cpu_ns, rss_bytes) = (sys::cpu_ns(), sys::rss_bytes());
+        let memory_bus = sys::memory_bus();
         for id in due {
             let c = self.clients.get_mut(&id).expect("listed");
             let w = c.window.as_mut().expect("due");
@@ -730,6 +731,7 @@ impl Daemon {
                 probes_missing: missing.clone(),
                 usage: Some(usage),
                 probe_changes: std::mem::take(&mut w.changes),
+                memory_bus: memory_bus.clone(),
             });
             c.send(&m);
         }
